@@ -1,0 +1,192 @@
+//@version=5
+indicator("UT Bot HTF Instant Labels (30m / 1H / 4H)", overlay=true, max_labels_count=500)
+
+//-------------------------
+// Chart UT Bot #1 / #2 (lines only by default)
+//-------------------------
+group1  = "UT Bot #1"
+show1   = input.bool(true, "Enable line", group=group1)
+labels1 = input.bool(false, "Show chart Buy/Sell labels", group=group1)
+key1    = input.float(2.0, "Key Value", step=0.5, group=group1)
+atr1    = input.int(14, "ATR Period", group=group1)
+
+src1  = close
+loss1 = key1 * ta.atr(atr1)
+
+var float stop1 = na
+prevStop1 = nz(stop1[1], 0.0)
+
+if src1 > prevStop1 and src1[1] > prevStop1
+    stop1 := math.max(prevStop1, src1 - loss1)
+else if src1 < prevStop1 and src1[1] < prevStop1
+    stop1 := math.min(prevStop1, src1 + loss1)
+else
+    stop1 := src1 > prevStop1 ? src1 - loss1 : src1 + loss1
+
+buy1  = ta.crossover(src1, stop1)
+sell1 = ta.crossunder(src1, stop1)
+
+plot(show1 ? stop1 : na, color=color.green, linewidth=2, title="UT1 Stop")
+plotshape(show1 and labels1 and buy1, style=shape.labelup, location=location.belowbar, color=color.green, text="Buy", textcolor=color.white, size=size.tiny)
+plotshape(show1 and labels1 and sell1, style=shape.labeldown, location=location.abovebar, color=color.red, text="Sell", textcolor=color.white, size=size.tiny)
+
+alertcondition(buy1, "UT Bot #1 Buy", "UT Bot #1 Buy")
+alertcondition(sell1, "UT Bot #1 Sell", "UT Bot #1 Sell")
+
+group2  = "UT Bot #2"
+show2   = input.bool(true, "Enable line", group=group2)
+labels2 = input.bool(false, "Show chart Buy/Sell labels", group=group2)
+key2    = input.float(2.0, "Key Value", step=0.5, group=group2)
+atr2    = input.int(20, "ATR Period", group=group2)
+
+src2  = close
+loss2 = key2 * ta.atr(atr2)
+
+var float stop2 = na
+prevStop2 = nz(stop2[1], 0.0)
+
+if src2 > prevStop2 and src2[1] > prevStop2
+    stop2 := math.max(prevStop2, src2 - loss2)
+else if src2 < prevStop2 and src2[1] < prevStop2
+    stop2 := math.min(prevStop2, src2 + loss2)
+else
+    stop2 := src2 > prevStop2 ? src2 - loss2 : src2 + loss2
+
+buy2  = ta.crossover(src2, stop2)
+sell2 = ta.crossunder(src2, stop2)
+
+plot(show2 ? stop2 : na, color=color.orange, linewidth=2, title="UT2 Stop")
+plotshape(show2 and labels2 and buy2, style=shape.triangleup, location=location.belowbar, color=color.lime, size=size.tiny)
+plotshape(show2 and labels2 and sell2, style=shape.triangledown, location=location.abovebar, color=color.maroon, size=size.tiny)
+
+alertcondition(buy2, "UT Bot #2 Buy", "UT Bot #2 Buy")
+alertcondition(sell2, "UT Bot #2 Sell", "UT Bot #2 Sell")
+
+//-------------------------
+// Higher-timeframe bias engine (INSTANT: lookahead_on, labels can repaint)
+//-------------------------
+groupHTF        = "HTF Labels"
+showLabels30    = input.bool(true, "Show 30m labels", group=groupHTF)
+showLabels60    = input.bool(true, "Show 1H labels", group=groupHTF)
+showLabels240   = input.bool(true, "Show 4H labels", group=groupHTF)
+showDashboard   = input.bool(true, "Show bias dashboard", group=groupHTF)
+showBackground  = input.bool(false, "Tint chart background with 1H bias", group=groupHTF)
+dashboardCorner = input.string("Top Right", "Dashboard Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=groupHTF)
+biasKey         = input.float(2.0, "Bias Key Value", step=0.5, group=groupHTF)
+biasATRPeriod   = input.int(14, "Bias ATR Period", group=groupHTF)
+hideOn1m        = input.bool(false, "Hide HTF labels on 1m chart", group=groupHTF)
+hideOn3m        = input.bool(false, "Hide HTF labels on 3m chart", group=groupHTF)
+hideOn5m        = input.bool(false, "Hide HTF labels on 5m chart", group=groupHTF)
+
+// Same trailing-stop formula as the UT Bots, evaluated on the timeframe passed in.
+// Bias = bullish when price is above its own trailing stop, bearish when below.
+f_utbotBias(_src, _key, _atrLen) =>
+    _loss = _key * ta.atr(_atrLen)
+    var float _stop = na
+    _prevStop = nz(_stop[1], 0.0)
+    if _src > _prevStop and _src[1] > _prevStop
+        _stop := math.max(_prevStop, _src - _loss)
+    else if _src < _prevStop and _src[1] < _prevStop
+        _stop := math.min(_prevStop, _src + _loss)
+    else
+        _stop := _src > _prevStop ? _src - _loss : _src + _loss
+    _bias = _src > _stop ? 1 : -1
+    [_bias, _stop]
+
+// lookahead_on: the HTF bias updates on every chart tick, so a flip is shown as soon as
+// it happens on the forming HTF candle. The label can move or disappear before that candle closes.
+[bias30,  _st30]  = request.security(syminfo.tickerid, "30",  f_utbotBias(close, biasKey, biasATRPeriod), lookahead=barmerge.lookahead_on)
+[bias60,  _st60]  = request.security(syminfo.tickerid, "60",  f_utbotBias(close, biasKey, biasATRPeriod), lookahead=barmerge.lookahead_on)
+[bias240, _st240] = request.security(syminfo.tickerid, "240", f_utbotBias(close, biasKey, biasATRPeriod), lookahead=barmerge.lookahead_on)
+
+// Swing candle of each HTF: label sits on its low (buy) or high (sell).
+low30   = request.security(syminfo.tickerid, "30",  low,  lookahead=barmerge.lookahead_on)
+high30  = request.security(syminfo.tickerid, "30",  high, lookahead=barmerge.lookahead_on)
+low60   = request.security(syminfo.tickerid, "60",  low,  lookahead=barmerge.lookahead_on)
+high60  = request.security(syminfo.tickerid, "60",  high, lookahead=barmerge.lookahead_on)
+low240  = request.security(syminfo.tickerid, "240", low,  lookahead=barmerge.lookahead_on)
+high240 = request.security(syminfo.tickerid, "240", high, lookahead=barmerge.lookahead_on)
+
+// Open time of the current HTF candle, used to allow one label per flip per candle.
+open30  = request.security(syminfo.tickerid, "30",  time, lookahead=barmerge.lookahead_on)
+open60  = request.security(syminfo.tickerid, "60",  time, lookahead=barmerge.lookahead_on)
+open240 = request.security(syminfo.tickerid, "240", time, lookahead=barmerge.lookahead_on)
+
+// Labels are only drawn on charts BELOW the timeframe they describe.
+// Hide toggles let you switch off labels on the 1m, 3m and 5m charts.
+chartHidden = (timeframe.period == "1" and hideOn1m) or (timeframe.period == "3" and hideOn3m) or (timeframe.period == "5" and hideOn5m)
+ok30  = not chartHidden and timeframe.in_seconds(timeframe.period) < timeframe.in_seconds("30")
+ok60  = not chartHidden and timeframe.in_seconds(timeframe.period) < timeframe.in_seconds("60")
+ok240 = not chartHidden and timeframe.in_seconds(timeframe.period) < timeframe.in_seconds("240")
+
+// A flip fires once when the bias changes. Only one label per HTF candle per timeframe,
+// so a bias that flips back and forth inside one candle does not stack labels.
+var int last30  = 0
+var int last60  = 0
+var int last240 = 0
+
+flip30  = not na(bias30[1])  and bias30  != bias30[1]
+flip60  = not na(bias60[1])  and bias60  != bias60[1]
+flip240 = not na(bias240[1]) and bias240 != bias240[1]
+
+buy30   = showLabels30  and ok30  and flip30  and bias30  == 1  and open30  != last30
+sell30  = showLabels30  and ok30  and flip30  and bias30  == -1 and open30  != last30
+buy60   = showLabels60  and ok60  and flip60  and bias60  == 1  and open60  != last60
+sell60  = showLabels60  and ok60  and flip60  and bias60  == -1 and open60  != last60
+buy240  = showLabels240 and ok240 and flip240 and bias240 == 1  and open240 != last240
+sell240 = showLabels240 and ok240 and flip240 and bias240 == -1 and open240 != last240
+
+if buy30 or sell30
+    last30 := open30
+if buy60 or sell60
+    last60 := open60
+if buy240 or sell240
+    last240 := open240
+
+// Label text shows the timeframe first, e.g. "30m BUY", with the candle extreme price.
+f_swingLabel(_tfName, _isBuy, _price, _col) =>
+    label.new(bar_index, _price, _tfName + (_isBuy ? " BUY" : " SELL") + "\n" + str.tostring(_price, format.mintick),
+              xloc=xloc.bar_index, yloc=yloc.price, style=_isBuy ? label.style_label_up : label.style_label_down,
+              color=_col, textcolor=color.white, size=size.small)
+
+if buy30
+    f_swingLabel("30m", true, low30, color.new(color.teal, 0))
+if sell30
+    f_swingLabel("30m", false, high30, color.new(color.maroon, 0))
+if buy60
+    f_swingLabel("1H", true, low60, color.new(color.green, 0))
+if sell60
+    f_swingLabel("1H", false, high60, color.new(color.red, 0))
+if buy240
+    f_swingLabel("4H", true, low240, color.new(color.blue, 0))
+if sell240
+    f_swingLabel("4H", false, high240, color.new(color.purple, 0))
+
+alertcondition(buy30,  "30m Swing Buy",  "30m UT Bot swing BUY")
+alertcondition(sell30, "30m Swing Sell", "30m UT Bot swing SELL")
+alertcondition(buy60,  "1H Swing Buy",   "1H UT Bot swing BUY")
+alertcondition(sell60, "1H Swing Sell",  "1H UT Bot swing SELL")
+alertcondition(buy240, "4H Swing Buy",   "4H UT Bot swing BUY")
+alertcondition(sell240,"4H Swing Sell",  "4H UT Bot swing SELL")
+
+//-------------------------
+// Dashboard
+//-------------------------
+f_biasText(_name, _b) => _name + (_b == 1 ? ": BULL" : ": BEAR")
+f_biasColor(_b) => _b == 1 ? color.new(color.green, 0) : color.new(color.red, 0)
+
+cornerPos = dashboardCorner == "Top Right" ? position.top_right :
+             dashboardCorner == "Top Left" ? position.top_left :
+             dashboardCorner == "Bottom Right" ? position.bottom_right : position.bottom_left
+
+var table biasTable = table.new(cornerPos, 1, 4, border_width=1)
+
+if barstate.islast
+    table.clear(biasTable, 0, 0, 0, 3)
+    if showDashboard
+        table.cell(biasTable, 0, 0, f_biasText("30m", bias30),  bgcolor=f_biasColor(bias30),  text_color=color.white, text_size=size.small)
+        table.cell(biasTable, 0, 1, f_biasText("1H",  bias60),  bgcolor=f_biasColor(bias60),  text_color=color.white, text_size=size.small)
+        table.cell(biasTable, 0, 2, f_biasText("4H",  bias240), bgcolor=f_biasColor(bias240), text_color=color.white, text_size=size.small)
+        table.cell(biasTable, 0, 3, "INSTANT labels: may repaint", text_color=color.white, text_size=size.tiny, bgcolor=color.new(color.orange, 0))
+
+bgcolor(showBackground ? (bias60 == 1 ? color.new(color.green, 92) : color.new(color.red, 92)) : na)
