@@ -99,14 +99,6 @@ f_utbotBias(_src, _key, _atrLen) =>
 [bias60,  _st60]  = request.security(syminfo.tickerid, "60",  f_utbotBias(close, biasKey, biasATRPeriod), lookahead=barmerge.lookahead_on)
 [bias240, _st240] = request.security(syminfo.tickerid, "240", f_utbotBias(close, biasKey, biasATRPeriod), lookahead=barmerge.lookahead_on)
 
-// Swing candle of each HTF: label sits on its low (buy) or high (sell).
-low30   = request.security(syminfo.tickerid, "30",  low,  lookahead=barmerge.lookahead_on)
-high30  = request.security(syminfo.tickerid, "30",  high, lookahead=barmerge.lookahead_on)
-low60   = request.security(syminfo.tickerid, "60",  low,  lookahead=barmerge.lookahead_on)
-high60  = request.security(syminfo.tickerid, "60",  high, lookahead=barmerge.lookahead_on)
-low240  = request.security(syminfo.tickerid, "240", low,  lookahead=barmerge.lookahead_on)
-high240 = request.security(syminfo.tickerid, "240", high, lookahead=barmerge.lookahead_on)
-
 // Open time of the current HTF candle, used to allow one label per flip per candle.
 open30  = request.security(syminfo.tickerid, "30",  time, lookahead=barmerge.lookahead_on)
 open60  = request.security(syminfo.tickerid, "60",  time, lookahead=barmerge.lookahead_on)
@@ -143,24 +135,25 @@ if buy60 or sell60
 if buy240 or sell240
     last240 := open240
 
-// Label text shows the timeframe first, e.g. "30m BUY", with the candle extreme price.
+// Label text shows the timeframe first, e.g. "30m BUY". The price is the chart close on the bar
+// where the flip fires, so it is the exact price at the moment of the signal.
 f_swingLabel(_tfName, _isBuy, _price, _col) =>
     label.new(bar_index, _price, _tfName + (_isBuy ? " BUY" : " SELL") + "\n" + str.tostring(_price, format.mintick),
               xloc=xloc.bar_index, yloc=yloc.price, style=_isBuy ? label.style_label_up : label.style_label_down,
               color=_col, textcolor=color.white, size=size.small)
 
 if buy30
-    f_swingLabel("30m", true, low30, color.new(color.teal, 0))
+    f_swingLabel("30m", true, close, color.new(color.teal, 0))
 if sell30
-    f_swingLabel("30m", false, high30, color.new(color.maroon, 0))
+    f_swingLabel("30m", false, close, color.new(color.maroon, 0))
 if buy60
-    f_swingLabel("1H", true, low60, color.new(color.green, 0))
+    f_swingLabel("1H", true, close, color.new(color.green, 0))
 if sell60
-    f_swingLabel("1H", false, high60, color.new(color.red, 0))
+    f_swingLabel("1H", false, close, color.new(color.red, 0))
 if buy240
-    f_swingLabel("4H", true, low240, color.new(color.blue, 0))
+    f_swingLabel("4H", true, close, color.new(color.blue, 0))
 if sell240
-    f_swingLabel("4H", false, high240, color.new(color.purple, 0))
+    f_swingLabel("4H", false, close, color.new(color.purple, 0))
 
 alertcondition(buy30,  "30m Swing Buy",  "30m UT Bot swing BUY")
 alertcondition(sell30, "30m Swing Sell", "30m UT Bot swing SELL")
