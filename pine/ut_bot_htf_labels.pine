@@ -74,6 +74,9 @@ showBackground  = input.bool(false, "Tint chart background with 1H bias", group=
 dashboardCorner = input.string("Top Right", "Dashboard Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=groupHTF)
 biasKey         = input.float(2.0, "Bias Key Value", step=0.5, group=groupHTF)
 biasATRPeriod   = input.int(14, "Bias ATR Period", group=groupHTF)
+hideOn1m        = input.bool(false, "Hide HTF labels on 1m chart", group=groupHTF)
+hideOn3m        = input.bool(false, "Hide HTF labels on 3m chart", group=groupHTF)
+hideOn5m        = input.bool(false, "Hide HTF labels on 5m chart", group=groupHTF)
 
 // Same trailing-stop formula as the UT Bots, evaluated on the timeframe passed in.
 // Bias = bullish when price is above its own trailing stop, bearish when below.
@@ -102,9 +105,11 @@ close60  = request.security(syminfo.tickerid, "60",  close, lookahead=barmerge.l
 close240 = request.security(syminfo.tickerid, "240", close, lookahead=barmerge.lookahead_off)
 
 // Labels are only drawn on charts BELOW the timeframe they describe.
-ok30  = timeframe.in_seconds(timeframe.period) < timeframe.in_seconds("30")
-ok60  = timeframe.in_seconds(timeframe.period) < timeframe.in_seconds("60")
-ok240 = timeframe.in_seconds(timeframe.period) < timeframe.in_seconds("240")
+// Hide toggles let you switch off labels on the 1m, 3m and 5m charts.
+chartHidden = (timeframe.period == "1" and hideOn1m) or (timeframe.period == "3" and hideOn3m) or (timeframe.period == "5" and hideOn5m)
+ok30  = not chartHidden and timeframe.in_seconds(timeframe.period) < timeframe.in_seconds("30")
+ok60  = not chartHidden and timeframe.in_seconds(timeframe.period) < timeframe.in_seconds("60")
+ok240 = not chartHidden and timeframe.in_seconds(timeframe.period) < timeframe.in_seconds("240")
 
 // One event per HTF swing: the bias flips on exactly one chart bar per swing.
 buy30   = showLabels30  and ok30  and not na(bias30[1])  and bias30  == 1  and bias30[1]  == -1
@@ -116,7 +121,7 @@ sell240 = showLabels240 and ok240 and not na(bias240[1]) and bias240 == -1 and b
 
 // Label is placed at the HTF close price, on the bar where the swing was confirmed.
 f_swingLabel(_tfName, _isBuy, _price, _col) =>
-    label.new(bar_index, _price, (_isBuy ? "BUY " : "SELL ") + _tfName + "\n" + str.tostring(_price, format.mintick),
+    label.new(bar_index, _price, _tfName + (_isBuy ? " BUY" : " SELL") + "\n" + str.tostring(_price, format.mintick),
               xloc=xloc.bar_index, yloc=yloc.price, style=_isBuy ? label.style_label_up : label.style_label_down,
               color=_col, textcolor=color.white, size=size.small)
 
