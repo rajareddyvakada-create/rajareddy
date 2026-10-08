@@ -73,7 +73,7 @@ showDashboard   = input.bool(true, "Show 1H Bias Dashboard", group=groupBias)
 showSwingLabels = input.bool(true, "Show 1H Buy/Sell swing labels", group=groupBias)
 biasKey         = input.float(3.0, "Bias Key Value", step=0.5, group=groupBias)
 biasATRPeriod   = input.int(10, "Bias ATR Period", group=groupBias)
-biasTimeframe   = input.timeframe("60", "Bias Timeframe", group=groupBias)
+biasTimeframe   = input.timeframe("15", "Bias Timeframe", group=groupBias)
 showBackground  = input.bool(false, "Tint chart background with bias", group=groupBias)
 dashboardCorner = input.string("Top Right", "Dashboard Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=groupBias)
 
@@ -95,7 +95,14 @@ f_utbotBias(_src, _key, _atrLen) =>
 // lookahead_off: the 1H value only changes after a 1H bar has closed, so nothing repaints.
 [h1Bias, h1Stop] = request.security(syminfo.tickerid, biasTimeframe, f_utbotBias(close, biasKey, biasATRPeriod), lookahead=barmerge.lookahead_off)
 
-// One event per 1H swing: fires only on the chart bar where the 1H bias flips.
+// Bias on each timeframe, for comparison in the dashboard (same formula, same settings).
+[b5,   _s5]   = request.security(syminfo.tickerid, "5",   f_utbotBias(close, biasKey, biasATRPeriod), lookahead=barmerge.lookahead_off)
+[b15,  _s15]  = request.security(syminfo.tickerid, "15",  f_utbotBias(close, biasKey, biasATRPeriod), lookahead=barmerge.lookahead_off)
+[b60,  _s60]  = request.security(syminfo.tickerid, "60",  f_utbotBias(close, biasKey, biasATRPeriod), lookahead=barmerge.lookahead_off)
+[b240, _s240] = request.security(syminfo.tickerid, "240", f_utbotBias(close, biasKey, biasATRPeriod), lookahead=barmerge.lookahead_off)
+[bD,   _sD]   = request.security(syminfo.tickerid, "D",   f_utbotBias(close, biasKey, biasATRPeriod), lookahead=barmerge.lookahead_off)
+
+// One event per bias swing: fires only on the chart bar where the selected bias flips.
 h1BuySwing  = h1Bias == 1  and h1Bias[1] == -1
 h1SellSwing = h1Bias == -1 and h1Bias[1] == 1
 
@@ -117,12 +124,20 @@ cornerPos = dashboardCorner == "Top Right" ? position.top_right :
              dashboardCorner == "Top Left" ? position.top_left :
              dashboardCorner == "Bottom Right" ? position.bottom_right : position.bottom_left
 
-var table biasTable = table.new(cornerPos, 1, 2, border_width=1)
+f_biasLabel(_b) => _b == 1 ? "BULL" : "BEAR"
+f_biasColor(_b) => _b == 1 ? color.new(color.green, 0) : color.new(color.red, 0)
+
+var table biasTable = table.new(cornerPos, 1, 7, border_width=1)
 
 if barstate.islast
     table.clear(biasTable)
     if showDashboard
         table.cell(biasTable, 0, 0, biasText, bgcolor=biasColor, text_color=color.white, text_size=size.normal)
         table.cell(biasTable, 0, 1, noteText, bgcolor=chartTooHigh ? color.new(color.orange, 0) : color.new(color.gray, 60), text_color=color.white, text_size=size.small)
+        table.cell(biasTable, 0, 2, "Bias on every timeframe:", text_color=color.white, text_size=size.small)
+        table.cell(biasTable, 0, 3, "5m: " + f_biasLabel(b5),   bgcolor=f_biasColor(b5),   text_color=color.white, text_size=size.small)
+        table.cell(biasTable, 0, 4, "15m: " + f_biasLabel(b15), bgcolor=f_biasColor(b15), text_color=color.white, text_size=size.small)
+        table.cell(biasTable, 0, 5, "1H: " + f_biasLabel(b60),  bgcolor=f_biasColor(b60),  text_color=color.white, text_size=size.small)
+        table.cell(biasTable, 0, 6, "4H: " + f_biasLabel(b240) + "   D: " + f_biasLabel(bD), bgcolor=f_biasColor(b240), text_color=color.white, text_size=size.small)
 
 bgcolor(showBackground ? (biasIsBullish ? color.new(color.green, 92) : color.new(color.red, 92)) : na)
