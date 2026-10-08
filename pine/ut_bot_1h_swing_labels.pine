@@ -130,7 +130,7 @@ f_biasColor(_b) => _b == 1 ? color.new(color.green, 0) : color.new(color.red, 0)
 var table biasTable = table.new(cornerPos, 1, 7, border_width=1)
 
 if barstate.islast
-    table.clear(biasTable)
+    table.clear(biasTable, 0, 0, 0, 2)
     if showDashboard
         table.cell(biasTable, 0, 0, biasText, bgcolor=biasColor, text_color=color.white, text_size=size.normal)
         table.cell(biasTable, 0, 1, noteText, bgcolor=chartTooHigh ? color.new(color.orange, 0) : color.new(color.gray, 60), text_color=color.white, text_size=size.small)

@@ -153,7 +153,7 @@ cornerPos = dashboardCorner == "Top Right" ? position.top_right :
 var table biasTable = table.new(cornerPos, 1, 4, border_width=1)
 
 if barstate.islast
-    table.clear(biasTable)
+    table.clear(biasTable, 0, 0, 0, 3)
     if showDashboard
         table.cell(biasTable, 0, 0, f_biasText("30m", bias30),  bgcolor=f_biasColor(bias30),  text_color=color.white, text_size=size.small)
         table.cell(biasTable, 0, 1, f_biasText("1H",  bias60),  bgcolor=f_biasColor(bias60),  text_color=color.white, text_size=size.small)
