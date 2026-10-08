@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bar Replay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F3F5F8; --surface:#FFFFFF; --line:#D8DEE6; --grid:#E8ECF1;
+  --text:#142131; --muted:#5A6A7C;
+  --brass:#A8771A; --brass-ink:#FFFFFF;
+  --up:#0E8F77; --down:#D0473B; --on-color:#FFFFFF;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1A28; --surface:#152436; --line:#253A52; --grid:#172839;
+    --text:#E6ECF3; --muted:#8C9DB2;
+    --brass:#D8AA45; --brass-ink:#1A1204;
+    --up:#23A88F; --down:#DE5A48; --on-color:#FFFFFF;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1A28; --surface:#152436; --line:#253A52; --grid:#172839;
+  --text:#E6ECF3; --muted:#8C9DB2;
+  --brass:#D8AA45; --brass-ink:#1A1204;
+  --up:#23A88F; --down:#DE5A48; --on-color:#FFFFFF;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+[hidden]{display:none !important}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{
+  height:100%;margin:0;display:flex;flex-direction:column;overflow:hidden;
+  background:var(--bg);color:var(--text);
+  font-family:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  font-size:16px;line-height:1.35;font-variant-numeric:tabular-nums;
+  -webkit-tap-highlight-color:transparent;
+}
+button{
+  font:inherit;font-weight:600;color:inherit;background:var(--surface);
+  border:1px solid var(--line);border-radius:10px;min-height:44px;padding:0 14px;
+  cursor:pointer;touch-action:manipulation;
+}
+button:disabled{opacity:.35;cursor:default}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+svg{width:22px;height:22px;fill:currentColor;display:block}
+svg.stroke{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.c-up{color:var(--up)} .c-down{color:var(--down)}
+
+.top{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--line)}
+.title{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
+.title h1{margin:0;font-size:1.3rem;font-weight:700;white-space:nowrap}
+.src{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.icon-sm{width:44px;padding:0;display:grid;place-items:center;font-size:1.4rem;line-height:1}
+
+.notice{display:flex;align-items:flex-start;gap:8px;padding:6px 8px 6px 14px;border-bottom:1px solid var(--line);background:var(--surface);font-size:.95rem}
+.notice-body{flex:1;min-width:0;padding-top:4px}
+.notice.err{color:var(--down)}
+.notice.pick,.notice.info{color:var(--brass);font-weight:600}
+.notice details{margin-top:2px;color:var(--muted)}
+.notice summary{cursor:pointer;color:var(--text);font-weight:600}
+.notice ul{margin:6px 0 2px;padding-left:18px}
+.dismiss{min-height:32px;width:32px;padding:0;border:0;background:transparent;color:var(--muted);font-size:1.3rem}
+
+.chart-wrap{flex:1;min-height:0;position:relative}
+#chart{position:absolute;inset:0}
+#overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
+.legend{
+  position:absolute;left:8px;top:6px;z-index:3;pointer-events:none;
+  padding:3px 8px;border-radius:6px;
+  background:color-mix(in srgb,var(--bg) 78%,transparent);
+}
+.rtime{font-weight:700;font-size:1.05rem}
+.ohlc{color:var(--muted);font-size:.9rem;white-space:nowrap}
+.ohlc b{font-weight:600;color:var(--text)}
+.ohlc b.c-up{color:var(--up)} .ohlc b.c-down{color:var(--down)}
+
+.deck{border-top:1px solid var(--line);padding:8px 14px 12px;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.scrub{-webkit-appearance:none;appearance:none;width:100%;height:28px;margin:0;background:transparent;--p:0%}
+.scrub::-webkit-slider-runnable-track{
+  height:8px;border-radius:4px;
+  background:linear-gradient(to right,var(--brass) 0 var(--p),transparent var(--p)),
+             repeating-linear-gradient(135deg,var(--line) 0 4px,transparent 4px 8px);
+}
+.scrub::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:26px;margin-top:-9px;border-radius:3px;background:var(--brass);border:2px solid var(--bg)}
+.scrub::-moz-range-track{
+  height:8px;border-radius:4px;
+  background:linear-gradient(to right,var(--brass) 0 var(--p),transparent var(--p)),
+             repeating-linear-gradient(135deg,var(--line) 0 4px,transparent 4px 8px);
+}
+.scrub::-moz-range-thumb{width:10px;height:26px;border-radius:3px;background:var(--brass);border:2px solid var(--bg)}
+
+.tfs{display:flex;gap:4px;padding:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.tfs button{flex:1;min-width:0;min-height:34px;padding:0 2px;border:0;border-radius:8px;background:transparent;color:var(--muted)}
+.tfs button[aria-pressed="true"]{background:var(--text);color:var(--bg)}
+
+.transport{display:flex;gap:8px;align-items:center}
+.pick-btn{flex:1;min-width:0;white-space:nowrap}
+.pick-btn[aria-pressed="true"]{border-color:var(--brass);color:var(--brass)}
+.icon{width:52px;padding:0;display:grid;place-items:center}
+.play{width:66px;min-height:50px;padding:0;display:grid;place-items:center;background:var(--brass);color:var(--brass-ink);border-color:transparent}
+.speed{width:58px;padding:0}
+
+.trade{display:flex;gap:8px;align-items:stretch}
+.orders{flex:1;display:flex;gap:8px;min-width:0}
+.orders button{flex:1;border-color:transparent;color:var(--on-color);font-size:1.05rem}
+.sell{background:var(--down)} .buy{background:var(--up)}
+.pos{flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:0 4px 0 12px;border:1px solid var(--brass);border-radius:10px}
+.pos-info{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.15}
+.pos-info span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#posText{font-size:.9rem;color:var(--muted)}
+#posPnl{font-weight:700}
+.pos button{min-height:36px;padding:0 12px}
+.stats{flex:0 0 auto;max-width:42%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+dialog{
+  border:1px solid var(--line);border-radius:16px;padding:0;
+  background:var(--surface);color:var(--text);
+  width:min(440px,calc(100vw - 24px));max-height:calc(100% - 48px);
+}
+dialog::backdrop{background:rgba(6,12,20,.55)}
+dialog[open]{display:flex;flex-direction:column}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;padding:8px 8px 8px 16px;border-bottom:1px solid var(--line)}
+.sheet-head h2{margin:0;font-size:1.2rem}
+.sheet-head button{border:0;background:transparent}
+.sheet-body{padding:12px 16px 16px;overflow:auto}
+fieldset{border:0;padding:0;margin:0 0 14px}
+legend{font-weight:700;font-size:1.05rem;padding:0;margin-bottom:4px}
+.field{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:5px 0}
+.field input[type=number]{
+  width:96px;font:inherit;padding:7px 10px;text-align:right;
+  border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);
+}
+.field input[type=checkbox]{width:22px;height:22px;accent-color:var(--brass)}
+.hint{margin:6px 0 0;color:var(--muted);font-size:.9rem}
+.form-err{color:var(--down);font-weight:600;margin:0 0 10px}
+.primary{width:100%;background:var(--brass);color:var(--brass-ink);border-color:transparent}
+.danger{width:100%;margin-top:12px;color:var(--down)}
+.tscroll{overflow-x:auto;margin-top:8px}
+.tlist{width:100%;border-collapse:collapse;font-size:.95rem}
+.tlist th{text-align:left;color:var(--muted);font-weight:600;padding:4px 4px;border-bottom:1px solid var(--line)}
+.tlist td{padding:6px 4px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tlist th:nth-child(n+4),.tlist td:nth-child(n+4){text-align:right}
+.tlist .empty{white-space:normal;color:var(--muted);text-align:left !important;padding:12px 6px}
+
+.avatar{width:40px;height:40px;min-height:40px;border-radius:50%;padding:0;overflow:hidden;display:grid;place-items:center;background:var(--brass);color:var(--brass-ink);font-weight:700;border-color:transparent}
+.avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.rline{display:flex;align-items:center;gap:8px}
+.live{pointer-events:auto;min-height:0;padding:1px 9px;border-radius:999px;font-size:.8rem;font-weight:700;background:transparent;border:1px solid currentColor}
+.live.on{color:var(--up)} .live.off{color:var(--muted)} .live.replay{color:var(--brass)}
+.gate{position:fixed;inset:0;z-index:50;background:var(--bg);display:grid;place-items:center;padding:24px;overflow:auto}
+.gate-card{width:min(440px,100%);display:grid;gap:16px}
+.brand{display:flex;align-items:center;gap:14px}
+.brand svg{width:52px;height:52px;flex:none}
+.brand h1{margin:0;font-size:2.4rem;line-height:1;font-weight:700}
+.gate p{margin:0}
+#gateMsg{color:var(--muted);font-size:1.05rem}
+.google{width:100%;min-height:52px;font-size:1.1rem;background:var(--text);color:var(--bg);border-color:transparent}
+.setup{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--surface);font-size:.95rem}
+.setup ol{padding-left:20px;margin:8px 0 0}
+.setup li{margin-bottom:6px}
+.setup code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.82rem;background:var(--bg);padding:2px 5px;border-radius:4px;word-break:break-all}
+.src-opt{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.src-opt input{margin:3px 0 0;width:18px;height:18px;accent-color:var(--brass)}
+.src-opt small{grid-column:2;color:var(--muted);font-size:.9rem}
+.field input[type=text],.field input[type=password],.field select{
+  width:170px;font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);
+}
+#onlineFields{margin:8px 0 12px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="title"><h1>Bar Replay</h1><span class="src" id="src">Loading…</span></div>
+  <button type="button" class="icon-sm" id="settingsBtn" aria-label="Settings"><svg class="stroke" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></button>
+  <button type="button" id="dataBtn">Data</button>
+  <button type="button" class="avatar" id="acctBtn" aria-label="Account" hidden></button>
+  <input type="file" id="file" accept=".csv,.txt,text/csv,text/plain" hidden>
+</header>
+
+<div class="notice" id="notice" hidden>
+  <div class="notice-body" id="noticeBody"></div>
+  <button type="button" class="dismiss" id="dismiss" aria-label="Hide message">×</button>
+</div>
+
+<div class="chart-wrap">
+  <div id="chart" aria-label="Candlestick chart"></div>
+  <canvas id="overlay" aria-hidden="true"></canvas>
+  <div class="legend"><div class="rline"><span class="rtime" id="rtime">–</span><button type="button" class="live" id="liveBadge" hidden></button></div><div class="ohlc" id="ohlc"></div></div>
+</div>
+
+<section class="deck">
+  <input class="scrub" id="scrub" type="range" min="1" max="2" value="1" aria-label="Replay position">
+  <div class="tfs" id="tfs" role="group" aria-label="Timeframe"></div>
+  <div class="transport">
+    <button type="button" class="pick-btn" id="pick" aria-pressed="false">Pick start</button>
+    <button type="button" class="icon" id="back" aria-label="Back one candle"><svg viewBox="0 0 24 24"><path d="M5 5h2.5v14H5zM19 5v14L9 12z"/></svg></button>
+    <button type="button" class="play" id="play" aria-label="Play"></button>
+    <button type="button" class="icon" id="next" aria-label="Next candle"><svg viewBox="0 0 24 24"><path d="M16.5 5H19v14h-2.5zM5 5v14l10-7z"/></svg></button>
+    <button type="button" class="speed" id="speed" aria-label="Playback speed">4×</button>
+  </div>
+  <div class="trade">
+    <div class="orders" id="orders">
+      <button type="button" class="sell" id="sell">Sell</button>
+      <button type="button" class="buy" id="buy">Buy</button>
+    </div>
+    <div class="pos" id="posBox" hidden>
+      <div class="pos-info"><span id="posText"></span><span id="posPnl"></span></div>
+      <button type="button" id="closePos">Close</button>
+    </div>
+    <button type="button" class="stats" id="statsBtn">Trades</button>
+  </div>
+</section>
+
+<dialog id="settings" aria-labelledby="setTitle">
+  <div class="sheet-head"><h2 id="setTitle">Settings</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
+  <div class="sheet-body">
+    <fieldset>
+      <legend>UT Bot signals</legend>
+      <label class="field"><span>Show Buy and Sell signals</span><input type="checkbox" id="sUt"></label>
+      <label class="field"><span>Key value</span><input type="number" id="sKey" step="0.1" min="0.1" inputmode="decimal"></label>
+      <label class="field"><span>ATR period</span><input type="number" id="sAtr" step="1" min="1" inputmode="numeric"></label>
+      <p class="hint">Signals are calculated on the timeframe you're viewing and appear only after the candle closes.</p>
+    </fieldset>
+    <fieldset>
+      <legend>CBDR ranges (New York time)</legend>
+      <label class="field"><span>Show CBDR (14:00–20:00)</span><input type="checkbox" id="sCbdr"></label>
+      <label class="field"><span>Show Asian range (20:00–24:00)</span><input type="checkbox" id="sAsia"></label>
+      <label class="field"><span>Show Flout (14:00–24:00)</span><input type="checkbox" id="sFlout"></label>
+      <label class="field"><span>Standard deviation levels each side (1–4)</span><input type="number" id="sSd" step="1" min="1" max="4" inputmode="numeric"></label>
+      <label class="field"><span>Sessions shown per range (1–15)</span><input type="number" id="sHist" step="1" min="1" max="15" inputmode="numeric"></label>
+      <label class="field"><span>Projection length (hours, 1–72)</span><input type="number" id="sExt" step="1" min="1" max="72" inputmode="numeric"></label>
+      <label class="field"><span>Use candle bodies (off = full wicks)</span><input type="checkbox" id="sBodies"></label>
+      <label class="field"><span>Ignore partial Sunday CBDR</span><input type="checkbox" id="sSkipSun"></label>
+      <label class="field"><span>Mark CBDR WIDE above this height (0 = off)</span><input type="number" id="sWide" step="0.1" min="0" inputmode="decimal"></label>
+      <label class="field"><span>CSV times are UTC + hours</span><input type="number" id="sCsvOff" step="0.5" min="-12" max="14" inputmode="decimal"></label>
+      <p class="hint">Binance and Twelve Data times are converted exactly. For a CSV, enter the UTC offset its times were exported in (many MT5 brokers use UTC+2 or UTC+3; check yours). Ranges appear once their window has closed.</p>
+    </fieldset>
+    <fieldset>
+      <legend>CBDR entry model</legend>
+      <label class="field"><span>Show entry setups</span><input type="checkbox" id="sSetups"></label>
+      <label class="field"><span>Target: CBDR high or low plus this many SD (1–4)</span><input type="number" id="sTpSd" step="1" min="1" max="4" inputmode="numeric"></label>
+      <label class="field"><span>Stop padding beyond the sweep (price)</span><input type="number" id="sSlPad" step="0.1" min="0" inputmode="decimal"></label>
+      <p class="hint">Long: price takes out the CBDR low, then a candle closes back above it. Entry at that close, stop below the sweep low, target at the CBDR high plus the SD. Short is the mirror image. One setup per range, looked for until 12:00 New York time the next day. Setups are graphics only; they don't open practice trades.</p>
+    </fieldset>
+    <fieldset>
+      <legend>Practice trades</legend>
+      <label class="field"><span>Stop-loss distance (price)</span><input type="number" id="sSl" step="0.1" min="0.01" inputmode="decimal"></label>
+      <label class="field"><span>Reward to risk (e.g. 2 = 1:2)</span><input type="number" id="sRr" step="0.1" min="0.1" inputmode="decimal"></label>
+      <label class="field"><span>Risk per trade ($)</span><input type="number" id="sRisk" step="1" min="1" inputmode="decimal"></label>
+      <label class="field"><span>Contract size (gold = 100)</span><input type="number" id="sContract" step="1" min="1" inputmode="decimal"></label>
+      <p class="hint">Orders fill at the close of the last candle shown. If one candle touches both the stop-loss and the target, it counts as a loss.</p>
+    </fieldset>
+    <p class="form-err" id="setErr" hidden></p>
+    <button type="button" class="primary" id="saveSettings">Save settings</button>
+  </div>
+</dialog>
+
+<dialog id="tradesDlg" aria-labelledby="trTitle">
+  <div class="sheet-head"><h2 id="trTitle">Practice trades</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
+  <div class="sheet-body">
+    <p id="trSummary" style="margin:0"></p>
+    <div class="tscroll">
+      <table class="tlist">
+        <thead><tr><th>Side</th><th>Opened</th><th>Result</th><th>R</th><th>$</th></tr></thead>
+        <tbody id="trBody"></tbody>
+      </table>
+    </div>
+    <button type="button" class="danger" id="clearTrades">Clear trades for this chart</button>
+  </div>
+</dialog>
+
+<dialog id="dataDlg" aria-labelledby="dataTitle">
+  <div class="sheet-head"><h2 id="dataTitle">Chart data</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
+  <div class="sheet-body">
+    <div role="radiogroup" aria-label="Data source">
+      <label class="src-opt"><input type="radio" name="src" value="binance"><b>Gold live, no key needed</b><small>Binance PAXG/USDT, a gold-backed token that tracks spot gold closely. It trades 24/7, including weekends.</small></label>
+      <label class="src-opt"><input type="radio" name="src" value="twelve"><b>XAU/USD, forex and stocks</b><small>Twelve Data, real spot gold. Needs a free API key from twelvedata.com (800 requests a day).</small></label>
+      <label class="src-opt"><input type="radio" name="src" value="csv"><b>CSV file</b><small>Bars exported from TradingView or MT5.</small></label>
+    </div>
+    <div id="onlineFields">
+      <label class="field"><span>Symbol</span><input type="text" id="dSym" autocomplete="off" spellcheck="false" autocapitalize="characters"></label>
+      <label class="field" id="keyField"><span>Twelve Data API key</span><input type="password" id="dKey" autocomplete="off" spellcheck="false"></label>
+      <label class="field"><span>History to load</span><select id="dDays"><option value="1">1 day</option><option value="2">2 days</option><option value="3">3 days</option><option value="5">5 days</option><option value="7">7 days</option></select></label>
+    </div>
+    <p class="form-err" id="dataErr" hidden></p>
+    <button type="button" class="primary" id="loadData">Load chart</button>
+  </div>
+</dialog>
+
+<dialog id="acctDlg" aria-labelledby="acctTitle">
+  <div class="sheet-head"><h2 id="acctTitle">Account</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
+  <div class="sheet-body">
+    <p id="acctName" style="margin:0;font-weight:700;font-size:1.1rem"></p>
+    <p id="acctEmail" class="hint" style="margin:2px 0 14px"></p>
+    <button type="button" class="danger" id="signOut" style="margin-top:0">Sign out</button>
+  </div>
+</dialog>
+
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <div class="brand"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="110" fill="#0E1A28"/><path d="M150 120v272l195-136z" fill="#D8AA45"/><rect x="362" y="120" width="40" height="272" rx="12" fill="#D8AA45"/></svg><h1>Bar Replay</h1></div>
+    <p id="gateMsg">Checking sign-in…</p>
+    <button type="button" class="google" id="googleBtn" hidden>Continue with Google</button>
+    <p class="form-err" id="gateErr" hidden></p>
+    <div class="setup" id="setup" hidden>
+      <b>Google sign-in isn't set up yet.</b> The owner does this once:
+      <ol>
+        <li>In Google Cloud Console, open APIs &amp; Services → Credentials and create an OAuth client ID of type <b>Web application</b>.</li>
+        <li>Add this authorised redirect URI: <code id="redirUri"></code></li>
+        <li>On the OAuth consent screen, choose External, keep the email, profile and openid scopes, and add your users as testers (or publish the app).</li>
+        <li>Paste the client ID into <code>config.js</code> in the extension folder, then reload the extension.</li>
+      </ol>
+    </div>
+    <button type="button" id="skipAuth" hidden>Continue without sign-in</button>
+  </div>
+</div>
+
+{{SCRIPTS}}
+</body>
+</html>

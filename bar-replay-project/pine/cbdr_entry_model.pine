@@ -1,0 +1,188 @@
+//@version=6
+// CBDR + Asian range + CBDR entry model (New York time), for TradingView.
+// Entry model (one setup per CBDR day, looked for until 12:00 NY the next day):
+//   Long : price takes out the CBDR low, then a candle CLOSES back above it. Entry at that close.
+//          Stop below the sweep low (minus padding). Target = CBDR high + N x CBDR height.
+//   Short: mirror image (sweep the CBDR high, close back below it).
+// Use on a 1H chart or lower. Written by hand, not yet compiled in TradingView: if it errors,
+// send the error text back. Same logic as the replay app (src/cbdr.js).
+indicator("CBDR Entry Model (NY time)", shorttitle="CBDR Entry", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+
+// ---------------------------------------------------------------- inputs
+tz        = input.string("America/New_York", "Timezone", group="General")
+useBodies = input.bool(true, "Use candle bodies (off = wicks)", group="General")
+sdCount   = input.int(4, "SD levels each side", minval=1, maxval=4, group="General")
+extendHrs = input.int(24, "Extend projections (hours)", minval=1, maxval=72, group="General")
+skipSun   = input.bool(true, "Ignore partial Sunday CBDR", group="General")
+
+showCBDR  = input.bool(true, "Show CBDR", group="CBDR")
+cbdrSess  = input.session("1400-2000", "CBDR session", group="CBDR")
+cbdrCol   = input.color(color.blue, "Color", group="CBDR")
+
+showAsia  = input.bool(true, "Show Asian range", group="Asian range")
+asiaSess  = input.session("2000-0000", "Asian session", group="Asian range")
+asiaCol   = input.color(color.orange, "Color", group="Asian range")
+
+showSetup = input.bool(true, "Show entry setups", group="Entry model")
+tpSd      = input.int(1, "Target: CBDR high/low + SD (1-4)", minval=1, maxval=4, group="Entry model")
+slPad     = input.float(0.5, "Stop padding beyond the sweep (price)", minval=0.0, group="Entry model")
+maxHeight = input.float(0.0, "Skip setups when CBDR is taller than this (0 = off)", minval=0.0, group="Entry model")
+profitCol = input.color(color.new(color.teal, 0), "Target colour", group="Entry model")
+riskCol   = input.color(color.new(color.red, 0), "Stop colour", group="Entry model")
+
+// ---------------------------------------------------------------- session flags
+tfOk    = timeframe.isintraday and timeframe.in_seconds() <= 3600
+inSess(string s) => not na(time(timeframe.period, s, tz))
+isSun   = dayofweek(time, tz) == dayofweek.sunday
+newDay  = dayofmonth(time, tz) != dayofmonth(time[1], tz)
+
+cbIn    = tfOk and inSess(cbdrSess) and not (skipSun and isSun)
+asIn    = tfOk and inSess(asiaSess)
+cbStart = cbIn and (not cbIn[1] or newDay)
+cbEnd   = cbIn[1] and (not cbIn or newDay)
+asStart = asIn and (not asIn[1] or newDay)
+asEnd   = asIn[1] and (not asIn or newDay)
+
+// ---------------------------------------------------------------- CBDR and Asian high / low
+var float curHi = na, curLo = na, cbHi = na, cbLo = na, cbH = na
+var int   curStart = na
+var float asHi = na, asLo = na
+var int   asStartIdx = na
+
+if cbStart
+    curHi := na
+    curLo := na
+    curStart := bar_index
+if cbIn
+    float hs = useBodies ? math.max(open, close) : high
+    float ls = useBodies ? math.min(open, close) : low
+    curHi := na(curHi) ? hs : math.max(curHi, hs)
+    curLo := na(curLo) ? ls : math.min(curLo, ls)
+
+if asStart
+    asHi := na
+    asLo := na
+    asStartIdx := bar_index
+if asIn
+    float ah = useBodies ? math.max(open, close) : high
+    float al = useBodies ? math.min(open, close) : low
+    asHi := na(asHi) ? ah : math.max(asHi, ah)
+    asLo := na(asLo) ? al : math.min(asLo, al)
+
+// Projections: edges and SD steps run forward, labels at the right end
+drawRange(int x0, float hi, float lo, color col, bool withSd) =>
+    float h = hi - lo
+    int ext = math.round(extendHrs * 3600 / timeframe.in_seconds())
+    box.new(x0, hi, bar_index, lo, border_color=col, bgcolor=color.new(col, 88), border_width=1)
+    line.new(bar_index, hi, bar_index + ext, hi, color=col, width=1)
+    line.new(bar_index, lo, bar_index + ext, lo, color=col, width=1)
+    line.new(bar_index, (hi + lo) / 2, bar_index + ext, (hi + lo) / 2, color=color.new(col, 40), style=line.style_dotted)
+    if withSd
+        for i = 1 to sdCount
+            float up = hi + h * i
+            float dn = lo - h * i
+            line.new(bar_index, up, bar_index + ext, up, color=color.new(col, 20), style=line.style_dashed)
+            line.new(bar_index, dn, bar_index + ext, dn, color=color.new(col, 20), style=line.style_dashed)
+            label.new(bar_index + ext, up, "+" + str.tostring(i) + " SD  " + str.tostring(up, format.mintick), style=label.style_label_left, color=color.new(col, 100), textcolor=col, size=size.tiny)
+            label.new(bar_index + ext, dn, "-" + str.tostring(i) + " SD  " + str.tostring(dn, format.mintick), style=label.style_label_left, color=color.new(col, 100), textcolor=col, size=size.tiny)
+
+if cbEnd and not na(curHi) and not na(curLo) and curHi > curLo
+    cbHi := curHi
+    cbLo := curLo
+    cbH  := curHi - curLo
+    if showCBDR
+        drawRange(curStart, cbHi, cbLo, cbdrCol, true)
+        label.new(curStart, cbHi, "CBDR " + str.tostring(cbH, format.mintick) + (maxHeight > 0 and cbH > maxHeight ? "  WIDE" : ""), style=label.style_label_down, color=color.new(cbdrCol, 100), textcolor=cbdrCol, size=size.small)
+
+if asEnd and not na(asHi) and not na(asLo) and asHi > asLo and showAsia
+    drawRange(asStartIdx, asHi, asLo, asiaCol, false)
+
+// ---------------------------------------------------------------- entry model
+var bool armed    = false   // a CBDR has finished and its setup window is open
+var bool done     = false   // the one setup of this CBDR has fired
+var float sweepLo = na
+var float sweepHi = na
+var int   sweepIdx = na
+var int   setupEnd = 0      // setup window closes 16 hours after the CBDR (12:00 NY next day)
+
+if cbEnd and not na(curHi) and not na(curLo) and curHi > curLo
+    armed    := not (maxHeight > 0 and (curHi - curLo) > maxHeight)
+    done     := false
+    sweepLo  := na
+    sweepHi  := na
+    sweepIdx := na
+    setupEnd := time + 16 * 3600000
+
+// The open setup (one at a time). Its graphics are updated every bar until the stop or target is hit.
+var bool  active = false
+var int   eBar   = 0
+var int   eDir   = 0
+var float eEntry = na
+var float eSl    = na
+var float eTp    = na
+var float eRisk  = na
+var box   pProfit = na
+var box   pRisk   = na
+var line  pEntry  = na
+var line  pSl     = na
+var line  pTp     = na
+
+if active and bar_index > eBar
+    bool hitSL = eDir == 1 ? low <= eSl : high >= eSl
+    bool hitTP = eDir == 1 ? high >= eTp : low <= eTp
+    if hitSL or hitTP
+        // stop first if one bar touches both, and gaps fill at the open (same rules as the replay app)
+        float ex = hitSL ? (eDir == 1 ? math.min(open, eSl) : math.max(open, eSl)) : (eDir == 1 ? math.max(open, eTp) : math.min(open, eTp))
+        float R  = (ex - eEntry) * eDir / eRisk
+        active := false
+        box.set_right(pProfit, bar_index)
+        box.set_right(pRisk, bar_index)
+        line.set_x2(pEntry, bar_index)
+        line.set_x2(pSl, bar_index)
+        line.set_x2(pTp, bar_index)
+        label.new(bar_index, ex, (hitSL ? "Stop hit " : "Target hit ") + (R >= 0 ? "+" : "") + str.tostring(R, "#.##") + "R", style=label.style_label_left, color=color.new(hitSL ? riskCol : profitCol, 0), textcolor=color.white, size=size.small)
+    else
+        box.set_right(pProfit, bar_index)
+        box.set_right(pRisk, bar_index)
+        line.set_x2(pEntry, bar_index)
+        line.set_x2(pSl, bar_index)
+        line.set_x2(pTp, bar_index)
+
+if tfOk and armed and not done and not cbIn and time < setupEnd and showSetup
+    if (low < cbLo or high > cbHi) and na(sweepIdx)
+        sweepIdx := bar_index
+    if low < cbLo
+        sweepLo := na(sweepLo) ? low : math.min(sweepLo, low)
+    if high > cbHi
+        sweepHi := na(sweepHi) ? high : math.max(sweepHi, high)
+    bool longGo  = not na(sweepLo) and close > cbLo
+    bool shortGo = not na(sweepHi) and close < cbHi
+    if longGo or shortGo
+        done := true
+        int   dir  = longGo ? 1 : -1
+        float ent  = close
+        float sl   = dir == 1 ? sweepLo - slPad : sweepHi + slPad
+        float tp   = dir == 1 ? cbHi + tpSd * cbH : cbLo - tpSd * cbH
+        float risk = math.abs(ent - sl)
+        float rew  = (tp - ent) * dir
+        if rew > 0 and risk > 0
+            active := true
+            eBar := bar_index
+            eDir := dir
+            eEntry := ent
+            eSl := sl
+            eTp := tp
+            eRisk := risk
+            pProfit := box.new(bar_index, math.max(ent, tp), bar_index, math.min(ent, tp), border_color=profitCol, bgcolor=color.new(profitCol, 80))
+            pRisk   := box.new(bar_index, math.max(ent, sl), bar_index, math.min(ent, sl), border_color=riskCol, bgcolor=color.new(riskCol, 80))
+            pEntry  := line.new(bar_index, ent, bar_index, ent, color=color.new(#A8771A, 0), width=1)
+            pSl     := line.new(bar_index, sl, bar_index, sl, color=riskCol, style=line.style_dashed)
+            pTp     := line.new(bar_index, tp, bar_index, tp, color=profitCol, style=line.style_dashed)
+            label.new(bar_index, tp, "Target " + str.tostring(tp, format.mintick) + "  " + str.tostring(rew, format.mintick) + "  " + str.tostring(rew / risk, "#.##") + "R", style=label.style_label_right, color=color.new(profitCol, 100), textcolor=profitCol, size=size.small)
+            label.new(bar_index, sl, "Stop " + str.tostring(sl, format.mintick) + "  -" + str.tostring(risk, format.mintick), style=label.style_label_right, color=color.new(riskCol, 100), textcolor=riskCol, size=size.small)
+            label.new(bar_index, ent, (dir == 1 ? "Long" : "Short") + " entry " + str.tostring(ent, format.mintick), style=dir == 1 ? label.style_label_up : label.style_label_down, color=color.new(#A8771A, 100), textcolor=#A8771A, size=size.small)
+            if not na(sweepIdx)
+                label.new(sweepIdx, dir == 1 ? sweepLo : sweepHi, "Sweep", style=dir == 1 ? label.style_label_up : label.style_label_down, color=color.new(#A8771A, 100), textcolor=#A8771A, size=size.tiny)
+
+if barstate.islast and not tfOk
+    label.new(bar_index, high, "CBDR: use a chart timeframe of 1H or lower", style=label.style_label_down, color=color.red, textcolor=color.white)

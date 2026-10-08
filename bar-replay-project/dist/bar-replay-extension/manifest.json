@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Bar Replay",
+  "version": "2.0.0",
+  "description": "Replay and trade live gold charts candle by candle, with UT Bot signals, practice trades and Google sign-in.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAi2yiiMrwXSUREduOT2ASMdjay3NLoyZJ/WvrA9f5P01waSnZjBsec4OlZ1k6kCzleyLH1HMV/Dg4waSbT64j83cale6W2aOWjyKxi3YDv6pmir/RbBqWPlAfIdi75vXTMXcCNm8xbTL9aMZ6apQHMpWpFkF/1KK2dNOdzOROihBC9AVmpEGceewKML7UqtE5oI22pKW/3LZUWFQBrnPA5yLN1h7o8cLlDn9vkrH4d2l5+FzzBpuPkxzw2dgVriGcW4F+gxTCkU9U5xgGyanSvqiYgpFcvk6TDt4fEgv8o66/EYtVCfGVNCFv5/FJj192Cy5uGttCNbmifSPZe4g6AQIDAQAB",
+  "action": {
+    "default_title": "Open Bar Replay",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "identity",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://data-api.binance.vision/*",
+    "https://api.binance.com/*",
+    "https://api.twelvedata.com/*",
+    "https://www.googleapis.com/*"
+  ]
+}
