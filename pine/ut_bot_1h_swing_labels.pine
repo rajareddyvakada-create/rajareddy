@@ -1,0 +1,128 @@
+//@version=5
+indicator("UT Bot x2 + 1H Swing Labels + Bias Dashboard", overlay=true, max_labels_count=500)
+
+//-------------------------
+// UT Bot #1 (chart timeframe)
+//-------------------------
+group1 = "UT Bot #1"
+show1  = input.bool(true, "Enable line", group=group1)
+labels1 = input.bool(false, "Show chart Buy/Sell labels", group=group1)
+key1   = input.float(3.0, "Key Value", step=0.5, group=group1)
+atr1   = input.int(10, "ATR Period", group=group1)
+
+src1  = close
+loss1 = key1 * ta.atr(atr1)
+
+var float stop1 = na
+prevStop1 = nz(stop1[1], 0.0)
+
+if src1 > prevStop1 and src1[1] > prevStop1
+    stop1 := math.max(prevStop1, src1 - loss1)
+else if src1 < prevStop1 and src1[1] < prevStop1
+    stop1 := math.min(prevStop1, src1 + loss1)
+else
+    stop1 := src1 > prevStop1 ? src1 - loss1 : src1 + loss1
+
+buy1  = ta.crossover(src1, stop1)
+sell1 = ta.crossunder(src1, stop1)
+
+plot(show1 ? stop1 : na, color=color.green, linewidth=2, title="UT1 Stop")
+plotshape(show1 and labels1 and buy1, style=shape.labelup, location=location.belowbar, color=color.green, text="Buy", textcolor=color.white, size=size.tiny)
+plotshape(show1 and labels1 and sell1, style=shape.labeldown, location=location.abovebar, color=color.red, text="Sell", textcolor=color.white, size=size.tiny)
+
+alertcondition(buy1, "UT Bot #1 Buy", "UT Bot #1 Buy")
+alertcondition(sell1, "UT Bot #1 Sell", "UT Bot #1 Sell")
+
+//-------------------------
+// UT Bot #2 (chart timeframe)
+//-------------------------
+group2 = "UT Bot #2"
+show2  = input.bool(true, "Enable line", group=group2)
+labels2 = input.bool(false, "Show chart Buy/Sell labels", group=group2)
+key2   = input.float(3.0, "Key Value", step=0.5, group=group2)
+atr2   = input.int(10, "ATR Period", group=group2)
+
+src2  = close
+loss2 = key2 * ta.atr(atr2)
+
+var float stop2 = na
+prevStop2 = nz(stop2[1], 0.0)
+
+if src2 > prevStop2 and src2[1] > prevStop2
+    stop2 := math.max(prevStop2, src2 - loss2)
+else if src2 < prevStop2 and src2[1] < prevStop2
+    stop2 := math.min(prevStop2, src2 + loss2)
+else
+    stop2 := src2 > prevStop2 ? src2 - loss2 : src2 + loss2
+
+buy2  = ta.crossover(src2, stop2)
+sell2 = ta.crossunder(src2, stop2)
+
+plot(show2 ? stop2 : na, color=color.orange, linewidth=2, title="UT2 Stop")
+plotshape(show2 and labels2 and buy2, style=shape.triangleup, location=location.belowbar, color=color.lime, size=size.tiny)
+plotshape(show2 and labels2 and sell2, style=shape.triangledown, location=location.abovebar, color=color.maroon, size=size.tiny)
+
+alertcondition(buy2, "UT Bot #2 Buy", "UT Bot #2 Buy")
+alertcondition(sell2, "UT Bot #2 Sell", "UT Bot #2 Sell")
+
+//-------------------------
+// 1H Swing Labels + Bias Dashboard
+//-------------------------
+groupBias       = "1H Bias / Swing Labels"
+showDashboard   = input.bool(true, "Show 1H Bias Dashboard", group=groupBias)
+showSwingLabels = input.bool(true, "Show 1H Buy/Sell swing labels", group=groupBias)
+biasKey         = input.float(3.0, "Bias Key Value", step=0.5, group=groupBias)
+biasATRPeriod   = input.int(10, "Bias ATR Period", group=groupBias)
+biasTimeframe   = input.timeframe("60", "Bias Timeframe", group=groupBias)
+showBackground  = input.bool(false, "Tint chart background with bias", group=groupBias)
+dashboardCorner = input.string("Top Right", "Dashboard Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=groupBias)
+
+// Same trailing-stop formula as UT Bot #1/#2, evaluated on the bias timeframe.
+// Bias = bullish when price is above its own trailing stop, bearish when below.
+f_utbotBias(_src, _key, _atrLen) =>
+    _loss = _key * ta.atr(_atrLen)
+    var float _stop = na
+    _prevStop = nz(_stop[1], 0.0)
+    if _src > _prevStop and _src[1] > _prevStop
+        _stop := math.max(_prevStop, _src - _loss)
+    else if _src < _prevStop and _src[1] < _prevStop
+        _stop := math.min(_prevStop, _src + _loss)
+    else
+        _stop := _src > _prevStop ? _src - _loss : _src + _loss
+    _bias = _src > _stop ? 1 : -1
+    [_bias, _stop]
+
+// lookahead_off: the 1H value only changes after a 1H bar has closed, so nothing repaints.
+[h1Bias, h1Stop] = request.security(syminfo.tickerid, biasTimeframe, f_utbotBias(close, biasKey, biasATRPeriod), lookahead=barmerge.lookahead_off)
+
+// One event per 1H swing: fires only on the chart bar where the 1H bias flips.
+h1BuySwing  = h1Bias == 1  and h1Bias[1] == -1
+h1SellSwing = h1Bias == -1 and h1Bias[1] == 1
+
+plotshape(showSwingLabels and h1BuySwing, title="1H Buy", style=shape.labelup, location=location.belowbar, color=color.new(color.green, 0), text="BUY", textcolor=color.white, size=size.small)
+plotshape(showSwingLabels and h1SellSwing, title="1H Sell", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), text="SELL", textcolor=color.white, size=size.small)
+
+alertcondition(h1BuySwing, "1H Swing Buy", "1H UT Bot swing BUY")
+alertcondition(h1SellSwing, "1H Swing Sell", "1H UT Bot swing SELL")
+
+biasIsBullish = h1Bias == 1
+biasText  = biasIsBullish ? "1H BIAS: BULLISH" : "1H BIAS: BEARISH"
+biasColor = biasIsBullish ? color.new(color.green, 0) : color.new(color.red, 0)
+
+// Swing labels only line up with 1H swings when the chart is 1H or lower.
+chartTooHigh = timeframe.in_seconds(timeframe.period) > timeframe.in_seconds(biasTimeframe)
+noteText     = chartTooHigh ? "Set chart to " + biasTimeframe + " or lower" : "Swings from " + biasTimeframe
+
+cornerPos = dashboardCorner == "Top Right" ? position.top_right :
+             dashboardCorner == "Top Left" ? position.top_left :
+             dashboardCorner == "Bottom Right" ? position.bottom_right : position.bottom_left
+
+var table biasTable = table.new(cornerPos, 1, 2, border_width=1)
+
+if barstate.islast
+    table.clear(biasTable)
+    if showDashboard
+        table.cell(biasTable, 0, 0, biasText, bgcolor=biasColor, text_color=color.white, text_size=size.normal)
+        table.cell(biasTable, 0, 1, noteText, bgcolor=chartTooHigh ? color.new(color.orange, 0) : color.new(color.gray, 60), text_color=color.white, text_size=size.small)
+
+bgcolor(showBackground ? (biasIsBullish ? color.new(color.green, 92) : color.new(color.red, 92)) : na)
