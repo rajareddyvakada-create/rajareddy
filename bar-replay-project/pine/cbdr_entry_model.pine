@@ -44,9 +44,14 @@ asStart = asIn and (not asIn[1] or newDay)
 asEnd   = asIn[1] and (not asIn or newDay)
 
 // ---------------------------------------------------------------- CBDR and Asian high / low
-var float curHi = na, curLo = na, cbHi = na, cbLo = na, cbH = na
+var float curHi = na
+var float curLo = na
+var float cbHi = na
+var float cbLo = na
+var float cbH = na
 var int   curStart = na
-var float asHi = na, asLo = na
+var float asHi = na
+var float asLo = na
 var int   asStartIdx = na
 
 if cbStart
@@ -76,7 +81,6 @@ drawRange(int x0, float hi, float lo, color col, bool withSd) =>
     box.new(x0, hi, bar_index, lo, border_color=col, bgcolor=color.new(col, 88), border_width=1)
     line.new(bar_index, hi, bar_index + ext, hi, color=col, width=1)
     line.new(bar_index, lo, bar_index + ext, lo, color=col, width=1)
-    line.new(bar_index, (hi + lo) / 2, bar_index + ext, (hi + lo) / 2, color=color.new(col, 40), style=line.style_dotted)
     if withSd
         for i = 1 to sdCount
             float up = hi + h * i
@@ -85,6 +89,7 @@ drawRange(int x0, float hi, float lo, color col, bool withSd) =>
             line.new(bar_index, dn, bar_index + ext, dn, color=color.new(col, 20), style=line.style_dashed)
             label.new(bar_index + ext, up, "+" + str.tostring(i) + " SD  " + str.tostring(up, format.mintick), style=label.style_label_left, color=color.new(col, 100), textcolor=col, size=size.tiny)
             label.new(bar_index + ext, dn, "-" + str.tostring(i) + " SD  " + str.tostring(dn, format.mintick), style=label.style_label_left, color=color.new(col, 100), textcolor=col, size=size.tiny)
+    line.new(bar_index, (hi + lo) / 2, bar_index + ext, (hi + lo) / 2, color=color.new(col, 40), style=line.style_dotted)
 
 if cbEnd and not na(curHi) and not na(curLo) and curHi > curLo
     cbHi := curHi
