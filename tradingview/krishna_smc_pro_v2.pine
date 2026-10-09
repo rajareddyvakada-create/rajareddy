@@ -56,7 +56,7 @@ var string G_TGT  = "Targets · CBDR"
 var string G_MGT  = "Trade Management · Trailing"
 var string G_CALC = "Risk Calculator"
 var string G_SESS = "Sessions, Killzones & Volume"
-var string G_NEWS = "News Filter"
+var string G_NEWS = "Red Folder News Filter"
 var string G_UI   = "Dashboard"
 var string G_GFX  = "Chart Graphics"
 
@@ -161,15 +161,26 @@ volHigh   = input.float(1.20,"ABOVE AVG above x", minval = 1.0, step = 0.05, gro
 volLow    = input.float(0.80,"BELOW AVG below x", minval = 0.1, step = 0.05, group = G_SESS)
 
 newsOn     = input.bool(true, "Enable news filter", group = G_NEWS)
-newsTimes  = input.string("08:30,10:00,14:00","Recurring high-impact times HH:MM", group = G_NEWS)
+newsSrc    = input.string("Red folder list + daily times", "News source",
+     options = ["Red folder list + daily times", "Red folder list only", "Daily times only"], group = G_NEWS)
+newsList   = input.text_area("", "Red folder events (one per line)", group = G_NEWS,
+     tooltip = "Pine Script has no economic calendar, so paste this week's red-folder (high impact) events from ForexFactory, one per line:\nYYYY-MM-DD HH:MM CUR Title\nExample:\n2026-10-09 08:30 USD Non-Farm Payrolls\n2026-10-14 08:30 USD CPI m/m\nTimes are in the News timezone below.")
+newsTimes  = input.string("08:30,10:00,14:00","Daily high-impact times HH:MM", group = G_NEWS)
 newsTz     = input.string("America/New_York","News timezone", group = G_NEWS)
 newsBefore = input.int(15, "Blackout minutes before", minval = 0, group = G_NEWS)
 newsAfter  = input.int(15, "Blackout minutes after",  minval = 0, group = G_NEWS)
 newsSkipWe = input.bool(true,"Ignore weekends", group = G_NEWS)
 
-showLeft   = input.bool(true, "Left panels",  group = G_UI)
-showRight  = input.bool(true, "Right panels", group = G_UI)
-showBottom = input.bool(true, "Bottom stats", group = G_UI)
+showLeft   = input.bool(true, "Left panel",  inline = "pl", group = G_UI)
+posL       = input.string("Top left", "", options = ["Top left", "Middle left", "Bottom left", "Top right", "Middle right", "Bottom right", "Top center", "Bottom center"], inline = "pl", group = G_UI)
+showRight  = input.bool(true, "Right panel", inline = "pr", group = G_UI)
+posR       = input.string("Top right", "", options = ["Top left", "Middle left", "Bottom left", "Top right", "Middle right", "Bottom right", "Top center", "Bottom center"], inline = "pr", group = G_UI)
+showBottom = input.bool(true, "Bottom stats", inline = "pb", group = G_UI)
+posB       = input.string("Bottom center", "", options = ["Top left", "Middle left", "Bottom left", "Top right", "Middle right", "Bottom right", "Top center", "Bottom center"], inline = "pb", group = G_UI)
+showSMC    = input.bool(true, "Show smart money confirmations", group = G_UI)
+showCheck  = input.bool(true, "Show quick checklist", group = G_UI)
+showLvls   = input.bool(true, "Show key levels", group = G_UI)
+showCbRows = input.bool(true, "Show CBDR projection rows", group = G_UI)
 uiSize     = input.string("Tiny","Text size", options = ["Tiny","Small","Normal"], group = G_UI)
 showAnimal = input.bool(true, "Bias animal glyph", group = G_UI)
 
@@ -181,6 +192,7 @@ gfxSweep  = input.bool(true,"Liquidity sweep markers",     group = G_GFX)
 gfxOB     = input.bool(false,"LTF order blocks",           group = G_GFX)
 gfxFVG    = input.bool(true,"Fair value gaps",             group = G_GFX)
 gfxTrade  = input.bool(true,"Trade levels, fills and exits", group = G_GFX)
+gfxNews   = input.bool(true,"Red folder news markers", group = G_GFX)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 00. COLOUR SYSTEM  (spec section 20 - do not retune)
@@ -660,7 +672,7 @@ f_newsState() =>
     bool weekend = dow == dayofweek.saturday or dow == dayofweek.sunday
     int  nextIn  = 99999
     bool black   = false
-    if newsOn and not (newsSkipWe and weekend)
+    if newsOn and newsSrc != "Red folder list only" and not (newsSkipWe and weekend)
         parts = str.split(str.replace_all(newsTimes, " ", ""), ",")
         if array.size(parts) > 0
             for i = 0 to array.size(parts) - 1
@@ -682,12 +694,56 @@ f_newsState() =>
                             black := true
     [black, nextIn]
 
-[newsBlack, newsNextMin] = f_newsState()
+[dayBlack, dayNextMin] = f_newsState()
+
+// red folder list: parsed once - "YYYY-MM-DD HH:MM CUR Title" per line
+useList = newsOn and newsSrc != "Daily times only"
+var array<int>    evT = array.new<int>()
+var array<string> evN = array.new<string>()
+if barstate.isfirst and useList
+    for ln in str.split(newsList, "\n")
+        string t = str.trim(ln)
+        if str.length(t) >= 16
+            dp = str.split(str.substring(t, 0, 10), "-")
+            hp = str.split(str.substring(t, 11, 16), ":")
+            if array.size(dp) == 3 and array.size(hp) == 2
+                float yy = str.tonumber(array.get(dp, 0))
+                float mo = str.tonumber(array.get(dp, 1))
+                float dd = str.tonumber(array.get(dp, 2))
+                float hh = str.tonumber(array.get(hp, 0))
+                float mi = str.tonumber(array.get(hp, 1))
+                if not na(yy) and not na(mo) and not na(dd) and not na(hh) and not na(mi)
+                    array.push(evT, timestamp(newsTz, int(yy), int(mo), int(dd), int(hh), int(mi)))
+                    array.push(evN, str.length(t) > 17 ? str.trim(str.substring(t, 16)) : "RED FOLDER")
+
+f_listState() =>
+    bool   black  = false
+    float  nextIn = na
+    string nextN  = ""
+    if array.size(evT) > 0
+        for i = 0 to array.size(evT) - 1
+            float dMin = (array.get(evT, i) - time) / 60000.0
+            if dMin <= newsBefore and dMin >= -newsAfter
+                black := true
+            if dMin >= 0 and (na(nextIn) or dMin < nextIn)
+                nextIn := dMin
+                nextN  := array.get(evN, i)
+    [black, nextIn, nextN]
+
+[listBlack, listNextMin, listNextName] = f_listState()
+
+newsBlack = newsOn and (dayBlack or (useList and listBlack))
+bool listFirst = useList and not na(listNextMin) and (dayNextMin >= 99999 or listNextMin <= dayNextMin)
+float newsNextMin = listFirst ? listNextMin : dayNextMin < 99999 ? dayNextMin : na
 newsSafe = not newsOn or not newsBlack
 newsTxt  = not newsOn ? "OFF" : newsBlack ? "BLACKOUT" : "SAFE"
 newsCol  = not newsOn ? C_GRAY : newsBlack ? C_BEAR : C_BULL
-nextTxt  = not newsOn or newsNextMin >= 99999 ? "-" :
-   str.tostring(int(newsNextMin / 60)) + "H " + str.tostring(newsNextMin % 60) + "M"
+f_dur(m) =>
+    int mm = int(m)
+    mm >= 1440 ? str.tostring(int(mm / 1440)) + "D " + str.tostring(int((mm % 1440) / 60)) + "H" :
+       str.tostring(int(mm / 60)) + "H " + str.tostring(mm % 60) + "M"
+nextTxt  = not newsOn or na(newsNextMin) ? (useList and array.size(evT) == 0 ? "ADD LIST IN SETTINGS" : "-") :
+   f_dur(newsNextMin) + " · " + (listFirst ? (str.length(listNextName) > 24 ? str.substring(listNextName, 0, 24) + "…" : listNextName) : "DAILY TIME")
 
 spreadPrice = spreadTicks * syminfo.mintick
 spreadPctA  = atr > 0 ? spreadPrice / atr * 100 : na
@@ -1463,6 +1519,33 @@ if gfxStruct and chochEvt
     line.new(bar_index - swLen, cl, bar_index, cl, color = ccl, style = line.style_dashed)
     label.new(bar_index, cl, ct, style = label.style_none, textcolor = ccl, size = size.tiny)
 
+// red folder events: a marker on the bar they land in, a vertical line for upcoming ones
+if gfxNews and useList and array.size(evT) > 0
+    for i = 0 to array.size(evT) - 1
+        int et = array.get(evT, i)
+        if et >= time and et < time_close
+            label.new(bar_index, high, "📁 " + array.get(evN, i), yloc = yloc.abovebar,
+                 style = label.style_label_down, color = color.new(C_BEAR, 10), textcolor = color.white, size = size.tiny)
+
+var array<line>  nwL = array.new<line>()
+var array<label> nwB = array.new<label>()
+if barstate.islast and gfxNews and useList
+    for l in nwL
+        line.delete(l)
+    for b in nwB
+        label.delete(b)
+    array.clear(nwL)
+    array.clear(nwB)
+    if array.size(evT) > 0
+        for i = 0 to array.size(evT) - 1
+            int et = array.get(evT, i)
+            if et > time_close and et - time < 7 * 86400000
+                array.push(nwL, line.new(et, close, et, close + syminfo.mintick, xloc = xloc.bar_time,
+                     extend = extend.both, color = color.new(C_BEAR, 40), style = line.style_dotted))
+                array.push(nwB, label.new(et, close, "📁 " + array.get(evN, i), xloc = xloc.bar_time,
+                     yloc = yloc.abovebar, style = label.style_label_down, color = color.new(C_BEAR, 10),
+                     textcolor = color.white, size = size.tiny))
+
 // live stop path: initial stop, then breakeven, then trail
 plot(gfxTrade and tState == 2 ? tSL : na, "Live stop", color = C_BEAR, style = plot.style_linebr, linewidth = 2)
 
@@ -1508,7 +1591,7 @@ f_grad(t01) =>
 var int LCOLS = 12
 var int LROWS = 31
 var int RCOLS = 12
-var int RROWS = 35
+var int RROWS = 36
 var int BCOLS = 24
 var int BROWS = 4
 
@@ -1548,127 +1631,208 @@ f_meter(t, r, c0, c1, v01) =>
 
 f_pair(a, b) => f_px(a) + " / " + f_px(b)
 
+f_pos(s) =>
+    switch s
+        "Top left"      => position.top_left
+        "Middle left"   => position.middle_left
+        "Bottom left"   => position.bottom_left
+        "Top right"     => position.top_right
+        "Middle right"  => position.middle_right
+        "Bottom right"  => position.bottom_right
+        "Top center"    => position.top_center
+        => position.bottom_center
+
 if barstate.islast
 
     // ─────────── LEFT COLUMN : analysis ───────────
+    // Rows are counted, not fixed, so hidden sections leave no gaps and the
+    // most-used sections (bias, red folder news) sit near the top.
     if showLeft
         table.delete(tL)
-        tL := table.new(position.top_left, LCOLS, LROWS, bgcolor = C_BG2, frame_color = C_FRAME, frame_width = 1, border_color = C_FRAME, border_width = 1)
+        tL := table.new(f_pos(posL), LCOLS, LROWS, bgcolor = C_BG2, frame_color = C_FRAME, frame_width = 1, border_color = C_FRAME, border_width = 1)
+        int r = 0
 
-        f_span(tL,  0, 0,  9, 0, "  KRISHNA SMC PRO DASHBOARD", C_GOLD, C_HEAD, text.align_left,  size.normal)
-        f_span(tL, 10, 0, 11, 0, "👑  ",                        C_GOLD, C_HEAD, text.align_right, size.normal)
+        f_span(tL,  0, r,  9, r, "  KRISHNA SMC PRO DASHBOARD", C_GOLD, C_HEAD, text.align_left,  size.normal)
+        f_span(tL, 10, r, 11, r, "👑  ",                        C_GOLD, C_HEAD, text.align_right, size.normal)
+        r += 1
+        f_span(tL, 0, r,  2, r, "  SYMBOL",              C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 3, r,  5, r, syminfo.ticker,          C_CYAN, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 6, r,  8, r, "TIMEFRAME",             C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 9, r, 11, r, timeframe.period + "  ", C_TEXT, C_BG3, text.align_right, txtSize)
+        r += 1
+        f_span(tL, 0, r,  2, r, "  CURRENT PRICE", C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 3, r,  5, r, f_px(close),       C_TEXT, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 6, r,  8, r, "SPREAD",          C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 9, r, 11, r, str.tostring(spreadPrice, format.mintick) + "  ", C_BULL, C_BG3, text.align_right, txtSize)
+        r += 1
 
-        f_span(tL, 0, 1,  2, 1, "  SYMBOL",              C_GRAY, C_BG3, text.align_left,  txtSize)
-        f_span(tL, 3, 1,  5, 1, syminfo.ticker,          C_CYAN, C_BG3, text.align_left,  txtSize)
-        f_span(tL, 6, 1,  8, 1, "TIMEFRAME",             C_GRAY, C_BG3, text.align_left,  txtSize)
-        f_span(tL, 9, 1, 11, 1, timeframe.period + "  ", C_TEXT, C_BG3, text.align_right, txtSize)
+        f_headL(r, "HIGHER TIMEFRAME BIAS")
+        r += 1
+        int rb = r
+        f_span(tL, 0, rb,     3, rb,     "  1H BIAS",    C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 4, rb,     6, rb,     f_arrow(b1) + f_biasTxt(b1), f_biasCol(b1), C_BG3, text.align_right, txtSize)
+        f_span(tL, 0, rb + 1, 3, rb + 1, "  4H BIAS",    C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 4, rb + 1, 6, rb + 1, f_arrow(b2) + f_biasTxt(b2), f_biasCol(b2), C_BG3, text.align_right, txtSize)
+        f_span(tL, 0, rb + 2, 3, rb + 2, "  DAILY BIAS", C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 4, rb + 2, 6, rb + 2, f_arrow(b3) + (b3 > 0 ? "BUY" : b3 < 0 ? "SELL" : "NEUTRAL"), f_biasCol(b3), C_BG3, text.align_right, txtSize)
+        f_span(tL, 0, rb + 3, 3, rb + 3, "  MARKET STRUCTURE", C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 4, rb + 3, 6, rb + 3, mktStruct, mktStrCol, C_BG3, text.align_right, txtSize)
+        f_span(tL, 7, rb, 11, rb + 3, showAnimal ? (msDir > 0 ? "🐂" : msDir < 0 ? "🐻" : "⚖") : "", mktStrCol, C_BG3, text.align_center, size.huge)
+        r += 4
 
-        f_span(tL, 0, 2,  2, 2, "  CURRENT PRICE", C_GRAY, C_BG3, text.align_left,  txtSize)
-        f_span(tL, 3, 2,  5, 2, f_px(close),       C_TEXT, C_BG3, text.align_left,  txtSize)
-        f_span(tL, 6, 2,  8, 2, "SPREAD",          C_GRAY, C_BG3, text.align_left,  txtSize)
-        f_span(tL, 9, 2, 11, 2, str.tostring(spreadPrice, format.mintick) + "  ", C_BULL, C_BG3, text.align_right, txtSize)
+        f_headL(r, "📁 RED FOLDER NEWS & SESSION")
+        r += 1
+        f_rowL(r, 5, "RED FOLDER NEWS",  "● " + newsTxt,   newsCol)
+        r += 1
+        f_rowL(r, 3, "NEXT EVENT",       nextTxt,          not na(newsNextMin) and newsNextMin <= 60 ? C_GOLD : C_TEXT)
+        r += 1
+        f_rowL(r, 5, "TRADING SESSION",  "● " + sessName + (inKZ ? " · " + kzName : ""), sessCol)
+        r += 1
+        f_rowL(r, 5, "VOLUME",           "● " + volTxt,    volCol)
+        r += 1
+        f_rowL(r, 5, "SPREAD CONDITION", "● " + spreadTxt, spreadCol)
+        r += 1
 
-        f_headL(3, "HIGHER TIMEFRAME BIAS")
-        f_span(tL, 0, 4, 3, 4, "  1H BIAS",    C_GRAY, C_BG3, text.align_left,  txtSize)
-        f_span(tL, 4, 4, 6, 4, f_arrow(b1) + f_biasTxt(b1), f_biasCol(b1), C_BG3, text.align_right, txtSize)
-        f_span(tL, 0, 5, 3, 5, "  4H BIAS",    C_GRAY, C_BG3, text.align_left,  txtSize)
-        f_span(tL, 4, 5, 6, 5, f_arrow(b2) + f_biasTxt(b2), f_biasCol(b2), C_BG3, text.align_right, txtSize)
-        f_span(tL, 0, 6, 3, 6, "  DAILY BIAS", C_GRAY, C_BG3, text.align_left,  txtSize)
-        f_span(tL, 4, 6, 6, 6, f_arrow(b3) + (b3 > 0 ? "BUY" : b3 < 0 ? "SELL" : "NEUTRAL"), f_biasCol(b3), C_BG3, text.align_right, txtSize)
-        f_span(tL, 0, 7, 3, 7, "  MARKET STRUCTURE", C_GRAY, C_BG3, text.align_left,  txtSize)
-        f_span(tL, 4, 7, 6, 7, mktStruct, mktStrCol, C_BG3, text.align_right, txtSize)
-        f_span(tL, 7, 4, 11, 7, showAnimal ? (msDir > 0 ? "🐂" : msDir < 0 ? "🐻" : "⚖") : "", mktStrCol, C_BG3, text.align_center, size.huge)
+        if showSMC
+            f_headL(r, "SMART MONEY CONFIRMATIONS")
+            r += 1
+            f_rowL(r, 6, "◦ " + hobName + " ORDER BLOCK", hobTxt, hobCol)
+            r += 1
+            f_rowL(r, 6, "◦ PREVIOUS HIGH",   pdhSwept ? "✔ SWEPT" : "✖ NOT SWEPT", pdhSwept ? C_BULL : C_BEAR)
+            r += 1
+            f_rowL(r, 6, "◦ PREVIOUS LOW",    pdlSwept ? "✔ SWEPT" : "✖ NOT SWEPT", pdlSwept ? C_BULL : C_BEAR)
+            r += 1
+            f_rowL(r, 6, "◦ LIQUIDITY SWEEP", sweepFresh ? "✔ " + (sweepDir > 0 ? "SELL-SIDE" : "BUY-SIDE") : "✖ NONE", sweepFresh ? C_BULL : C_BEAR)
+            r += 1
+            f_rowL(r, 6, "◦ MSS",             mssRecent ? "✔ " + (mssDir > 0 ? "BULLISH" : "BEARISH") : "✖ NOT YET", mssRecent ? C_BULL : C_BEAR)
+            r += 1
+            f_rowL(r, 6, "◦ DISPLACEMENT",    lastFvgDisp == "NONE" ? "✖ NONE" : "✔ " + lastFvgDisp, lastFvgDisp == "STRONG" ? C_BULL : lastFvgDisp == "MODERATE" ? C_GOLD : C_BEAR)
+            r += 1
+            f_rowL(r, 6, "◦ FVG",             hasFVG ? "✔ " + fvgState : "✖ NONE", fvgState == "VALID" ? C_BULL : hasFVG ? C_GOLD : C_BEAR)
+            r += 1
+            f_rowL(r, 6, "◦ ORDER BLOCK",     hasOB  ? "✔ " + obState  : "✖ NONE", obState == "FRESH" ? C_BULL : hasOB ? C_GOLD : C_BEAR)
+            r += 1
+            f_rowL(r, 6, "◦ " + (rngName == "-" ? "CBDR" : rngName) + " RANGE",
+                 na(rngSD) ? "✖ BUILDING" : "✔ " + f_pips(rngSD) + " PIPS" + (cbWide and rngName != "CBDR" ? " · CBDR WIDE" : ""),
+                 na(rngSD) ? C_BEAR : C_BULL)
+            r += 1
 
-        f_headL(8, "SMART MONEY CONFIRMATIONS")
-        f_rowL(9,  6, "◦ " + hobName + " ORDER BLOCK", hobTxt, hobCol)
-        f_rowL(10, 6, "◦ PREVIOUS HIGH",   pdhSwept ? "✔ SWEPT" : "✖ NOT SWEPT", pdhSwept ? C_BULL : C_BEAR)
-        f_rowL(11, 6, "◦ PREVIOUS LOW",    pdlSwept ? "✔ SWEPT" : "✖ NOT SWEPT", pdlSwept ? C_BULL : C_BEAR)
-        f_rowL(12, 6, "◦ LIQUIDITY SWEEP", sweepFresh ? "✔ " + (sweepDir > 0 ? "SELL-SIDE" : "BUY-SIDE") : "✖ NONE", sweepFresh ? C_BULL : C_BEAR)
-        f_rowL(13, 6, "◦ MSS",             mssRecent ? "✔ " + (mssDir > 0 ? "BULLISH" : "BEARISH") : "✖ NOT YET", mssRecent ? C_BULL : C_BEAR)
-        f_rowL(14, 6, "◦ DISPLACEMENT",    lastFvgDisp == "NONE" ? "✖ NONE" : "✔ " + lastFvgDisp, lastFvgDisp == "STRONG" ? C_BULL : lastFvgDisp == "MODERATE" ? C_GOLD : C_BEAR)
-        f_rowL(15, 6, "◦ FVG",             hasFVG ? "✔ " + fvgState : "✖ NONE", fvgState == "VALID" ? C_BULL : hasFVG ? C_GOLD : C_BEAR)
-        f_rowL(16, 6, "◦ ORDER BLOCK",     hasOB  ? "✔ " + obState  : "✖ NONE", obState == "FRESH" ? C_BULL : hasOB ? C_GOLD : C_BEAR)
-        f_rowL(17, 6, "◦ " + (rngName == "-" ? "CBDR" : rngName) + " RANGE",
-             na(rngSD) ? "✖ BUILDING" : "✔ " + f_pips(rngSD) + " PIPS" + (cbWide and rngName != "CBDR" ? " · CBDR WIDE" : ""),
-             na(rngSD) ? C_BEAR : C_BULL)
+        f_headL(r, "ENTRY QUALITY")
+        r += 1
+        f_span(tL, 0, r,  6, r, "  " + f_stars(conf), C_GOLD, C_BG3, text.align_left,  size.normal)
+        f_span(tL, 7, r, 11, r, str.tostring(conf) + "%  ", confCol, C_BG3, text.align_right, size.normal)
+        r += 1
+        f_meter(tL, r, 0, 6, conf / 100)
+        f_span(tL,  7, r,  9, r, "CONFLUENCE",         C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 10, r, 11, r, confluenceTxt + "  ", confCol, C_BG3, text.align_right, txtSize)
+        r += 1
+        f_span(tL,  0, r,  6, r, "  " + confBand, confCol,   C_BG3, text.align_left,  size.tiny)
+        f_span(tL,  7, r,  9, r, "RISK",          C_GRAY,    C_BG3, text.align_left,  txtSize)
+        f_span(tL, 10, r, 11, r, riskTxt + "  ",  riskCol,   C_BG3, text.align_right, txtSize)
+        r += 1
+        f_span(tL,  0, r,  6, r, "",                 C_GRAY,    C_BG3, text.align_left,  txtSize)
+        f_span(tL,  7, r,  9, r, "REWARD POTENTIAL", C_GRAY,    C_BG3, text.align_left,  txtSize)
+        f_span(tL, 10, r, 11, r, rewardTxt + "  ",   rewardCol, C_BG3, text.align_right, txtSize)
+        r += 1
 
-        f_headL(18, "NEWS & SESSION FILTER")
-        f_rowL(19, 6, "HIGH IMPACT NEWS", "● " + newsTxt,   newsCol)
-        f_rowL(20, 6, "NEXT NEWS",        nextTxt,          C_TEXT)
-        f_rowL(21, 6, "TRADING SESSION",  "● " + sessName + (inKZ ? " · " + kzName : ""), sessCol)
-        f_rowL(22, 6, "VOLUME",           "● " + volTxt,    volCol)
-        f_rowL(23, 6, "SPREAD CONDITION", "● " + spreadTxt, spreadCol)
-
-        f_headL(24, "ENTRY QUALITY")
-        f_span(tL, 0, 25,  6, 25, "  " + f_stars(conf), C_GOLD, C_BG3, text.align_left,  size.normal)
-        f_span(tL, 7, 25, 11, 25, str.tostring(conf) + "%  ", confCol, C_BG3, text.align_right, size.normal)
-
-        f_meter(tL, 26, 0, 6, conf / 100)
-        f_span(tL,  7, 26,  9, 26, "CONFLUENCE",         C_GRAY, C_BG3, text.align_left,  txtSize)
-        f_span(tL, 10, 26, 11, 26, confluenceTxt + "  ", confCol, C_BG3, text.align_right, txtSize)
-
-        f_span(tL,  0, 27,  6, 27, "  " + confBand, confCol,   C_BG3, text.align_left,  size.tiny)
-        f_span(tL,  7, 27,  9, 27, "RISK",          C_GRAY,    C_BG3, text.align_left,  txtSize)
-        f_span(tL, 10, 27, 11, 27, riskTxt + "  ",  riskCol,   C_BG3, text.align_right, txtSize)
-
-        f_span(tL,  0, 28,  6, 28, "",                 C_GRAY,    C_BG3, text.align_left,  txtSize)
-        f_span(tL,  7, 28,  9, 28, "REWARD POTENTIAL", C_GRAY,    C_BG3, text.align_left,  txtSize)
-        f_span(tL, 10, 28, 11, 28, rewardTxt + "  ",   rewardCol, C_BG3, text.align_right, txtSize)
-
-        f_headL(29, "DASHBOARD STATUS")
-        f_span(tL, 0, 30, LCOLS - 1, 30, statusDot + statusTxt, statusCol, color.new(statusCol, 86), text.align_center, size.large)
+        f_headL(r, "DASHBOARD STATUS")
+        r += 1
+        f_span(tL, 0, r, LCOLS - 1, r, statusDot + statusTxt, statusCol, color.new(statusCol, 86), text.align_center, size.large)
 
     // ─────────── RIGHT COLUMN : decision ───────────
+    // Trend meter first, then the trade - the two things read most often.
     if showRight
         table.delete(tR)
-        tR := table.new(position.top_right, RCOLS, RROWS, bgcolor = C_BG2, frame_color = C_FRAME, frame_width = 1, border_color = C_FRAME, border_width = 1)
+        tR := table.new(f_pos(posR), RCOLS, RROWS, bgcolor = C_BG2, frame_color = C_FRAME, frame_width = 1, border_color = C_FRAME, border_width = 1)
+        int q = 0
 
-        f_headR(0, "KEY LEVELS")
-        f_rowR(1, 6, "Resistance 1", f_px(res1), C_BEAR, text.align_right)
-        f_rowR(2, 6, "Resistance 2", f_px(res2), C_BEAR, text.align_right)
-        f_rowR(3, 6, "Pivot",        f_px(pp),   C_GOLD, text.align_right)
-        f_rowR(4, 6, "Support 1",    f_px(sup1), C_BULL, text.align_right)
-        f_rowR(5, 6, "Support 2",    f_px(sup2), C_BULL, text.align_right)
-
-        f_headR(6, (rngName == "-" ? "CBDR" : rngName) + " PROJECTIONS")
-        f_rowR(7,  4, "HIGH / LOW", f_pair(rngH, rngL),         C_GOLD, text.align_right)
-        f_rowR(8,  4, "±1 SD",      f_pair(f_sd(1), f_sd(-1)), C_TEXT, text.align_right)
-        f_rowR(9,  4, "±2 SD",      f_pair(f_sd(2), f_sd(-2)), C_TEXT, text.align_right)
-        f_rowR(10, 4, "±3 SD",      f_pair(f_sd(3), f_sd(-3)), C_TEXT, text.align_right)
-
-        f_headR(11, "TREND METER")
-        f_meter(tR, 12, 0, RCOLS - 1, (trendVal + 1) / 2)
-        f_span(tR, 0, 13, RCOLS - 1, 13, trendTxt, trendCol, C_BG3, text.align_center, size.normal)
+        f_headR(q, "TREND METER")
+        q += 1
+        f_span(tR, 0, q, 3, q, "RED", C_BEAR, C_BG3, text.align_left, size.tiny)
+        f_span(tR, 4, q, 7, q, "NEUTRAL", C_GOLD, C_BG3, text.align_center, size.tiny)
+        f_span(tR, 8, q, RCOLS - 1, q, "GREEN", C_BULL, C_BG3, text.align_right, size.tiny)
+        q += 1
+        f_meter(tR, q, 0, RCOLS - 1, (trendVal + 1) / 2)
+        q += 1
+        f_span(tR, 0, q, RCOLS - 1, q, f_arrow(trendVal > 0.25 ? 1 : trendVal < -0.25 ? -1 : 0) + trendTxt + "  (" + (trendVal > 0 ? "+" : "") + str.tostring(math.round(trendVal * 100)) + ")", trendCol, C_BG3, text.align_center, size.normal)
+        q += 1
 
         bool hasT = tState != 0
         float lotNow = hasT ? tLots : na
-        f_headR(14, "TRADE SETUP SUMMARY")
-        f_rowR(15, 4, "DIRECTION",  hasT ? (tDir > 0 ? "↑ BUY" : "↓ SELL") : "-", hasT ? (tDir > 0 ? C_BULL : C_BEAR) : C_GRAY, text.align_right)
-        f_rowR(16, 4, "MODEL",      modelTxt, C_TEXT, text.align_right)
-        f_rowR(17, 4, "SCORE",      hasT ? str.tostring(tScore) + " / 100 · " + confluenceTxt : "-", confCol, text.align_right)
-        f_rowR(18, 4, "ENTRY",      hasT ? (tState == 1 ? "LIMIT " : "FILLED ") + f_px(tEntry) : "-", C_GOLD, text.align_right)
-        f_rowR(19, 4, "STOP LOSS",  hasT ? f_px(tSL) + (tSL != tSL0 ? " (moved)" : "") : "-", C_BEAR, text.align_right)
-        f_rowR(20, 4, "TARGET 1",   hasT ? f_px(tTP1) + (tHit1 ? " ✔" : "") : "-", C_BULL, text.align_right)
-        f_rowR(21, 4, "TARGET 2",   hasT ? f_px(tTP2) + (tHit2 ? " ✔" : "") : "-", C_BULL, text.align_right)
-        f_rowR(22, 4, "TARGET 3",   hasT ? f_px(tTP3) : "-", C_BULL, text.align_right)
-        f_rowR(23, 4, "R : R",      hasT ? str.tostring(tDir * (tTP1 - tEntry) / tRisk, "0.0") + " / " + str.tostring(tDir * (tTP2 - tEntry) / tRisk, "0.0") + " / " + str.tostring(tDir * (tTP3 - tEntry) / tRisk, "0.0") : "-", C_GOLD, text.align_right)
-        f_rowR(24, 4, "LOT @ " + str.tostring(riskPct, "0.0#") + "%", hasT ? f_lotTxt(lotNow) + " · " + f_cash(nz(lotNow) * valPerLot * tRisk) : "-", C_CYAN, text.align_right)
-        f_rowR(25, 4, "STATUS",     tStatTxt, tStatCol, text.align_right)
+        f_headR(q, "TRADE SETUP SUMMARY")
+        q += 1
+        f_rowR(q, 4, "DIRECTION",  hasT ? (tDir > 0 ? "↑ BUY" : "↓ SELL") : "-", hasT ? (tDir > 0 ? C_BULL : C_BEAR) : C_GRAY, text.align_right)
+        q += 1
+        f_rowR(q, 4, "MODEL",      modelTxt, C_TEXT, text.align_right)
+        q += 1
+        f_rowR(q, 4, "SCORE",      hasT ? str.tostring(tScore) + " / 100 · " + confluenceTxt : "-", confCol, text.align_right)
+        q += 1
+        f_rowR(q, 4, "ENTRY",      hasT ? (tState == 1 ? "LIMIT " : "FILLED ") + f_px(tEntry) : "-", C_GOLD, text.align_right)
+        q += 1
+        f_rowR(q, 4, "STOP LOSS",  hasT ? f_px(tSL) + (tSL != tSL0 ? " (moved)" : "") : "-", C_BEAR, text.align_right)
+        q += 1
+        f_rowR(q, 4, "TARGET 1",   hasT ? f_px(tTP1) + (tHit1 ? " ✔" : "") : "-", C_BULL, text.align_right)
+        q += 1
+        f_rowR(q, 4, "TARGET 2",   hasT ? f_px(tTP2) + (tHit2 ? " ✔" : "") : "-", C_BULL, text.align_right)
+        q += 1
+        f_rowR(q, 4, "TARGET 3",   hasT ? f_px(tTP3) : "-", C_BULL, text.align_right)
+        q += 1
+        f_rowR(q, 4, "R : R",      hasT ? str.tostring(tDir * (tTP1 - tEntry) / tRisk, "0.0") + " / " + str.tostring(tDir * (tTP2 - tEntry) / tRisk, "0.0") + " / " + str.tostring(tDir * (tTP3 - tEntry) / tRisk, "0.0") : "-", C_GOLD, text.align_right)
+        q += 1
+        f_rowR(q, 4, "LOT @ " + str.tostring(riskPct, "0.0#") + "%", hasT ? f_lotTxt(lotNow) + " · " + f_cash(nz(lotNow) * valPerLot * tRisk) : "-", C_CYAN, text.align_right)
+        q += 1
+        f_rowR(q, 4, "STATUS",     tStatTxt, tStatCol, text.align_right)
+        q += 1
 
-        f_headR(26, "QUICK CHECKLIST")
-        f_rowR(27, 9, "HTF BIAS ALIGNMENT",    f_tick(ckHTF), f_tickCol(ckHTF), text.align_center)
-        f_rowR(28, 9, hobName + " OB REACTION", f_tick(ckHOB), f_tickCol(ckHOB), text.align_center)
-        f_rowR(29, 9, "FVG CONFIRMATION",      f_tick(ckFVG), f_tickCol(ckFVG), text.align_center)
-        f_rowR(30, 9, "LIQUIDITY / MSS",       f_tick(ckMSS), f_tickCol(ckMSS), text.align_center)
-        f_rowR(31, 9, "CBDR TARGETS",          f_tick(ckCB),  f_tickCol(ckCB),  text.align_center)
-        f_rowR(32, 9, "KILLZONE",              f_tick(ckKZ),  f_tickCol(ckKZ),  text.align_center)
-        f_rowR(33, 9, "NEWS FILTER",           f_tick(ckNWS), f_tickCol(ckNWS), text.align_center)
-        f_rowR(34, 9, "RISK " + str.tostring(riskPct, "0.0#") + "% SIZED", f_tick(hasT and nz(lotNow) >= lotStep), f_tickCol(hasT and nz(lotNow) >= lotStep), text.align_center)
+        if showCheck
+            f_headR(q, "QUICK CHECKLIST")
+            q += 1
+            f_rowR(q, 9, "HTF BIAS ALIGNMENT",    f_tick(ckHTF), f_tickCol(ckHTF), text.align_center)
+            q += 1
+            f_rowR(q, 9, hobName + " OB REACTION", f_tick(ckHOB), f_tickCol(ckHOB), text.align_center)
+            q += 1
+            f_rowR(q, 9, "FVG CONFIRMATION",      f_tick(ckFVG), f_tickCol(ckFVG), text.align_center)
+            q += 1
+            f_rowR(q, 9, "LIQUIDITY / MSS",       f_tick(ckMSS), f_tickCol(ckMSS), text.align_center)
+            q += 1
+            f_rowR(q, 9, "CBDR TARGETS",          f_tick(ckCB),  f_tickCol(ckCB),  text.align_center)
+            q += 1
+            f_rowR(q, 9, "KILLZONE",              f_tick(ckKZ),  f_tickCol(ckKZ),  text.align_center)
+            q += 1
+            f_rowR(q, 9, "RED FOLDER NEWS CLEAR", f_tick(ckNWS), f_tickCol(ckNWS), text.align_center)
+            q += 1
+            f_rowR(q, 9, "RISK " + str.tostring(riskPct, "0.0#") + "% SIZED", f_tick(hasT and nz(lotNow) >= lotStep), f_tickCol(hasT and nz(lotNow) >= lotStep), text.align_center)
+            q += 1
+
+        if showLvls
+            f_headR(q, "KEY LEVELS")
+            q += 1
+            f_rowR(q, 6, "Resistance 1", f_px(res1), C_BEAR, text.align_right)
+            q += 1
+            f_rowR(q, 6, "Resistance 2", f_px(res2), C_BEAR, text.align_right)
+            q += 1
+            f_rowR(q, 6, "Pivot",        f_px(pp),   C_GOLD, text.align_right)
+            q += 1
+            f_rowR(q, 6, "Support 1",    f_px(sup1), C_BULL, text.align_right)
+            q += 1
+            f_rowR(q, 6, "Support 2",    f_px(sup2), C_BULL, text.align_right)
+            q += 1
+
+        if showCbRows
+            f_headR(q, (rngName == "-" ? "CBDR" : rngName) + " PROJECTIONS")
+            q += 1
+            f_rowR(q, 4, "HIGH / LOW", f_pair(rngH, rngL),         C_GOLD, text.align_right)
+            q += 1
+            f_rowR(q, 4, "±1 SD",      f_pair(f_sd(1), f_sd(-1)), C_TEXT, text.align_right)
+            q += 1
+            f_rowR(q, 4, "±2 SD",      f_pair(f_sd(2), f_sd(-2)), C_TEXT, text.align_right)
+            q += 1
+            f_rowR(q, 4, "±3 SD",      f_pair(f_sd(3), f_sd(-3)), C_TEXT, text.align_right)
 
     // ─────────── BOTTOM : session bar + market statistics ───────────
     if showBottom
         table.delete(tB)
-        tB := table.new(position.bottom_center, BCOLS, BROWS, bgcolor = C_BG1, frame_color = C_FRAME, frame_width = 1, border_color = C_FRAME, border_width = 1)
+        tB := table.new(f_pos(posB), BCOLS, BROWS, bgcolor = C_BG1, frame_color = C_FRAME, frame_width = 1, border_color = C_FRAME, border_width = 1)
 
         cSyd = inSyd ? #1E5AA8 : color.new(#1E5AA8, 72)
         cTok = inTok ? #1B4FA0 : color.new(#1B4FA0, 72)
