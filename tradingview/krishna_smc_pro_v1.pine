@@ -398,17 +398,18 @@ f_findOB(dir, lookback) =>
             found := i
     found
 
-if mssEvt and gfxOB
+// the engine always runs - the graphics toggle only hides the drawing
+if mssEvt
     idx = f_findOB(mssDir, obLookback)
     if not na(idx)
         float zt = obUseBody ? math.max(open[idx], close[idx]) : high[idx]
         float zb = obUseBody ? math.min(open[idx], close[idx]) : low[idx]
-        col = mssDir > 0 ? C_BULL : C_BEAR
+        color col = gfxOB ? (mssDir > 0 ? C_BULL : C_BEAR) : na
         bx  = box.new(bar_index - idx, zt, bar_index + 10, zb,
-                 border_color = col, border_width = 1, bgcolor = color.new(col, 88))
+                 border_color = col, border_width = 1, bgcolor = gfxOB ? color.new(col, 88) : na)
         lb  = label.new(bar_index + 5, (zt + zb) / 2,
                  mssDir > 0 ? "BULLISH ORDER BLOCK" : "BEARISH ORDER BLOCK",
-                 style = label.style_none, textcolor = color.new(col, 10), size = size.small)
+                 style = label.style_none, textcolor = gfxOB ? color.new(col, 10) : na, size = size.small)
         array.push(obs, Zone.new(bx, lb, zt, zb, mssDir, "OB", "FRESH", bar_index, true))
         if array.size(obs) > maxZones
             Zone old = array.shift(obs)
@@ -424,15 +425,15 @@ var array<Zone> fvgs = array.new<Zone>()
 fvgUp = low  > high[2] and (low - high[2])  >= fvgMinAtr * atr
 fvgDn = high < low[2]  and (low[2] - high)  >= fvgMinAtr * atr
 
-if (fvgUp or fvgDn) and gfxFVG
+if fvgUp or fvgDn
     int   fdir = fvgUp ? 1 : -1
     float ft   = fvgUp ? low     : low[2]
     float fb   = fvgUp ? high[2] : high
-    fcol = fdir > 0 ? C_BULL : C_BEAR
+    color fcol = gfxFVG ? (fdir > 0 ? C_BULL : C_BEAR) : na
     fbx  = box.new(bar_index - 2, ft, bar_index + 10, fb,
-             border_color = fcol, border_width = 1, bgcolor = color.new(fcol, 90))
+             border_color = fcol, border_width = 1, bgcolor = gfxFVG ? color.new(fcol, 90) : na)
     flb  = label.new(bar_index + 4, (ft + fb) / 2, "FVG (VALID)",
-             style = label.style_none, textcolor = color.new(fcol, 10), size = size.small)
+             style = label.style_none, textcolor = gfxFVG ? color.new(fcol, 10) : na, size = size.small)
     array.push(fvgs, Zone.new(fbx, flb, ft, fb, fdir, "FVG", "VALID", bar_index, true))
     if array.size(fvgs) > maxZones
         Zone oldf = array.shift(fvgs)
@@ -445,14 +446,17 @@ if (fvgUp or fvgDn) and gfxFVG
 
 f_touch(t, b) => not na(t) and not na(b) and high >= b and low <= t
 
+// A zone is never graded against the bar that created it: a bullish FVG's top
+// IS that bar's low, so it would read PARTIAL (and RETEST) the moment it formed.
 if array.size(obs) > 0
     for i = array.size(obs) - 1 to 0
         Zone z = array.get(obs, i)
         box.set_right(z.bx, bar_index + 10)
         label.set_x(z.lb, bar_index + 5)
-        if f_touch(z.top, z.bot) and z.state == "FRESH"
+        if z.born < bar_index and f_touch(z.top, z.bot) and z.state == "FRESH"
             z.state := "TESTED"
-            box.set_bgcolor(z.bx, color.new(z.dir > 0 ? C_BULL : C_BEAR, 93))
+            if gfxOB
+                box.set_bgcolor(z.bx, color.new(z.dir > 0 ? C_BULL : C_BEAR, 93))
         bool killed = z.dir > 0 ? close < z.bot : close > z.top
         if killed or (bar_index - z.born) > zoneMaxAge
             z.alive := false
@@ -465,8 +469,9 @@ if array.size(fvgs) > 0
         Zone z = array.get(fvgs, i)
         box.set_right(z.bx, bar_index + 10)
         label.set_x(z.lb, bar_index + 4)
-        bool entered = f_touch(z.top, z.bot)
-        bool filled  = z.dir > 0 ? low <= z.bot : high >= z.top
+        bool fresh   = z.born == bar_index
+        bool entered = not fresh and f_touch(z.top, z.bot)
+        bool filled  = not fresh and (z.dir > 0 ? low <= z.bot : high >= z.top)
         if filled
             z.state := "FILLED"
         else if entered and z.state == "VALID"
@@ -481,7 +486,7 @@ if array.size(fvgs) > 0
             array.remove(fvgs, i)
 
 // freshest live zone in a given direction; -1/0/1 dir, na if none
-f_bestIdx(arr, dir) =>
+f_bestIdx(array<Zone> arr, int dir) =>
     int found = na
     if array.size(arr) > 0 and dir != 0
         for i = array.size(arr) - 1 to 0
@@ -680,31 +685,38 @@ float  obTop    = na
 float  obBot    = na
 float  fvgTop   = na
 float  fvgBot   = na
+int    obBorn   = na
+int    fvgBorn  = na
 
 if hasOB
     Zone zo = array.get(obs, iOB)
     obState := zo.state
     obTop   := zo.top
     obBot   := zo.bot
+    obBorn  := zo.born
 if hasFVG
     Zone zf  = array.get(fvgs, iFVG)
     fvgState := zf.state
     fvgTop   := zf.top
     fvgBot   := zf.bot
+    fvgBorn  := zf.born
 
-float zTop = na
-float zBot = na
+float zTop  = na
+float zBot  = na
+int   zBorn = na
 if hasOB
-    zTop := obTop
-    zBot := obBot
+    zTop  := obTop
+    zBot  := obBot
+    zBorn := obBorn
 else if hasFVG
-    zTop := fvgTop
-    zBot := fvgBot
+    zTop  := fvgTop
+    zBot  := fvgBot
+    zBorn := fvgBorn
 
 if stage == "MSS" and (hasOB or hasFVG)
     stage := "ZONE"
 
-inZone = f_touch(zTop, zBot)
+inZone = not na(zBorn) and zBorn < bar_index and f_touch(zTop, zBot)
 if stage == "ZONE" and inZone
     stage    := "RETEST"
     setRetst := true
@@ -742,19 +754,27 @@ if setDir != 0 and not na(zTop)
 
 riskDist = not na(entryP) and not na(slP) ? math.abs(entryP - slP) : na
 
+// Levels are found relative to the current close, but entry sits at the zone
+// edge, so before the entry candle a level can lie on the wrong side of entry.
+// Such a level falls back to the R multiple. Mixing levels and R multiples can
+// put a target behind the previous one; it is then pushed 1R past it.
+f_tgt(float lv, float rr, float prev) =>
+    float r = entryP + setDir * rr * riskDist
+    if useLevelsTP and not na(lv) and setDir * (lv - entryP) > 0
+        r := lv
+    if not na(prev) and setDir * (r - prev) <= 0
+        r := prev + setDir * riskDist
+    r
+
 float tp1 = na
 float tp2 = na
 float tp3 = na
-if setDir < 0 and not na(entryP)
-    tp1 := useLevelsTP and not na(sup1) ? sup1 : entryP - rr1 * riskDist
-    tp2 := useLevelsTP and not na(sup2) ? sup2 : entryP - rr2 * riskDist
-    tp3 := useLevelsTP and not na(sup3) ? sup3 : entryP - rr3 * riskDist
-else if setDir > 0 and not na(entryP)
-    tp1 := useLevelsTP and not na(res2) ? res2 : entryP + rr1 * riskDist
-    tp2 := useLevelsTP and not na(res1) ? res1 : entryP + rr2 * riskDist
-    tp3 := useLevelsTP and not na(res3) ? res3 : entryP + rr3 * riskDist
+if setDir != 0 and not na(entryP)
+    tp1 := f_tgt(setDir > 0 ? res2 : sup1, rr1, na)
+    tp2 := f_tgt(setDir > 0 ? res1 : sup2, rr2, tp1)
+    tp3 := f_tgt(setDir > 0 ? res3 : sup3, rr3, tp2)
 
-rrNow  = not na(tp1) and not na(riskDist) and riskDist > 0 ? math.abs(tp1 - entryP) / riskDist : na
+rrNow  = not na(tp1) and not na(riskDist) and riskDist > 0 ? setDir * (tp1 - entryP) / riskDist : na
 riskOK = not na(rrNow) and rrNow >= 1.0
 
 // premium / discount quality for this direction
@@ -840,6 +860,7 @@ var bool  trkOn   = false
 var int   trkDir  = 0
 var float trkSL   = na
 var float trkTP   = na
+var int   trkBar  = na
 
 justReady = readyNow and not readyNow[1]
 
@@ -848,11 +869,13 @@ if justReady and not trkOn and not na(slP) and not na(tp1)
     trkDir := setDir
     trkSL  := slP
     trkTP  := tp1
+    trkBar := bar_index
     if not na(rrNow)
         rrSum   += rrNow
         rrCount += 1
 
-if trkOn
+// the opening bar is skipped: its range printed before the close we entered at
+if trkOn and bar_index > trkBar
     bool hitSL = trkDir > 0 ? low  <= trkSL : high >= trkSL
     bool hitTP = trkDir > 0 ? high >= trkTP : low  <= trkTP
     if hitSL
