@@ -1,0 +1,1161 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+//@version=5
+//
+//  KRISHNA SMC PRO v1.0
+//
+//  Master graphics reference : docs/KRISHNA_SMC_PRO_DASHBOARD_SPEC.md
+//  Master logic reference    : the SMC/ICT confirmation engine below
+//
+//  MASTER RULE
+//    "Do not create a new dashboard design. Reproduce the uploaded KRISHNA SMC
+//     PRO DASHBOARD as the master visual reference, while making every market
+//     value, SMC condition, confidence score, entry plan, target, status and
+//     checklist item dynamically calculated from the indicator engine."
+//
+//  Every number in the reference image (92%, 64% win rate, 1:2.4, 1.00%,
+//  2,403.150 ...) is an EXAMPLE value. Nothing below is hard-coded to match it.
+//
+//  ENGINE ORDER (built before the UI, exactly as the spec's flowchart)
+//    market structure -> liquidity -> sweep -> MSS/CHoCH -> displacement
+//    -> FVG/OB -> retest -> entry confirmation -> confidence -> setup -> UI
+//
+//  THREE THINGS PINE CANNOT DO NATIVELY, AND HOW THEY ARE HANDLED
+//    1. SPREAD  - Pine has no bid/ask feed. Spread is an input in ticks;
+//                 SPREAD CONDITION grades that cost against live ATR, so the
+//                 verdict still moves with the market. The MT5 twin reads the
+//                 real spread.
+//    2. NEWS    - Pine has no economic calendar. High-impact events are
+//                 recurring daily times with a blackout window either side,
+//                 the same compromise as the UT Bot scripts in this repo.
+//    3. VOLUME  - the histogram under the chart is TradingView's built-in
+//                 Volume indicator; add it to the pane. The dashboard's own
+//                 verdict (ABOVE AVG / NORMAL / BELOW AVG) is computed here.
+//
+//  LAYOUT: the three panels are 12 / 12 / 24 column grids, deleted and
+//  recreated on every rendered bar so that table.merge_cells() always lands
+//  on fresh cells - it cannot be re-applied to an already merged region.
+//  Cell text is written at creation, the region merged afterwards.
+//
+//  REMAINING DELTAS FROM THE REFERENCE IMAGE
+//    - the two gauges are gradient cell strips with a needle cell, not drawn
+//      arcs; Pine tables render text and background colour only
+//    - the bear illustration is the animal glyph, which the spec calls visual
+//      design rather than trading logic
+//    - panel corners are square; Pine tables have no border radius
+//    - the session bar spans the full chart width rather than the chart pane
+//  Everything else - panel order, row labels, terminology, state vocabulary,
+//  colour hex values, the six bottom statistics, the footer - is per spec.
+//
+indicator("KRISHNA SMC PRO v1.0", "KRISHNA SMC PRO", overlay = true,
+     max_boxes_count  = 500,
+     max_lines_count  = 500,
+     max_labels_count = 500,
+     max_bars_back    = 500)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 01. INPUTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+var string G_STR  = "Structure & Swings"
+var string G_LIQ  = "Liquidity"
+var string G_ZONE = "Order Blocks & FVG"
+var string G_ENT  = "Entry & Displacement"
+var string G_CONF = "Confidence Weights"
+var string G_RISK = "Risk"
+var string G_SESS = "Sessions & Volume"
+var string G_NEWS = "News Filter"
+var string G_UI   = "Dashboard"
+var string G_GFX  = "Chart Graphics"
+
+tf1 = input.timeframe("60",  "Bias TF 1", group = G_STR)
+tf2 = input.timeframe("240", "Bias TF 2", group = G_STR)
+tf3 = input.timeframe("D",   "Bias TF 3", group = G_STR)
+
+swLen     = input.int(5,     "Swing pivot length",              minval = 2,   group = G_STR)
+atrLen    = input.int(14,    "ATR length",                      minval = 2,   group = G_STR)
+rangeAtrM = input.float(2.0, "Ranging if swing range < ATR x",  minval = 0.5, step = 0.1, group = G_STR)
+
+eqTolAtr  = input.float(0.15,"Equal H/L tolerance (ATR x)",     minval = 0.01, step = 0.01, group = G_LIQ)
+sweepWick = input.float(0.20,"Min sweep wick (ATR x)",          minval = 0.0,  step = 0.05, group = G_LIQ)
+mssWindow = input.int(15,    "Bars allowed sweep -> MSS",       minval = 1,    group = G_LIQ)
+usePDHL   = input.bool(true, "Use previous day high/low as liquidity", group = G_LIQ)
+
+dispMult  = input.float(1.30,"Displacement body (ATR x)",       minval = 0.1, step = 0.05, group = G_ENT)
+dispWeak  = input.float(0.70,"Moderate/strong split (x above)", minval = 0.1, step = 0.05, group = G_ENT)
+entryBodyR= input.float(0.45,"Entry candle min body ratio",     minval = 0.05, maxval = 1.0, step = 0.05, group = G_ENT)
+setupMaxB = input.int(60,    "Setup timeout (bars)",            minval = 5,   group = G_ENT)
+readyMin  = input.float(70,  "Min confidence for ENTRY READY %",minval = 0, maxval = 100, step = 1, group = G_ENT)
+
+obLookback= input.int(12,    "OB search depth (bars)",          minval = 1,  group = G_ZONE)
+obUseBody = input.bool(false,"OB from candle body only",        group = G_ZONE)
+fvgMinAtr = input.float(0.10,"Min FVG size (ATR x)",            minval = 0.0, step = 0.01, group = G_ZONE)
+zoneMaxAge= input.int(120,   "Zone max age (bars)",             minval = 10, group = G_ZONE)
+maxZones  = input.int(8,     "Max live zones per type",         minval = 1, maxval = 40, group = G_ZONE)
+
+wHTF   = input.float(20,"HTF bias alignment", minval = 0, group = G_CONF)
+wSweep = input.float(15,"Liquidity sweep",    minval = 0, group = G_CONF)
+wMSS   = input.float(15,"MSS confirmed",      minval = 0, group = G_CONF)
+wDisp  = input.float(12,"Displacement",       minval = 0, group = G_CONF)
+wFVG   = input.float(10,"FVG valid",          minval = 0, group = G_CONF)
+wOB    = input.float(10,"Order block fresh",  minval = 0, group = G_CONF)
+wRet   = input.float(8, "Retest",             minval = 0, group = G_CONF)
+wSess  = input.float(5, "Session ok",         minval = 0, group = G_CONF)
+wVol   = input.float(3, "Volume ok",          minval = 0, group = G_CONF)
+wNews  = input.float(2, "News safe",          minval = 0, group = G_CONF)
+
+acctRiskPct = input.float(1.00,"Account risk per trade (%)",       minval = 0.01, step = 0.05, group = G_RISK)
+slBufAtr    = input.float(0.25,"SL buffer beyond zone (ATR x)",    minval = 0.0,  step = 0.05, group = G_RISK)
+useLevelsTP = input.bool(true, "Targets from key levels (else R multiples)", group = G_RISK)
+rr1         = input.float(1.5, "R multiple TP1", minval = 0.1, step = 0.1, group = G_RISK)
+rr2         = input.float(2.5, "R multiple TP2", minval = 0.1, step = 0.1, group = G_RISK)
+rr3         = input.float(4.0, "R multiple TP3", minval = 0.1, step = 0.1, group = G_RISK)
+spreadTicks = input.float(16,  "Spread in ticks (Pine has no live spread)", minval = 0, group = G_RISK)
+spreadWideP = input.float(4.0, "Spread WIDE above (% of ATR)", minval = 0.1, step = 0.1, group = G_RISK)
+adrLen      = input.int(14,    "Average daily range length", minval = 2, group = G_RISK)
+pipTicks    = input.int(10,    "Ticks per pip",              minval = 1, group = G_RISK)
+
+sessTz    = input.string("UTC", "Session timezone", group = G_SESS)
+sSydney   = input.session("2100-0600","Sydney",   group = G_SESS)
+sTokyo    = input.session("0000-0900","Tokyo",    group = G_SESS)
+sLondon   = input.session("0700-1600","London",   group = G_SESS)
+sNewYork  = input.session("1200-2100","New York", group = G_SESS)
+openMins  = input.int(60, "OPEN window after session start (min)", minval = 0, group = G_SESS)
+tradeSess = input.string("London + New York", "Tradable sessions",
+     options = ["Any","London only","New York only","London + New York","Asia only"], group = G_SESS)
+volLen    = input.int(20,    "Volume average length", minval = 2, group = G_SESS)
+volHigh   = input.float(1.20,"ABOVE AVG above x", minval = 1.0, step = 0.05, group = G_SESS)
+volLow    = input.float(0.80,"BELOW AVG below x", minval = 0.1, step = 0.05, group = G_SESS)
+
+newsOn     = input.bool(true, "Enable news filter", group = G_NEWS)
+newsTimes  = input.string("08:30,10:00,14:00","Recurring high-impact times HH:MM", group = G_NEWS)
+newsTz     = input.string("America/New_York","News timezone", group = G_NEWS)
+newsBefore = input.int(15, "Blackout minutes before", minval = 0, group = G_NEWS)
+newsAfter  = input.int(15, "Blackout minutes after",  minval = 0, group = G_NEWS)
+newsSkipWe = input.bool(true,"Ignore weekends", group = G_NEWS)
+
+showLeft   = input.bool(true, "Left panels",  group = G_UI)
+showRight  = input.bool(true, "Right panels", group = G_UI)
+showBottom = input.bool(true, "Bottom stats", group = G_UI)
+uiSize     = input.string("Small","Text size", options = ["Tiny","Small","Normal"], group = G_UI)
+showAnimal = input.bool(true, "Bias animal glyph", group = G_UI)
+
+gfxLiq    = input.bool(true,"Liquidity lines (PDH / PDL)", group = G_GFX)
+gfxEq     = input.bool(true,"Equal highs / lows",          group = G_GFX)
+gfxStruct = input.bool(true,"BOS / CHoCH / MSS",           group = G_GFX)
+gfxSweep  = input.bool(true,"Liquidity sweep markers",     group = G_GFX)
+gfxOB     = input.bool(true,"Order blocks",                group = G_GFX)
+gfxFVG    = input.bool(true,"Fair value gaps",             group = G_GFX)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 00. COLOUR SYSTEM  (spec section 20 - do not retune)
+// ═══════════════════════════════════════════════════════════════════════════
+
+C_BG1  = #000305
+C_BG2  = #010509
+C_BG3  = #02070B
+C_GOLD = #FFD000
+C_BULL = #20D64F
+C_BEAR = #FF3030
+C_LIQ  = #FF1744
+C_TEXT = #E6E6E6
+C_GRAY = #8A8F98
+C_CYAN = #26C6DA
+
+C_FRAME = color.new(C_GOLD, 78)
+C_HEAD  = color.new(C_GOLD, 88)
+
+txtSize = uiSize == "Tiny" ? size.tiny : uiSize == "Normal" ? size.normal : size.small
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TYPES & HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+type Zone
+    box    bx
+    label  lb
+    float  top
+    float  bot
+    int    dir          // 1 bullish, -1 bearish
+    string kind         // "OB" | "FVG"
+    string state        // OB: FRESH/TESTED   FVG: VALID/PARTIAL/FILLED/INVALID
+    int    born
+    bool   alive
+
+f_px(v)    => na(v) ? "-" : str.tostring(v, format.mintick)
+f_pips(v)  => na(v) ? "-" : str.tostring(v / (syminfo.mintick * pipTicks), "#.#")
+f_biasTxt(b) => b > 0 ? "BULLISH" : b < 0 ? "BEARISH" : "NEUTRAL"
+f_biasCol(b) => b > 0 ? C_BULL    : b < 0 ? C_BEAR    : C_GRAY
+f_arrow(b)   => b > 0 ? "↑ "      : b < 0 ? "↓ "      : "→ "
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 02. TIMEFRAME ENGINE  -  higher timeframe bias
+// ═══════════════════════════════════════════════════════════════════════════
+// Bias = EMA regime + last structural break on that timeframe. Needs 2 of 3
+// votes before committing, otherwise NEUTRAL. lookahead_off, non-repainting.
+
+f_htfBias(fastLen, slowLen, pvt) =>
+    eF = ta.ema(close, fastLen)
+    eS = ta.ema(close, slowLen)
+    ph = ta.pivothigh(high, pvt, pvt)
+    pl = ta.pivotlow(low,  pvt, pvt)
+    var float lastH = na
+    var float lastL = na
+    var int   sDir  = 0
+    if not na(ph)
+        lastH := ph
+    if not na(pl)
+        lastL := pl
+    if not na(lastH) and close > lastH
+        sDir := 1
+    if not na(lastL) and close < lastL
+        sDir := -1
+    sc = (eF > eS ? 1 : -1) + (close > eS ? 1 : -1) + sDir
+    sc >= 2 ? 1 : sc <= -2 ? -1 : 0
+
+b1 = nz(request.security(syminfo.tickerid, tf1, f_htfBias(21, 50, 5), lookahead = barmerge.lookahead_off))
+b2 = nz(request.security(syminfo.tickerid, tf2, f_htfBias(21, 50, 5), lookahead = barmerge.lookahead_off))
+b3 = nz(request.security(syminfo.tickerid, tf3, f_htfBias(10, 21, 4), lookahead = barmerge.lookahead_off))
+
+htfSum     = b1 + b2 + b3
+htfBias    = htfSum >= 2 ? 1 : htfSum <= -2 ? -1 : 0
+htfAligned = math.abs(htfSum) == 3
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 03. SWING ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+atr = ta.atr(atrLen)
+
+phv = ta.pivothigh(high, swLen, swLen)
+plv = ta.pivotlow(low,  swLen, swLen)
+
+var float swH  = na
+var float swL  = na
+var int   swHb = na
+var int   swLb = na
+var float swH2 = na
+var float swL2 = na
+var int   swH2b= na
+var int   swL2b= na
+
+if not na(phv)
+    swH2  := swH
+    swH2b := swHb
+    swH   := phv
+    swHb  := bar_index - swLen
+if not na(plv)
+    swL2  := swL
+    swL2b := swLb
+    swL   := plv
+    swLb  := bar_index - swLen
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 04. MARKET STRUCTURE  -  BOS / CHoCH
+// ═══════════════════════════════════════════════════════════════════════════
+// BOS   = break in the direction of the existing trend (continuation)
+// CHoCH = first break against it
+// MSS   = a CHoCH arriving after a liquidity sweep - confirmed in 04b, once
+//         the sweep engine has run.
+
+var int   msDir    = 0
+var float brokenHi = na
+var float brokenLo = na
+var bool  bosEvt   = false
+var bool  chochEvt = false
+var int   chochDir = 0
+
+bosEvt   := false
+chochEvt := false
+chochDir := 0
+
+brokeUp = not na(swH) and close > swH and (na(brokenHi) or swH != brokenHi)
+brokeDn = not na(swL) and close < swL and (na(brokenLo) or swL != brokenLo)
+
+if brokeUp
+    brokenHi := swH
+    if msDir == 1
+        bosEvt := true
+    else
+        chochEvt := true
+        chochDir := 1
+    msDir := 1
+
+if brokeDn
+    brokenLo := swL
+    if msDir == -1
+        bosEvt := true
+    else
+        chochEvt := true
+        chochDir := -1
+    msDir := -1
+
+swingRange = not na(swH) and not na(swL) ? swH - swL : na
+isRanging  = not na(swingRange) and swingRange < rangeAtrM * atr
+mktStruct  = isRanging ? "RANGING" : msDir > 0 ? "UPTREND" : msDir < 0 ? "DOWNTREND" : "RANGING"
+mktStrCol  = isRanging ? C_GRAY : msDir > 0 ? C_BULL : msDir < 0 ? C_BEAR : C_GRAY
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 05. LIQUIDITY ENGINE  -  PDH / PDL, EQH / EQL, sweeps
+// ═══════════════════════════════════════════════════════════════════════════
+
+[pdh, pdl, pdc] = request.security(syminfo.tickerid, "D", [high[1], low[1], close[1]], lookahead = barmerge.lookahead_on)
+adrRaw = request.security(syminfo.tickerid, "D", ta.sma(high - low, adrLen)[1], lookahead = barmerge.lookahead_on)
+
+newDay = ta.change(time("D")) != 0
+var float dayHi = na
+var float dayLo = na
+if newDay or na(dayHi)
+    dayHi := high
+    dayLo := low
+else
+    dayHi := math.max(dayHi, high)
+    dayLo := math.min(dayLo, low)
+
+eqTol = eqTolAtr * atr
+eqhOn = not na(swH) and not na(swH2) and math.abs(swH - swH2) <= eqTol
+eqlOn = not na(swL) and not na(swL2) and math.abs(swL - swL2) <= eqTol
+
+// pools we hunt: the higher of swing high / PDH, the lower of swing low / PDL
+float liqHi = swH
+float liqLo = swL
+if usePDHL and not na(pdh)
+    liqHi := na(swH) ? pdh : math.max(swH, pdh)
+if usePDHL and not na(pdl)
+    liqLo := na(swL) ? pdl : math.min(swL, pdl)
+
+// previous day levels taken today - the PREVIOUS HIGH / PREVIOUS LOW rows
+var bool pdhSwept = false
+var bool pdlSwept = false
+if newDay
+    pdhSwept := false
+    pdlSwept := false
+if not na(pdh) and high >= pdh
+    pdhSwept := true
+if not na(pdl) and low <= pdl
+    pdlSwept := true
+
+// sweep = wick through the pool, close back inside, wick large enough to matter
+wickUp = high - math.max(open, close)
+wickDn = math.min(open, close) - low
+
+sweepUp = not na(liqHi) and high > liqHi and close < liqHi and wickUp >= sweepWick * atr
+sweepDn = not na(liqLo) and low  < liqLo and close > liqLo and wickDn >= sweepWick * atr
+
+var int   sweepBar = na
+var int   sweepDir = 0        // -1 = buy-side taken (expect short), +1 = sell-side
+var float sweepExt = na       // sweep extreme - the hard invalidation
+
+if sweepUp
+    sweepBar := bar_index
+    sweepDir := -1
+    sweepExt := high
+if sweepDn
+    sweepBar := bar_index
+    sweepDir := 1
+    sweepExt := low
+
+sweepFresh = not na(sweepBar) and (bar_index - sweepBar) <= mssWindow
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 06. PREMIUM / DISCOUNT
+// ═══════════════════════════════════════════════════════════════════════════
+
+eqLevel = not na(swH) and not na(swL) ? (swH + swL) / 2 : na
+inPrem  = not na(eqLevel) and close > eqLevel
+inDisc  = not na(eqLevel) and close < eqLevel
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 09. DISPLACEMENT ENGINE  (needed before MSS confirmation)
+// ═══════════════════════════════════════════════════════════════════════════
+
+bodySz  = math.abs(close - open)
+dispBig = bodySz >= dispMult * atr
+dispMid = bodySz >= dispMult * dispWeak * atr
+dispTxt = dispBig ? "STRONG" : dispMid ? "MODERATE" : "WEAK"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 04b. MSS CONFIRMATION  -  CHoCH + fresh sweep in the matching direction
+// ═══════════════════════════════════════════════════════════════════════════
+
+mssEvt = chochEvt and sweepFresh and chochDir == sweepDir
+var int    mssDir  = 0
+var string mssDisp = "NONE"
+if mssEvt
+    mssDir  := chochDir
+    mssDisp := dispTxt
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 07. ORDER BLOCK ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+var array<Zone> obs = array.new<Zone>()
+
+f_findOB(dir, lookback) =>
+    int found = na
+    for i = 1 to lookback
+        bool opp = dir > 0 ? close[i] < open[i] : close[i] > open[i]
+        if opp and na(found)
+            found := i
+    found
+
+if mssEvt and gfxOB
+    idx = f_findOB(mssDir, obLookback)
+    if not na(idx)
+        float zt = obUseBody ? math.max(open[idx], close[idx]) : high[idx]
+        float zb = obUseBody ? math.min(open[idx], close[idx]) : low[idx]
+        col = mssDir > 0 ? C_BULL : C_BEAR
+        bx  = box.new(bar_index - idx, zt, bar_index + 10, zb,
+                 border_color = col, border_width = 1, bgcolor = color.new(col, 88))
+        lb  = label.new(bar_index + 5, (zt + zb) / 2,
+                 mssDir > 0 ? "BULLISH ORDER BLOCK" : "BEARISH ORDER BLOCK",
+                 style = label.style_none, textcolor = color.new(col, 10), size = size.small)
+        array.push(obs, Zone.new(bx, lb, zt, zb, mssDir, "OB", "FRESH", bar_index, true))
+        if array.size(obs) > maxZones
+            Zone old = array.shift(obs)
+            box.delete(old.bx)
+            label.delete(old.lb)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 08. FVG ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+var array<Zone> fvgs = array.new<Zone>()
+
+fvgUp = low  > high[2] and (low - high[2])  >= fvgMinAtr * atr
+fvgDn = high < low[2]  and (low[2] - high)  >= fvgMinAtr * atr
+
+if (fvgUp or fvgDn) and gfxFVG
+    int   fdir = fvgUp ? 1 : -1
+    float ft   = fvgUp ? low     : low[2]
+    float fb   = fvgUp ? high[2] : high
+    fcol = fdir > 0 ? C_BULL : C_BEAR
+    fbx  = box.new(bar_index - 2, ft, bar_index + 10, fb,
+             border_color = fcol, border_width = 1, bgcolor = color.new(fcol, 90))
+    flb  = label.new(bar_index + 4, (ft + fb) / 2, "FVG (VALID)",
+             style = label.style_none, textcolor = color.new(fcol, 10), size = size.small)
+    array.push(fvgs, Zone.new(fbx, flb, ft, fb, fdir, "FVG", "VALID", bar_index, true))
+    if array.size(fvgs) > maxZones
+        Zone oldf = array.shift(fvgs)
+        box.delete(oldf.bx)
+        label.delete(oldf.lb)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ZONE MAINTENANCE  -  the state transitions the dashboard reports
+// ═══════════════════════════════════════════════════════════════════════════
+
+f_touch(t, b) => not na(t) and not na(b) and high >= b and low <= t
+
+if array.size(obs) > 0
+    for i = array.size(obs) - 1 to 0
+        Zone z = array.get(obs, i)
+        box.set_right(z.bx, bar_index + 10)
+        label.set_x(z.lb, bar_index + 5)
+        if f_touch(z.top, z.bot) and z.state == "FRESH"
+            z.state := "TESTED"
+            box.set_bgcolor(z.bx, color.new(z.dir > 0 ? C_BULL : C_BEAR, 93))
+        bool killed = z.dir > 0 ? close < z.bot : close > z.top
+        if killed or (bar_index - z.born) > zoneMaxAge
+            z.alive := false
+            box.delete(z.bx)
+            label.delete(z.lb)
+            array.remove(obs, i)
+
+if array.size(fvgs) > 0
+    for i = array.size(fvgs) - 1 to 0
+        Zone z = array.get(fvgs, i)
+        box.set_right(z.bx, bar_index + 10)
+        label.set_x(z.lb, bar_index + 4)
+        bool entered = f_touch(z.top, z.bot)
+        bool filled  = z.dir > 0 ? low <= z.bot : high >= z.top
+        if filled
+            z.state := "FILLED"
+        else if entered and z.state == "VALID"
+            z.state := "PARTIAL"
+        if (bar_index - z.born) > zoneMaxAge and z.state == "VALID"
+            z.state := "INVALID"
+        label.set_text(z.lb, "FVG (" + z.state + ")")
+        if z.state == "FILLED" or z.state == "INVALID"
+            z.alive := false
+            box.delete(z.bx)
+            label.delete(z.lb)
+            array.remove(fvgs, i)
+
+// freshest live zone in a given direction; -1/0/1 dir, na if none
+f_bestIdx(arr, dir) =>
+    int found = na
+    if array.size(arr) > 0 and dir != 0
+        for i = array.size(arr) - 1 to 0
+            Zone z = array.get(arr, i)
+            if na(found) and z.alive and z.dir == dir
+                found := i
+    found
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 14. SESSION ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+f_inSess(s) => not na(time(timeframe.period, s, sessTz))
+
+inSyd = f_inSess(sSydney)
+inTok = f_inSess(sTokyo)
+inLon = f_inSess(sLondon)
+inNY  = f_inSess(sNewYork)
+
+// called unconditionally - these keep internal state and must run every bar
+f_openWindow(inS) =>
+    var int startT = na
+    if inS and not inS[1]
+        startT := time
+    inS and not na(startT) and (time - startT) <= openMins * 60000
+
+lonOpen = f_openWindow(inLon)
+nyOpen  = f_openWindow(inNY)
+
+sessName = inLon and lonOpen ? "LONDON OPEN" :
+   inNY and nyOpen ? "NEW YORK OPEN" :
+   inLon and inNY  ? "LONDON / NY OVERLAP" :
+   inLon ? "LONDON" : inNY ? "NEW YORK" : inTok ? "TOKYO" : inSyd ? "SYDNEY" : "CLOSED"
+
+sessOK = switch tradeSess
+    "Any"               => true
+    "London only"       => inLon
+    "New York only"     => inNY
+    "London + New York" => inLon or inNY
+    "Asia only"         => inTok or inSyd
+    => true
+
+sessCol = sessOK ? C_BULL : C_GRAY
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 15. VOLUME ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+vol    = nz(volume)
+volAvg = ta.sma(vol, volLen)
+noVol  = vol == 0 or na(volAvg) or volAvg == 0
+volTxt = noVol ? "N/A" : vol > volHigh * volAvg ? "ABOVE AVG" : vol < volLow * volAvg ? "BELOW AVG" : "NORMAL"
+volOK  = volTxt == "ABOVE AVG" or volTxt == "NORMAL" or volTxt == "N/A"
+volCol = volTxt == "ABOVE AVG" ? C_BULL : volTxt == "BELOW AVG" ? C_BEAR : C_TEXT
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 16. NEWS FILTER
+// ═══════════════════════════════════════════════════════════════════════════
+
+f_newsState() =>
+    int  nowMin  = hour(time, newsTz) * 60 + minute(time, newsTz)
+    int  dow     = dayofweek(time, newsTz)
+    bool weekend = dow == dayofweek.saturday or dow == dayofweek.sunday
+    int  nextIn  = 99999
+    bool black   = false
+    if newsOn and not (newsSkipWe and weekend)
+        parts = str.split(str.replace_all(newsTimes, " ", ""), ",")
+        if array.size(parts) > 0
+            for i = 0 to array.size(parts) - 1
+                hm = str.split(array.get(parts, i), ":")
+                if array.size(hm) == 2
+                    float hh = str.tonumber(array.get(hm, 0))
+                    float mm = str.tonumber(array.get(hm, 1))
+                    if not na(hh) and not na(mm)
+                        int evt = int(hh) * 60 + int(mm)
+                        int til = evt - nowMin
+                        if til < 0
+                            til += 1440
+                        if til < nextIn
+                            nextIn := til
+                        int since = nowMin - evt
+                        if since < 0
+                            since += 1440
+                        if til <= newsBefore or since <= newsAfter
+                            black := true
+    [black, nextIn]
+
+[newsBlack, newsNextMin] = f_newsState()
+newsSafe = not newsOn or not newsBlack
+newsTxt  = not newsOn ? "OFF" : newsBlack ? "BLACKOUT" : "SAFE"
+newsCol  = not newsOn ? C_GRAY : newsBlack ? C_BEAR : C_BULL
+nextTxt  = not newsOn or newsNextMin >= 99999 ? "-" :
+   str.tostring(int(newsNextMin / 60)) + "H " + str.tostring(newsNextMin % 60) + "M"
+
+// spread condition - cost graded against live volatility
+spreadPrice = spreadTicks * syminfo.mintick
+spreadPctA  = atr > 0 ? spreadPrice / atr * 100 : na
+spreadTxt   = na(spreadPctA) ? "-" : spreadPctA > spreadWideP * 2 ? "EXTREME" :
+   spreadPctA > spreadWideP ? "WIDE" : "NORMAL"
+spreadOK  = spreadTxt == "NORMAL"
+spreadCol = spreadTxt == "NORMAL" ? C_BULL : spreadTxt == "WIDE" ? C_GOLD : C_BEAR
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 12b. KEY LEVELS
+// ═══════════════════════════════════════════════════════════════════════════
+// Naming follows the reference image: Support 1 = nearest below price,
+// Resistance 2 = nearest above, Resistance 1 = the level beyond it. That is
+// what makes INVALIDATION = nearest resistance and TARGET 1 = nearest support.
+
+pp  = not na(pdh) ? (pdh + pdl + pdc) / 3 : na
+pr1 = not na(pp)  ? 2 * pp - pdl : na
+ps1 = not na(pp)  ? 2 * pp - pdh : na
+pr2 = not na(pp)  ? pp + (pdh - pdl) : na
+ps2 = not na(pp)  ? pp - (pdh - pdl) : na
+pr3 = not na(pp)  ? pdh + 2 * (pp - pdl) : na
+ps3 = not na(pp)  ? pdl - 2 * (pdh - pp) : na
+
+f_levels() =>
+    a = array.new<float>()
+    for v in array.from(pr1, pr2, pr3, ps1, ps2, ps3, pdh, pdl, dayHi, dayLo, swH, swL)
+        if not na(v)
+            array.push(a, v)
+    array.sort(a, order.ascending)
+    a
+
+lvl = f_levels()
+
+f_above(n) =>
+    float r = na
+    int   c = 0
+    if array.size(lvl) > 0
+        for i = 0 to array.size(lvl) - 1
+            float v = array.get(lvl, i)
+            if na(r) and v > close + syminfo.mintick
+                c += 1
+                if c == n
+                    r := v
+    r
+
+f_below(n) =>
+    float r = na
+    int   c = 0
+    if array.size(lvl) > 0
+        for i = array.size(lvl) - 1 to 0
+            float v = array.get(lvl, i)
+            if na(r) and v < close - syminfo.mintick
+                c += 1
+                if c == n
+                    r := v
+    r
+
+res2 = f_above(1)     // nearest above
+res1 = f_above(2)     // beyond it - top row of the panel
+res3 = f_above(3)
+sup1 = f_below(1)
+sup2 = f_below(2)
+sup3 = f_below(3)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 10. RETEST ENGINE  +  11. ENTRY ENGINE  +  setup state machine
+// ═══════════════════════════════════════════════════════════════════════════
+
+var string stage    = "IDLE"     // IDLE / SWEPT / MSS / ZONE / RETEST / READY
+var int    setDir   = 0
+var int    setBar   = na
+var bool   setDisp  = false
+var bool   setRetst = false
+var bool   setEntry = false
+var float  setInval = na
+
+if (sweepUp or sweepDn) and (stage == "IDLE" or stage == "SWEPT")
+    stage    := "SWEPT"
+    setDir   := sweepDir
+    setBar   := bar_index
+    setInval := sweepExt
+    setDisp  := false
+    setRetst := false
+    setEntry := false
+
+if mssEvt
+    stage    := "MSS"
+    setDir   := mssDir
+    setBar   := bar_index
+    setDisp  := dispBig or dispMid
+    setInval := sweepExt
+
+// safe access to the active zones (no field reads on na objects)
+iOB    = f_bestIdx(obs,  setDir)
+iFVG   = f_bestIdx(fvgs, setDir)
+hasOB  = not na(iOB)
+hasFVG = not na(iFVG)
+
+string obState  = "NONE"
+string fvgState = "NONE"
+float  obTop    = na
+float  obBot    = na
+float  fvgTop   = na
+float  fvgBot   = na
+
+if hasOB
+    Zone zo = array.get(obs, iOB)
+    obState := zo.state
+    obTop   := zo.top
+    obBot   := zo.bot
+if hasFVG
+    Zone zf  = array.get(fvgs, iFVG)
+    fvgState := zf.state
+    fvgTop   := zf.top
+    fvgBot   := zf.bot
+
+float zTop = na
+float zBot = na
+if hasOB
+    zTop := obTop
+    zBot := obBot
+else if hasFVG
+    zTop := fvgTop
+    zBot := fvgBot
+
+if stage == "MSS" and (hasOB or hasFVG)
+    stage := "ZONE"
+
+inZone = f_touch(zTop, zBot)
+if stage == "ZONE" and inZone
+    stage    := "RETEST"
+    setRetst := true
+
+rng      = high - low
+bodyR    = rng > 0 ? bodySz / rng : 0.0
+entryBar = setRetst and bodyR >= entryBodyR and not na(zTop) and
+   (setDir > 0 ? close > open and close > zTop : close < open and close < zBot)
+
+if stage == "RETEST" and entryBar
+    stage    := "READY"
+    setEntry := true
+
+invalidated = not na(setInval) and stage != "IDLE" and
+   (setDir > 0 ? close < setInval : close > setInval)
+timedOut = not na(setBar) and (bar_index - setBar) > setupMaxB
+
+if invalidated or timedOut
+    stage    := "IDLE"
+    setDir   := 0
+    setDisp  := false
+    setRetst := false
+    setEntry := false
+    setInval := na
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 13. RISK ENGINE  -  entry / stop / targets
+// ═══════════════════════════════════════════════════════════════════════════
+
+float entryP = na
+float slP    = na
+if setDir != 0 and not na(zTop)
+    entryP := setDir > 0 ? zTop : zBot
+    slP    := setDir > 0 ? zBot - slBufAtr * atr : zTop + slBufAtr * atr
+
+riskDist = not na(entryP) and not na(slP) ? math.abs(entryP - slP) : na
+
+float tp1 = na
+float tp2 = na
+float tp3 = na
+if setDir < 0 and not na(entryP)
+    tp1 := useLevelsTP and not na(sup1) ? sup1 : entryP - rr1 * riskDist
+    tp2 := useLevelsTP and not na(sup2) ? sup2 : entryP - rr2 * riskDist
+    tp3 := useLevelsTP and not na(sup3) ? sup3 : entryP - rr3 * riskDist
+else if setDir > 0 and not na(entryP)
+    tp1 := useLevelsTP and not na(res2) ? res2 : entryP + rr1 * riskDist
+    tp2 := useLevelsTP and not na(res1) ? res1 : entryP + rr2 * riskDist
+    tp3 := useLevelsTP and not na(res3) ? res3 : entryP + rr3 * riskDist
+
+rrNow  = not na(tp1) and not na(riskDist) and riskDist > 0 ? math.abs(tp1 - entryP) / riskDist : na
+riskOK = not na(rrNow) and rrNow >= 1.0
+
+// premium / discount quality for this direction
+pdOK = setDir < 0 ? inPrem : setDir > 0 ? inDisc : false
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 12. CONFIDENCE ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+inSetup = stage == "MSS" or stage == "ZONE" or stage == "RETEST" or stage == "READY"
+
+cHTF   = setDir != 0 and htfBias == setDir ? (htfAligned ? wHTF : wHTF * 0.6) : 0.0
+cSweep = stage != "IDLE" ? wSweep : 0.0
+cMSS   = inSetup ? wMSS : 0.0
+cDisp  = setDisp ? (dispBig ? wDisp : wDisp * 0.6) : 0.0
+cFVG   = fvgState == "VALID" ? wFVG : hasFVG ? wFVG * 0.5 : 0.0
+cOB    = obState  == "FRESH" ? wOB  : hasOB  ? wOB  * 0.5 : 0.0
+cRet   = setEntry ? wRet : setRetst ? wRet * 0.6 : 0.0
+cSess  = sessOK   ? wSess : 0.0
+cVol   = volOK    ? wVol  : 0.0
+cNews  = newsSafe ? wNews : 0.0
+
+wTotal  = wHTF + wSweep + wMSS + wDisp + wFVG + wOB + wRet + wSess + wVol + wNews
+confRaw = cHTF + cSweep + cMSS + cDisp + cFVG + cOB + cRet + cSess + cVol + cNews
+conf    = wTotal > 0 and stage != "IDLE" ? confRaw / wTotal * 100 : 0.0
+
+confBand = conf >= 90 ? "STRONG CONFLUENCE" : conf >= 70 ? "GOOD SETUP" : "WATCHLIST ONLY"
+confCol  = conf >= 90 ? C_BULL : conf >= 70 ? C_GOLD : C_GRAY
+
+confluenceTxt = conf >= 90 ? "HIGH" : conf >= 70 ? "MEDIUM" : "LOW"
+riskTxt   = na(rrNow) ? "-" : rrNow >= 2.5 ? "LOW" : rrNow >= 1.5 ? "MEDIUM" : "HIGH"
+riskCol   = riskTxt == "LOW" ? C_BULL : riskTxt == "MEDIUM" ? C_GOLD : riskTxt == "-" ? C_GRAY : C_BEAR
+rewardTxt = na(rrNow) ? "-" : rrNow >= 2.5 ? "HIGH" : rrNow >= 1.5 ? "MEDIUM" : "LOW"
+rewardCol = rewardTxt == "HIGH" ? C_BULL : rewardTxt == "MEDIUM" ? C_GOLD : rewardTxt == "-" ? C_GRAY : C_BEAR
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DASHBOARD STATUS  +  setup narrative
+// ═══════════════════════════════════════════════════════════════════════════
+
+noTrade   = not sessOK or not newsSafe or not spreadOK
+readyNow  = stage == "READY" and conf >= readyMin and not noTrade
+statusTxt = noTrade ? "NO TRADE" : readyNow ? "ENTRY READY" : inSetup ? "SETUP FORMING" : "WAIT"
+statusCol = statusTxt == "ENTRY READY" ? C_BULL : statusTxt == "NO TRADE" ? C_BEAR : C_GOLD
+statusDot = statusTxt == "ENTRY READY" ? "● " : statusTxt == "NO TRADE" ? "✖ " : "◐ "
+
+setupParts = (inSetup and mssDir != 0 ? "MSS" : "") +
+   (fvgState != "NONE" ? (inSetup and mssDir != 0 ? " + FVG" : "FVG") : "") +
+   (hasOB ? " + OB" : "") +
+   (pdOK ? (setDir < 0 ? " · PREM" : " · DISC") : "")
+
+entryPlan = statusTxt == "NO TRADE" ? "STAND DOWN" :
+   stage == "READY"  ? "ENTER " + f_px(entryP) :
+   stage == "RETEST" ? "AWAIT ENTRY CANDLE" :
+   stage == "ZONE"   ? "WAIT FOR RETEST" :
+   stage == "MSS"    ? "AWAIT ZONE" :
+   stage == "SWEPT"  ? "WAIT FOR MSS" : "NO SETUP"
+
+trendVal = (b1 + b2 + b3 + msDir) / 4.0                 // -1 .. +1
+trendTxt = trendVal > 0.25 ? "BULLISH" : trendVal < -0.25 ? "BEARISH" : "NEUTRAL"
+trendCol = trendVal > 0.25 ? C_BULL : trendVal < -0.25 ? C_BEAR : C_GRAY
+
+ckHTF = setDir != 0 and htfBias == setDir
+ckLIQ = stage != "IDLE"
+ckMSS = inSetup and mssDir != 0
+ckFVG = fvgState == "VALID"
+ckOB  = obState  == "FRESH"
+ckRSK = riskOK
+ckNWS = newsSafe
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 13b. PERFORMANCE TRACKER  -  feeds WIN RATE / CONSECUTIVE WINS / R:R
+// ═══════════════════════════════════════════════════════════════════════════
+// Virtual and TP1-based: an ENTRY READY opens a paper trade, the first touch
+// of TP1 or the stop closes it. This is what makes the bottom bar real
+// rather than decorative. Same-bar ambiguity resolves as a loss.
+
+var int   wins    = 0
+var int   losses  = 0
+var int   streak  = 0
+var float rrSum   = 0.0
+var int   rrCount = 0
+var bool  trkOn   = false
+var int   trkDir  = 0
+var float trkSL   = na
+var float trkTP   = na
+
+justReady = readyNow and not readyNow[1]
+
+if justReady and not trkOn and not na(slP) and not na(tp1)
+    trkOn  := true
+    trkDir := setDir
+    trkSL  := slP
+    trkTP  := tp1
+    if not na(rrNow)
+        rrSum   += rrNow
+        rrCount += 1
+
+if trkOn
+    bool hitSL = trkDir > 0 ? low  <= trkSL : high >= trkSL
+    bool hitTP = trkDir > 0 ? high >= trkTP : low  <= trkTP
+    if hitSL
+        losses += 1
+        streak := 0
+        trkOn  := false
+    else if hitTP
+        wins   += 1
+        streak += 1
+        trkOn  := false
+
+totalTr = wins + losses
+winRate = totalTr > 0 ? wins / totalTr * 100 : na
+rrAvg   = rrCount > 0 ? rrSum / rrCount : na
+rrShow  = not na(rrNow) ? rrNow : rrAvg
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 18. CHART GRAPHICS
+// ═══════════════════════════════════════════════════════════════════════════
+
+var line  lnPDH = na
+var line  lnPDL = na
+var label lbPDH = na
+var label lbPDL = na
+
+if gfxLiq and barstate.islast and not na(pdh)
+    line.delete(lnPDH)
+    line.delete(lnPDL)
+    label.delete(lbPDH)
+    label.delete(lbPDL)
+    lnPDH := line.new(bar_index - 300, pdh, bar_index + 12, pdh, color = C_LIQ,  style = line.style_dashed)
+    lnPDL := line.new(bar_index - 300, pdl, bar_index + 12, pdl, color = C_BULL, style = line.style_dashed)
+    lbPDH := label.new(bar_index - 160, pdh, pdhSwept ? "PREVIOUS HIGH - SWEPT" : "PREVIOUS HIGH",
+             style = label.style_none, textcolor = C_TEXT, size = size.small)
+    lbPDL := label.new(bar_index - 160, pdl, pdlSwept ? "PREVIOUS LOW - SWEPT" : "PREVIOUS LOW",
+             style = label.style_none, textcolor = C_BULL, size = size.small)
+
+if gfxEq and not na(phv) and eqhOn and not na(swH2b)
+    line.new(swH2b, swH2, swHb, swH, color = C_LIQ, style = line.style_dotted)
+    label.new(swHb, swH, "EQUAL HIGH", style = label.style_none, textcolor = C_LIQ, size = size.tiny)
+
+if gfxEq and not na(plv) and eqlOn and not na(swL2b)
+    line.new(swL2b, swL2, swLb, swL, color = C_BULL, style = line.style_dotted)
+    label.new(swLb, swL, "EQUAL LOW", style = label.style_none, textcolor = C_BULL, size = size.tiny)
+
+if gfxSweep and (sweepUp or sweepDn)
+    label.new(bar_index, sweepUp ? high : low, "LIQUIDITY SWEEP",
+         style = sweepUp ? label.style_label_down : label.style_label_up,
+         color = color.new(C_LIQ, 20), textcolor = color.white, size = size.small)
+
+if gfxStruct and bosEvt
+    float bl = msDir > 0 ? brokenHi : brokenLo
+    line.new(bar_index - swLen, bl, bar_index, bl, color = C_GRAY, style = line.style_dashed)
+    label.new(bar_index, bl, "BOS", style = label.style_none, textcolor = C_TEXT, size = size.small)
+
+if gfxStruct and chochEvt
+    float cl  = chochDir > 0 ? brokenHi : brokenLo
+    color ccl = mssEvt ? C_LIQ : C_GOLD
+    string ct = mssEvt ? "MSS (" + (chochDir > 0 ? "BULLISH" : "BEARISH") + ")" : "CHoCH"
+    line.new(bar_index - swLen, cl, bar_index, cl, color = ccl, style = line.style_dashed)
+    label.new(bar_index, cl, ct, style = label.style_none, textcolor = ccl, size = size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 17. DASHBOARD UI
+// ═══════════════════════════════════════════════════════════════════════════
+// Tables are cleared and rebuilt on every rendered bar, so merges are always
+// applied to fresh cells and never re-merged. Cell content is written at
+// creation time and the region merged afterwards, which is the only ordering
+// table.merge_cells() guarantees.
+
+f_stars(pct) =>
+    int    full = int(math.floor(pct / 20))
+    bool   half = (pct - full * 20) >= 10 and full < 5
+    string s = ""
+    for i = 1 to 5
+        s := s + (i <= full ? "★" : "☆")
+    s + (half ? "½" : "")
+
+f_gauge(v01, n) =>
+    int    pos = int(math.round(math.max(0.0, math.min(1.0, v01)) * (n - 1)))
+    string s = ""
+    for i = 0 to n - 1
+        s := s + (i == pos ? "●" : "─")
+    s
+
+f_tick(ok)    => ok ? "✔" : "✖"
+f_tickCol(ok) => ok ? C_BULL : C_BEAR
+
+// red -> gold -> green sweep: the RED <- NEUTRAL -> GREEN meter of the spec
+f_grad(t01) =>
+    t01 < 0.5 ? color.from_gradient(t01, 0.0, 0.5, C_BEAR, C_GOLD) : color.from_gradient(t01, 0.5, 1.0, C_GOLD, C_BULL)
+
+var int LCOLS = 12
+var int LROWS = 31
+var int RCOLS = 12
+var int RROWS = 27
+var int BCOLS = 24
+var int BROWS = 4
+
+// Recreated on every rendered bar so merges always land on a brand new table -
+// table.merge_cells() cannot be safely re-applied to an already merged region.
+var table tL = na
+var table tR = na
+var table tB = na
+
+// fill a rectangle with cells, put the text in the top-left one, then merge
+f_span(t, c0, r0, c1, r1, txt, col, bg, hal, sz) =>
+    for c = c0 to c1
+        for r = r0 to r1
+            table.cell(t, c, r, c == c0 and r == r0 ? txt : "", text_color = col,
+                 bgcolor = bg, text_halign = hal, text_valign = text.align_center, text_size = sz)
+    if c1 > c0 or r1 > r0
+        table.merge_cells(t, c0, r0, c1, r1)
+
+f_headL(r, txt) => f_span(tL, 0, r, LCOLS - 1, r, "  " + txt, C_GOLD, C_HEAD, text.align_left,   txtSize)
+f_headR(r, txt) => f_span(tR, 0, r, RCOLS - 1, r, txt,        C_GOLD, C_HEAD, text.align_center, txtSize)
+
+// left panel label/value row: label spans 0..lc, value spans lc+1..LCOLS-1
+f_rowL(r, lc, lab, val, vcol) =>
+    f_span(tL, 0,      r, lc,        r, "  " + lab, C_GRAY, C_BG3, text.align_left,  txtSize)
+    f_span(tL, lc + 1, r, LCOLS - 1, r, val + "  ", vcol,   C_BG3, text.align_right, txtSize)
+
+f_rowR(r, lc, lab, val, vcol, hal) =>
+    f_span(tR, 0,      r, lc,        r, "  " + lab, C_GRAY, C_BG3, text.align_left, txtSize)
+    f_span(tR, lc + 1, r, RCOLS - 1, r, val + "  ", vcol,   C_BG3, hal,             txtSize)
+
+// horizontal gradient meter with a needle cell, drawn straight into a table row
+f_meter(t, r, c0, c1, v01) =>
+    int n   = c1 - c0 + 1
+    int pos = c0 + int(math.round(math.max(0.0, math.min(1.0, v01)) * (n - 1)))
+    for c = c0 to c1
+        float t01 = n > 1 ? (c - c0) / float(n - 1) : 0.5
+        color gc  = f_grad(t01)
+        bool  hit = c == pos
+        table.cell(t, c, r, hit ? "▮" : "", text_color = color.white,
+             bgcolor = color.new(gc, hit ? 0 : 55), text_halign = text.align_center,
+             text_valign = text.align_center, text_size = size.tiny)
+
+if barstate.islast
+
+    // ─────────── LEFT COLUMN : analysis ───────────
+    if showLeft
+        table.delete(tL)
+        tL := table.new(position.top_left, LCOLS, LROWS, bgcolor = C_BG2, frame_color = C_FRAME, frame_width = 1, border_color = C_FRAME, border_width = 1)
+
+        f_span(tL,  0, 0,  9, 0, "  KRISHNA SMC PRO DASHBOARD", C_GOLD, C_HEAD, text.align_left,  size.normal)
+        f_span(tL, 10, 0, 11, 0, "👑  ",                        C_GOLD, C_HEAD, text.align_right, size.normal)
+
+        f_span(tL, 0, 1,  2, 1, "  SYMBOL",              C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 3, 1,  5, 1, syminfo.ticker,          C_CYAN, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 6, 1,  8, 1, "TIMEFRAME",             C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 9, 1, 11, 1, timeframe.period + "  ", C_TEXT, C_BG3, text.align_right, txtSize)
+
+        f_span(tL, 0, 2,  2, 2, "  CURRENT PRICE", C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 3, 2,  5, 2, f_px(close),       C_TEXT, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 6, 2,  8, 2, "SPREAD",          C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 9, 2, 11, 2, str.tostring(spreadPrice, format.mintick) + "  ", C_BULL, C_BG3, text.align_right, txtSize)
+
+        f_headL(3, "HIGHER TIMEFRAME BIAS")
+        f_span(tL, 0, 4, 3, 4, "  1H BIAS",    C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 4, 4, 6, 4, f_arrow(b1) + f_biasTxt(b1), f_biasCol(b1), C_BG3, text.align_right, txtSize)
+        f_span(tL, 0, 5, 3, 5, "  4H BIAS",    C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 4, 5, 6, 5, f_arrow(b2) + f_biasTxt(b2), f_biasCol(b2), C_BG3, text.align_right, txtSize)
+        f_span(tL, 0, 6, 3, 6, "  DAILY BIAS", C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 4, 6, 6, 6, f_arrow(b3) + (b3 > 0 ? "BUY" : b3 < 0 ? "SELL" : "NEUTRAL"), f_biasCol(b3), C_BG3, text.align_right, txtSize)
+        f_span(tL, 0, 7, 3, 7, "  MARKET STRUCTURE", C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 4, 7, 6, 7, mktStruct, mktStrCol, C_BG3, text.align_right, txtSize)
+        f_span(tL, 7, 4, 11, 7, showAnimal ? (msDir > 0 ? "🐂" : msDir < 0 ? "🐻" : "⚖") : "", mktStrCol, C_BG3, text.align_center, size.huge)
+
+        f_headL(8, "SMART MONEY CONFIRMATIONS")
+        f_rowL(9,  6, "◦ PREVIOUS HIGH",   pdhSwept ? "✔ SWEPT" : "✖ NOT SWEPT", pdhSwept ? C_BULL : C_BEAR)
+        f_rowL(10, 6, "◦ PREVIOUS LOW",    pdlSwept ? "✔ SWEPT" : "✖ NOT SWEPT", pdlSwept ? C_BULL : C_BEAR)
+        f_rowL(11, 6, "◦ LIQUIDITY SWEEP", ckLIQ ? "✔ CONFIRMED" : "✖ NONE", ckLIQ ? C_BULL : C_BEAR)
+        f_rowL(12, 6, "◦ MSS",             ckMSS ? "✔ " + (mssDir > 0 ? "BULLISH" : "BEARISH") : "✖ NOT YET", ckMSS ? C_BULL : C_BEAR)
+        f_rowL(13, 6, "◦ DISPLACEMENT",    setDisp ? "✔ " + mssDisp : "✖ NONE", setDisp ? C_BULL : C_BEAR)
+        f_rowL(14, 6, "◦ FVG",             hasFVG ? "✔ " + fvgState : "✖ NONE", ckFVG ? C_BULL : hasFVG ? C_GOLD : C_BEAR)
+        f_rowL(15, 6, "◦ ORDER BLOCK",     hasOB  ? "✔ " + obState  : "✖ NONE", ckOB  ? C_BULL : hasOB  ? C_GOLD : C_BEAR)
+        f_rowL(16, 6, "◦ RETEST",          setRetst ? "✔ DONE" : stage == "ZONE" ? "⧗ WAITING" : "✖ NOT YET", setRetst ? C_BULL : stage == "ZONE" ? C_GOLD : C_BEAR)
+        f_rowL(17, 6, "◦ ENTRY CANDLE",    setEntry ? "✔ CONFIRMED" : "✖ NOT YET", setEntry ? C_BULL : C_BEAR)
+
+        f_headL(18, "NEWS & SESSION FILTER")
+        f_rowL(19, 6, "HIGH IMPACT NEWS", "● " + newsTxt,   newsCol)
+        f_rowL(20, 6, "NEXT NEWS",        nextTxt,          C_TEXT)
+        f_rowL(21, 6, "TRADING SESSION",  "● " + sessName,  sessCol)
+        f_rowL(22, 6, "VOLUME",           "● " + volTxt,    volCol)
+        f_rowL(23, 6, "SPREAD CONDITION", "● " + spreadTxt, spreadCol)
+
+        f_headL(24, "ENTRY QUALITY")
+        f_span(tL, 0, 25,  6, 25, "  " + f_stars(conf), C_GOLD, C_BG3, text.align_left,  size.normal)
+        f_span(tL, 7, 25, 11, 25, str.tostring(conf, "#") + "%  ", confCol, C_BG3, text.align_right, size.normal)
+
+        f_meter(tL, 26, 0, 6, conf / 100)
+        f_span(tL,  7, 26,  9, 26, "CONFLUENCE",         C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 10, 26, 11, 26, confluenceTxt + "  ", confCol, C_BG3, text.align_right, txtSize)
+
+        f_span(tL,  0, 27,  6, 27, "  " + confBand, confCol,   C_BG3, text.align_left,  size.tiny)
+        f_span(tL,  7, 27,  9, 27, "RISK",          C_GRAY,    C_BG3, text.align_left,  txtSize)
+        f_span(tL, 10, 27, 11, 27, riskTxt + "  ",  riskCol,   C_BG3, text.align_right, txtSize)
+
+        f_span(tL,  0, 28,  6, 28, "",                 C_GRAY,    C_BG3, text.align_left,  txtSize)
+        f_span(tL,  7, 28,  9, 28, "REWARD POTENTIAL", C_GRAY,    C_BG3, text.align_left,  txtSize)
+        f_span(tL, 10, 28, 11, 28, rewardTxt + "  ",   rewardCol, C_BG3, text.align_right, txtSize)
+
+        f_headL(29, "DASHBOARD STATUS")
+        f_span(tL, 0, 30, LCOLS - 1, 30, statusDot + statusTxt, statusCol, color.new(statusCol, 86), text.align_center, size.large)
+
+    // ─────────── RIGHT COLUMN : decision ───────────
+    if showRight
+        table.delete(tR)
+        tR := table.new(position.top_right, RCOLS, RROWS, bgcolor = C_BG2, frame_color = C_FRAME, frame_width = 1, border_color = C_FRAME, border_width = 1)
+
+        f_headR(0, "KEY LEVELS")
+        f_rowR(1, 6, "Resistance 1", f_px(res1), C_BEAR, text.align_right)
+        f_rowR(2, 6, "Resistance 2", f_px(res2), C_BEAR, text.align_right)
+        f_rowR(3, 6, "Pivot",        f_px(pp),   C_GOLD, text.align_right)
+        f_rowR(4, 6, "Support 1",    f_px(sup1), C_BULL, text.align_right)
+        f_rowR(5, 6, "Support 2",    f_px(sup2), C_BULL, text.align_right)
+
+        f_headR(6, "TREND METER")
+        f_meter(tR, 7, 0, RCOLS - 1, (trendVal + 1) / 2)
+        f_span(tR, 0, 8, RCOLS - 1, 8, f_gauge((trendVal + 1) / 2, RCOLS), trendCol, C_BG3, text.align_center, txtSize)
+        f_span(tR, 0, 9, RCOLS - 1, 9, trendTxt, trendCol, C_BG3, text.align_center, size.normal)
+
+        f_headR(10, "TRADE SETUP SUMMARY")
+        f_rowR(11, 5, "DIRECTION",    setDir > 0 ? "↑ BUY" : setDir < 0 ? "↓ SELL" : "-", setDir > 0 ? C_BULL : setDir < 0 ? C_BEAR : C_GRAY, text.align_right)
+        f_rowR(12, 5, "SETUP",        setupParts == "" ? "-" : setupParts, C_TEXT, text.align_right)
+        f_rowR(13, 5, "CONFIDENCE",   confluenceTxt, confCol, text.align_right)
+        f_rowR(14, 5, "ENTRY PLAN",   entryPlan, C_TEXT, text.align_right)
+        f_rowR(15, 5, "INVALIDATION", na(slP) ? "-" : (setDir > 0 ? "BELOW " : "ABOVE ") + f_px(slP), C_BEAR, text.align_right)
+        f_rowR(16, 5, "TARGET 1",     f_px(tp1), C_BULL, text.align_right)
+        f_rowR(17, 5, "TARGET 2",     f_px(tp2), C_BULL, text.align_right)
+        f_rowR(18, 5, "TARGET 3",     f_px(tp3), C_BULL, text.align_right)
+
+        f_headR(19, "QUICK CHECKLIST")
+        f_rowR(20, 9, "HTF BIAS ALIGNMENT", f_tick(ckHTF), f_tickCol(ckHTF), text.align_center)
+        f_rowR(21, 9, "LIQUIDITY TAKEN",    f_tick(ckLIQ), f_tickCol(ckLIQ), text.align_center)
+        f_rowR(22, 9, "MSS CONFIRMED",      f_tick(ckMSS), f_tickCol(ckMSS), text.align_center)
+        f_rowR(23, 9, "FVG VALID",          f_tick(ckFVG), f_tickCol(ckFVG), text.align_center)
+        f_rowR(24, 9, "OB FRESH",           f_tick(ckOB),  f_tickCol(ckOB),  text.align_center)
+        f_rowR(25, 9, "RISK MANAGEMENT",    f_tick(ckRSK), f_tickCol(ckRSK), text.align_center)
+        f_rowR(26, 9, "NEWS FILTER",        f_tick(ckNWS), f_tickCol(ckNWS), text.align_center)
+
+    // ─────────── BOTTOM : session bar + market statistics ───────────
+    if showBottom
+        table.delete(tB)
+        tB := table.new(position.bottom_center, BCOLS, BROWS, bgcolor = C_BG1, frame_color = C_FRAME, frame_width = 1, border_color = C_FRAME, border_width = 1)
+
+        cSyd = inSyd ? #1E5AA8 : color.new(#1E5AA8, 72)
+        cTok = inTok ? #1B4FA0 : color.new(#1B4FA0, 72)
+        cLon = inLon ? #1E7A3C : color.new(#1E7A3C, 72)
+        cNYk = inNY  ? #8A6D1F : color.new(#8A6D1F, 72)
+
+        f_span(tB,  0, 0,  3, 0, "SESSION TIME", C_GRAY, C_BG1, text.align_center, txtSize)
+        f_span(tB,  4, 0,  7, 0, "SYDNEY",   inSyd ? color.white : C_GRAY, cSyd, text.align_center, txtSize)
+        f_span(tB,  8, 0, 11, 0, "TOKYO",    inTok ? color.white : C_GRAY, cTok, text.align_center, txtSize)
+        f_span(tB, 12, 0, 17, 0, "LONDON",   inLon ? color.white : C_GRAY, cLon, text.align_center, txtSize)
+        f_span(tB, 18, 0, 23, 0, "NEW YORK", inNY  ? color.white : C_GRAY, cNYk, text.align_center, txtSize)
+
+        rangePos = dayHi > dayLo ? (close - dayLo) / (dayHi - dayLo) : 0.5
+
+        f_span(tB,  0, 1,  3, 1, "TODAY'S RANGE",    C_GRAY, C_BG1, text.align_center, txtSize)
+        f_span(tB,  4, 1,  7, 1, "AVG DAILY RANGE",  C_GRAY, C_BG1, text.align_center, txtSize)
+        f_span(tB,  8, 1, 11, 1, "RISK TO REWARD",   C_GRAY, C_BG1, text.align_center, txtSize)
+        f_span(tB, 12, 1, 15, 1, "WIN RATE",         C_GRAY, C_BG1, text.align_center, txtSize)
+        f_span(tB, 16, 1, 19, 1, "CONSECUTIVE WINS", C_GRAY, C_BG1, text.align_center, txtSize)
+        f_span(tB, 20, 1, 23, 1, "ACCOUNT RISK",     C_GRAY, C_BG1, text.align_center, txtSize)
+
+        f_span(tB,  0, 2,  3, 2, f_px(dayLo) + " – " + f_px(dayHi), C_TEXT, C_BG1, text.align_center, size.normal)
+        f_span(tB,  4, 2,  7, 2, na(adrRaw) ? "-" : f_pips(adrRaw) + " PIPS", C_TEXT, C_BG1, text.align_center, size.normal)
+        f_span(tB,  8, 2, 11, 2, na(rrShow) ? "-" : "1 : " + str.tostring(rrShow, "#.#"), C_GOLD, C_BG1, text.align_center, size.normal)
+        f_span(tB, 12, 2, 15, 2, na(winRate) ? "-" : str.tostring(winRate, "#") + "%", na(winRate) ? C_GRAY : winRate >= 50 ? C_BULL : C_BEAR, C_BG1, text.align_center, size.normal)
+        f_span(tB, 16, 2, 19, 2, str.tostring(streak), streak > 0 ? C_BULL : C_GRAY, C_BG1, text.align_center, size.normal)
+        f_span(tB, 20, 2, 23, 2, str.tostring(acctRiskPct, "#.00") + "%", C_GOLD, C_BG1, text.align_center, size.normal)
+
+        f_span(tB,  0, 3,  3, 3, f_gauge(rangePos, 13), C_GOLD, C_BG1, text.align_center, size.tiny)
+        f_span(tB,  4, 3, 15, 3, "", C_GRAY, C_BG1, text.align_center, size.tiny)
+        f_span(tB, 16, 3, 19, 3, totalTr > 0 ? str.tostring(totalTr) + " tracked" : "", color.new(C_GRAY, 30), C_BG1, text.align_center, size.tiny)
+        f_span(tB, 20, 3, 23, 3, "KRISHNA SMC PRO v1.0  ", color.new(C_GRAY, 30), C_BG1, text.align_right, size.tiny)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 19. ALERT ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+alertcondition(sweepUp or sweepDn, "SMC | Liquidity sweep", "KRISHNA SMC PRO: liquidity sweep")
+alertcondition(mssEvt,             "SMC | MSS confirmed",   "KRISHNA SMC PRO: MSS confirmed")
+alertcondition(stage == "RETEST" and stage[1] != "RETEST", "SMC | Zone retest", "KRISHNA SMC PRO: zone retest")
+alertcondition(justReady,          "SMC | ENTRY READY",     "KRISHNA SMC PRO: ENTRY READY")
+
+if justReady
+    alert(str.format("KRISHNA SMC PRO  {0} {1} {2}\nSetup {3}  |  confidence {4}%\nEntry {5}   Stop {6}\nTP1 {7}   TP2 {8}   TP3 {9}\nSession {10}  |  News {11}",
+         setDir > 0 ? "BUY" : "SELL", syminfo.ticker, timeframe.period,
+         setupParts, str.tostring(conf, "#"),
+         f_px(entryP), f_px(slP), f_px(tp1), f_px(tp2), f_px(tp3),
+         sessName, newsTxt), alert.freq_once_per_bar)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 19b. DATA WINDOW PLOTS  -  raw engine values for external alerts / debugging
+// ═══════════════════════════════════════════════════════════════════════════
+
+plot(conf,       "Confidence %", display = display.data_window)
+plot(setDir,     "Setup dir",    display = display.data_window)
+plot(nz(entryP), "Entry",        display = display.data_window)
+plot(nz(slP),    "Stop",         display = display.data_window)
+plot(nz(tp1),    "TP1",          display = display.data_window)
+plot(nz(tp2),    "TP2",          display = display.data_window)
+plot(nz(tp3),    "TP3",          display = display.data_window)
