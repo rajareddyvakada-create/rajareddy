@@ -129,9 +129,11 @@ trailBuf  = input.float(0.10, "Structure trail buffer (ATR x)", minval = 0.0, st
 acctBal   = input.float(10000, "Account balance", minval = 1, group = G_CALC)
 riskPct   = input.float(1.0,   "Risk per trade (%)", minval = 0.01, step = 0.05, group = G_CALC)
 acctCcy   = input.string("USD","Account currency", group = G_CALC)
-contractIn= input.float(0,     "Contract size per 1.00 lot (0 = auto)", minval = 0, group = G_CALC,
-     tooltip = "Units per 1.00 lot. Gold usually 100 oz, forex 100,000, silver 5,000. Check your broker's symbol specification.")
-lotStep   = input.float(0.01,  "Lot step", minval = 0.0001, step = 0.01, group = G_CALC)
+broker    = input.string("XM Global · Standard / Ultra Low / Zero", "Broker contract sizes",
+     options = ["XM Global · Standard / Ultra Low / Zero", "XM Global · Micro / Ultra Low Micro", "Custom"], group = G_CALC,
+     tooltip = "XM Standard: GOLD 100 oz, SILVER 5,000 oz, forex 100,000, oil 100 bbl, BTC/ETH 1 coin, cash indices 1 x price (min 0.1 lot). XM Micro: GOLD 1 oz, SILVER 50 oz, forex 1,000. Verify in MT5: right-click the symbol > Specification > Contract size.")
+contractIn= input.float(0,     "Override contract size per 1.00 lot (0 = broker)", minval = 0, group = G_CALC)
+lotStepIn = input.float(0,     "Override lot step / min lot (0 = broker)", minval = 0, step = 0.01, group = G_CALC)
 lotList   = input.string("0.01,0.02,0.05,0.10,0.20,0.50,1.00", "Lot sizes to print", group = G_CALC)
 calcSlIn  = input.float(0,     "Calculator stop distance in price (0 = auto)", minval = 0, group = G_CALC)
 calcAtr   = input.float(1.5,   "Auto stop when no setup (ATR x)", minval = 0.1, step = 0.1, group = G_CALC)
@@ -854,10 +856,34 @@ if barstate.islast and array.size(pjL) > 0
 // 21. RISK CALCULATOR CORE
 // ═══════════════════════════════════════════════════════════════════════════
 
-autoContract = str.contains(syminfo.ticker, "XAU") ? 100.0 :
-   str.contains(syminfo.ticker, "XAG") ? 5000.0 :
-   syminfo.type == "forex" ? 100000.0 : 1.0
-contract  = contractIn > 0 ? contractIn : autoContract
+// XM Global contract sizes by instrument class, from the TradingView ticker
+tk       = str.upper(syminfo.ticker)
+f_has(a) => str.contains(tk, a)
+isGold   = f_has("XAU") or f_has("GOLD")
+isSilver = f_has("XAG") or f_has("SILVER")
+isCrypto = syminfo.type == "crypto" or f_has("BTC") or f_has("ETH")
+isGas    = f_has("NGAS") or f_has("NATGAS") or f_has("NG1")
+isOil    = not isGas and (f_has("OIL") or f_has("WTI") or f_has("BRENT") or f_has("CL1"))
+isIndex  = syminfo.type == "index" or f_has("US30") or f_has("DJI") or f_has("NAS") or f_has("NDX") or
+   f_has("US100") or f_has("SPX") or f_has("US500") or f_has("GER") or f_has("DAX") or f_has("DE40") or
+   f_has("UK100") or f_has("FTSE") or f_has("JP225") or f_has("NI225") or f_has("NIKKEI")
+isFx     = not isGold and not isSilver and not isCrypto and syminfo.type == "forex"
+xmMicro  = broker == "XM Global · Micro / Ultra Low Micro"
+symClass = isGold ? "GOLD" : isSilver ? "SILVER" : isCrypto ? "CRYPTO" : isGas ? "NGAS" : isOil ? "OIL" :
+   isIndex ? "INDEX" : isFx ? "FOREX" : "OTHER"
+xmContract = switch symClass
+    "GOLD"   => xmMicro ? 1.0    : 100.0
+    "SILVER" => xmMicro ? 50.0   : 5000.0
+    "FOREX"  => xmMicro ? 1000.0 : 100000.0
+    "OIL"    => 100.0
+    "NGAS"   => 1000.0
+    => 1.0
+xmStep   = symClass == "INDEX" ? 0.1 : 0.01
+contract = contractIn > 0 ? contractIn : broker == "Custom" ? 1.0 : xmContract
+lotStep  = lotStepIn > 0 ? lotStepIn : xmStep
+brokerTag = (contractIn > 0 or broker == "Custom" ? "CUSTOM" : xmMicro ? "XM MICRO" : "XM STD") + " · " + symClass +
+   " · 1 lot = " + str.tostring(contract, "#,###.##") + (symClass == "GOLD" or symClass == "SILVER" ? " oz" :
+   symClass == "OIL" ? " bbl" : symClass == "FOREX" ? " units" : " x price")
 fxRate    = syminfo.currency == acctCcy ? 1.0 :
    request.currency_rate(syminfo.currency, acctCcy, ignore_invalid_currency = true)
 valPerLot = contract * nz(fxRate, 1.0)        // account money per 1.0 price move per 1.00 lot
@@ -875,7 +901,7 @@ f_lotTable(d, sep) =>
     if array.size(parts) > 0
         for i = 0 to array.size(parts) - 1
             float lt = str.tonumber(array.get(parts, i))
-            if not na(lt)
+            if not na(lt) and lt >= lotStep - 1e-9
                 s := s + (s == "" ? "" : sep) + f_lotTxt(lt) + " = " + f_cash(lt * valPerLot * d)
     s
 
@@ -1449,7 +1475,7 @@ if barstate.islast
         string src  = calcSlIn > 0 ? "manual" : tState != 0 ? "setup stop" : str.tostring(calcAtr, "0.0#") + " ATR"
         string sides = tState != 0 ? "" : "\nBUY SL " + f_px(close - dist) + "  ·  SELL SL " + f_px(close + dist)
         lbCalc := label.new(bar_index + calcOff, close,
-             "RISK CALC @ " + f_px(close) + "\nSL distance " + str.tostring(dist, format.mintick) + " (" + src + ")" + sides +
+             "RISK CALC @ " + f_px(close) + "\n" + brokerTag + "\nSL distance " + str.tostring(dist, format.mintick) + " (" + src + ")" + sides +
              "\n" + f_lotTable(dist, "\n") + "\n" + f_riskLine(dist),
              style = label.style_label_left, color = color.new(C_BG1, 5), textcolor = C_TEXT,
              size = size.small, textalign = text.align_left, text_font_family = font.family_monospace)
