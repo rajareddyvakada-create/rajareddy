@@ -1,0 +1,1721 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+//@version=5
+//
+//  KRISHNA SMC PRO v2.0
+//
+//  Master graphics reference : the KRISHNA SMC PRO DASHBOARD (v1 layout kept)
+//  Master logic reference    : the SMC/ICT engine below
+//
+//  WHAT v2 ADDS OVER v1
+//    1. MODEL A - HTF ORDER BLOCK REACTION + FVG CONFIRMATION
+//       Order blocks are built on a higher timeframe (default 4H) from that
+//       timeframe's own structure breaks, confirmed-bar only (no repaint).
+//       Price taps the HTF OB, holds it on a closing basis, then prints an
+//       FVG away from it on the chart timeframe. That FVG is the entry.
+//    2. MODEL B - LIQUIDITY SWEEP + MSS + FVG  (the v1 engine, tightened)
+//    3. CBDR TARGETS - Central Bank Dealers Range (14:00-20:00 New York) and
+//       its standard-deviation projections. Too-wide CBDR falls back to the
+//       Asian range (ICT rule), or use Flout. Targets are the SD levels past
+//       entry; R multiples only when no projection is far enough.
+//    4. REFINED ENTRY / STOP + TRAILING MANAGEMENT
+//       Limit entry at the FVG edge or its CE (50%). Stop at the reaction
+//       extreme (tightest structural stop), not the far edge of the HTF OB.
+//       Partial at TP1, stop to breakeven (+lock), then a structure or ATR
+//       trail. Every trade is paper-traded bar by bar and scored in R.
+//    5. RISK CALCULATOR - a label at the pending entry price prints what each
+//       lot size risks (0.01 = $10, 0.02 = $20 ...) and the lot size for your
+//       risk %, plus a live calculator beside the current price.
+//
+//  PINE LIMITS, AND HOW THEY ARE HANDLED
+//    SPREAD - no bid/ask feed: spread is an input in ticks, added to stops.
+//    NEWS   - no calendar: recurring high-impact times with a blackout window.
+//    LOTS   - TradingView does not know your broker's contract size. AUTO
+//             uses 100 for XAU, 5000 for XAG, 100000 for forex, else 1.
+//             Check it against your broker and override in Risk Calculator.
+//
+//  BACKTEST NUMBERS on the bottom bar come from paper-trading this chart's
+//  history with conservative fills: a bar that touches both the stop and a
+//  target is a stop; targets are not credited on the fill bar.
+//
+indicator("KRISHNA SMC PRO v2.0", "KRISHNA SMC PRO v2", overlay = true,
+     max_boxes_count  = 500,
+     max_lines_count  = 500,
+     max_labels_count = 500,
+     max_bars_back    = 500)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 01. INPUTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+var string G_STR  = "Structure & Swings"
+var string G_HOB  = "Model A · HTF Order Block + FVG"
+var string G_LIQ  = "Model B · Sweep + MSS + FVG"
+var string G_ZONE = "FVG & LTF Order Blocks"
+var string G_ENT  = "Entry & Stop Refinement"
+var string G_TGT  = "Targets · CBDR"
+var string G_MGT  = "Trade Management · Trailing"
+var string G_CALC = "Risk Calculator"
+var string G_SESS = "Sessions, Killzones & Volume"
+var string G_NEWS = "News Filter"
+var string G_UI   = "Dashboard"
+var string G_GFX  = "Chart Graphics"
+
+tf1 = input.timeframe("60",  "Bias TF 1", group = G_STR)
+tf2 = input.timeframe("240", "Bias TF 2", group = G_STR)
+tf3 = input.timeframe("D",   "Bias TF 3", group = G_STR)
+swLen     = input.int(5,     "Swing pivot length",             minval = 2,   group = G_STR)
+atrLen    = input.int(14,    "ATR length",                     minval = 2,   group = G_STR)
+rangeAtrM = input.float(2.0, "Ranging if swing range < ATR x", minval = 0.5, step = 0.1, group = G_STR)
+
+useA      = input.bool(true,       "Enable Model A", group = G_HOB)
+hobTf     = input.timeframe("240", "HTF order block timeframe", group = G_HOB)
+hobPivot  = input.int(3,           "HTF swing pivot length", minval = 1, group = G_HOB)
+hobDepth  = input.int(10,          "HTF OB search depth (bars)", minval = 1, maxval = 50, group = G_HOB)
+tapBars   = input.int(12,          "Bars allowed tap -> FVG", minval = 1, group = G_HOB)
+reqDispA  = input.bool(true,       "FVG must come from a displacement candle", group = G_HOB)
+
+useB      = input.bool(true, "Enable Model B", group = G_LIQ)
+eqTolAtr  = input.float(0.15,"Equal H/L tolerance (ATR x)", minval = 0.01, step = 0.01, group = G_LIQ)
+sweepWick = input.float(0.20,"Min sweep wick (ATR x)",      minval = 0.0,  step = 0.05, group = G_LIQ)
+mssWindow = input.int(15,    "Bars allowed sweep -> MSS -> FVG", minval = 1, group = G_LIQ)
+usePDHL   = input.bool(true, "Use previous day high/low as liquidity", group = G_LIQ)
+
+dispMult  = input.float(1.30,"Displacement body (ATR x)",       minval = 0.1, step = 0.05, group = G_ZONE)
+dispWeak  = input.float(0.70,"Moderate/strong split (x above)", minval = 0.1, step = 0.05, group = G_ZONE)
+obLookback= input.int(12,    "LTF OB search depth (bars)",      minval = 1,  group = G_ZONE)
+obUseBody = input.bool(false,"LTF OB from candle body only",    group = G_ZONE)
+fvgMinAtr = input.float(0.10,"Min FVG size (ATR x)",            minval = 0.0, step = 0.01, group = G_ZONE)
+zoneMaxAge= input.int(120,   "Zone max age (bars)",             minval = 10, group = G_ZONE)
+maxZones  = input.int(8,     "Max live zones per type",         minval = 1, maxval = 40, group = G_ZONE)
+
+entryMode = input.string("FVG proximal edge", "Entry price", options = ["FVG proximal edge", "FVG CE (50%)"], group = G_ENT)
+slMode    = input.string("Refined · reaction extreme", "Stop placement",
+     options = ["Refined · reaction extreme", "FVG far edge", "HTF OB / sweep edge"], group = G_ENT)
+slBufAtr  = input.float(0.15, "Stop buffer (ATR x, + spread)", minval = 0.0, step = 0.05, group = G_ENT)
+minSlAtr  = input.float(0.30, "Min stop distance (ATR x)", minval = 0.05, step = 0.05, group = G_ENT)
+maxSlAtr  = input.float(3.00, "Max stop distance (ATR x) - skip wider", minval = 0.2, step = 0.1, group = G_ENT)
+minScore  = input.int(60,     "Min setup score to place an order", minval = 0, maxval = 100, group = G_ENT)
+minRR2    = input.float(2.0,  "Min R:R to TP2", minval = 0.5, step = 0.1, group = G_ENT)
+reqHTF    = input.bool(false, "Only trade with HTF bias", group = G_ENT)
+pendBars  = input.int(30,     "Pending order expiry (bars)", minval = 1, group = G_ENT)
+newsCancel= input.bool(true,  "Cancel pending order in news blackout", group = G_ENT)
+
+tgtMode   = input.string("CBDR SD projections", "Target source",
+     options = ["CBDR SD projections", "Key levels", "R multiples"], group = G_TGT)
+rangeSrc  = input.string("Auto", "Projection range",
+     options = ["Auto", "CBDR", "Asia", "Flout"], group = G_TGT,
+     tooltip = "Auto = CBDR, or the Asian range when CBDR is wider than the limit below. Flout = CBDR + Asia combined.")
+cbdrSess  = input.session("1400-2000", "CBDR session (New York)", group = G_TGT)
+asiaSess  = input.session("2000-0000", "Asia session (New York)", group = G_TGT)
+cbdrBody  = input.bool(true,  "Range from candle bodies", group = G_TGT)
+cbdrMaxP  = input.float(35,   "CBDR too wide above (% of ADR)", minval = 1, group = G_TGT)
+sdCount   = input.int(4,      "SD projections each side", minval = 1, maxval = 6, group = G_TGT)
+tp1MinR   = input.float(1.0,  "TP1 at least (R)", minval = 0.3, step = 0.1, group = G_TGT)
+rr1       = input.float(1.5,  "Fallback TP1 (R)", minval = 0.1, step = 0.1, group = G_TGT)
+rr2       = input.float(2.5,  "Fallback TP2 (R)", minval = 0.1, step = 0.1, group = G_TGT)
+rr3       = input.float(4.0,  "Fallback TP3 (R)", minval = 0.1, step = 0.1, group = G_TGT)
+showCbdr  = input.bool(true,  "Draw CBDR / Asia range and projections", group = G_TGT)
+
+pTP1      = input.float(50,   "Close % at TP1", minval = 0, maxval = 100, group = G_MGT)
+pTP2      = input.float(30,   "Close % at TP2 (rest runs to TP3)", minval = 0, maxval = 100, group = G_MGT)
+beMode    = input.string("At TP1", "Move stop to breakeven", options = ["At TP1", "At R multiple", "Off"], group = G_MGT)
+beAtR     = input.float(1.0,  "Breakeven trigger (R) for 'At R multiple'", minval = 0.1, step = 0.1, group = G_MGT)
+beLockR   = input.float(0.10, "Breakeven lock-in (R)", minval = 0.0, step = 0.05, group = G_MGT)
+trailMode = input.string("Structure", "Trailing stop", options = ["Structure", "ATR", "Off"], group = G_MGT)
+trailFrom = input.string("After TP1", "Start trailing", options = ["After TP1", "After TP2", "After breakeven"], group = G_MGT)
+trailAtr  = input.float(2.0,  "ATR trail distance (x)", minval = 0.2, step = 0.1, group = G_MGT)
+trailBuf  = input.float(0.10, "Structure trail buffer (ATR x)", minval = 0.0, step = 0.05, group = G_MGT)
+
+acctBal   = input.float(10000, "Account balance", minval = 1, group = G_CALC)
+riskPct   = input.float(1.0,   "Risk per trade (%)", minval = 0.01, step = 0.05, group = G_CALC)
+acctCcy   = input.string("USD","Account currency", group = G_CALC)
+contractIn= input.float(0,     "Contract size per 1.00 lot (0 = auto)", minval = 0, group = G_CALC,
+     tooltip = "Units per 1.00 lot. Gold usually 100 oz, forex 100,000, silver 5,000. Check your broker's symbol specification.")
+lotStep   = input.float(0.01,  "Lot step", minval = 0.0001, step = 0.01, group = G_CALC)
+lotList   = input.string("0.01,0.02,0.05,0.10,0.20,0.50,1.00", "Lot sizes to print", group = G_CALC)
+calcSlIn  = input.float(0,     "Calculator stop distance in price (0 = auto)", minval = 0, group = G_CALC)
+calcAtr   = input.float(1.5,   "Auto stop when no setup (ATR x)", minval = 0.1, step = 0.1, group = G_CALC)
+showCalc  = input.bool(true,   "Live calculator beside price", group = G_CALC)
+showPend  = input.bool(true,   "Lot table at pending entry", group = G_CALC)
+calcOff   = input.int(4,       "Calculator offset (bars right)", minval = 1, group = G_CALC)
+spreadTicks = input.float(16,  "Spread in ticks (Pine has no live spread)", minval = 0, group = G_CALC)
+spreadWideP = input.float(4.0, "Spread WIDE above (% of ATR)", minval = 0.1, step = 0.1, group = G_CALC)
+adrLen      = input.int(14,    "Average daily range length", minval = 2, group = G_CALC)
+pipTicks    = input.int(10,    "Ticks per pip", minval = 1, group = G_CALC)
+
+sessTz    = input.string("UTC", "Session timezone", group = G_SESS)
+sSydney   = input.session("2100-0600","Sydney",   group = G_SESS)
+sTokyo    = input.session("0000-0900","Tokyo",    group = G_SESS)
+sLondon   = input.session("0700-1600","London",   group = G_SESS)
+sNewYork  = input.session("1200-2100","New York", group = G_SESS)
+openMins  = input.int(60, "OPEN window after session start (min)", minval = 0, group = G_SESS)
+tradeSess = input.string("London + New York", "Tradable sessions",
+     options = ["Any","London only","New York only","London + New York","Asia only"], group = G_SESS)
+kzLon     = input.session("0200-0500", "London killzone (New York)", group = G_SESS)
+kzNYam    = input.session("0700-1000", "NY AM killzone (New York)",  group = G_SESS)
+kzNYpm    = input.session("1330-1600", "NY PM killzone (New York)",  group = G_SESS)
+volLen    = input.int(20,    "Volume average length", minval = 2, group = G_SESS)
+volHigh   = input.float(1.20,"ABOVE AVG above x", minval = 1.0, step = 0.05, group = G_SESS)
+volLow    = input.float(0.80,"BELOW AVG below x", minval = 0.1, step = 0.05, group = G_SESS)
+
+newsOn     = input.bool(true, "Enable news filter", group = G_NEWS)
+newsTimes  = input.string("08:30,10:00,14:00","Recurring high-impact times HH:MM", group = G_NEWS)
+newsTz     = input.string("America/New_York","News timezone", group = G_NEWS)
+newsBefore = input.int(15, "Blackout minutes before", minval = 0, group = G_NEWS)
+newsAfter  = input.int(15, "Blackout minutes after",  minval = 0, group = G_NEWS)
+newsSkipWe = input.bool(true,"Ignore weekends", group = G_NEWS)
+
+showLeft   = input.bool(true, "Left panels",  group = G_UI)
+showRight  = input.bool(true, "Right panels", group = G_UI)
+showBottom = input.bool(true, "Bottom stats", group = G_UI)
+uiSize     = input.string("Tiny","Text size", options = ["Tiny","Small","Normal"], group = G_UI)
+showAnimal = input.bool(true, "Bias animal glyph", group = G_UI)
+
+gfxHOB    = input.bool(true,"HTF order blocks",            group = G_GFX)
+gfxLiq    = input.bool(true,"Liquidity lines (PDH / PDL)", group = G_GFX)
+gfxEq     = input.bool(true,"Equal highs / lows",          group = G_GFX)
+gfxStruct = input.bool(true,"BOS / CHoCH / MSS",           group = G_GFX)
+gfxSweep  = input.bool(true,"Liquidity sweep markers",     group = G_GFX)
+gfxOB     = input.bool(false,"LTF order blocks",           group = G_GFX)
+gfxFVG    = input.bool(true,"Fair value gaps",             group = G_GFX)
+gfxTrade  = input.bool(true,"Trade levels, fills and exits", group = G_GFX)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 00. COLOUR SYSTEM  (spec section 20 - do not retune)
+// ═══════════════════════════════════════════════════════════════════════════
+
+C_BG1  = #000305
+C_BG2  = #010509
+C_BG3  = #02070B
+C_GOLD = #FFD000
+C_BULL = #20D64F
+C_BEAR = #FF3030
+C_LIQ  = #FF1744
+C_TEXT = #E6E6E6
+C_GRAY = #8A8F98
+C_CYAN = #26C6DA
+
+C_FRAME = color.new(C_GOLD, 78)
+C_HEAD  = color.new(C_GOLD, 88)
+
+txtSize = uiSize == "Tiny" ? size.tiny : uiSize == "Normal" ? size.normal : size.small
+NY      = "America/New_York"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TYPES & HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+type Zone
+    box    bx
+    label  lb
+    float  top
+    float  bot
+    int    dir          // 1 bullish, -1 bearish
+    string kind         // "OB" | "FVG"
+    string state        // OB: FRESH/TESTED   FVG: VALID/PARTIAL/FILLED/INVALID
+    int    born
+    bool   alive
+
+f_px(v)    => na(v) ? "-" : str.tostring(v, format.mintick)
+f_pips(v)  => na(v) ? "-" : str.tostring(v / (syminfo.mintick * pipTicks), "#.#")
+f_biasTxt(b) => b > 0 ? "BULLISH" : b < 0 ? "BEARISH" : "NEUTRAL"
+f_biasCol(b) => b > 0 ? C_BULL    : b < 0 ? C_BEAR    : C_GRAY
+f_arrow(b)   => b > 0 ? "↑ "      : b < 0 ? "↓ "      : "→ "
+f_r(v)       => na(v) ? "-" : (v >= 0 ? "+" : "") + str.tostring(v, "0.0") + "R"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 02. TIMEFRAME ENGINE  -  higher timeframe bias
+// ═══════════════════════════════════════════════════════════════════════════
+
+f_htfBias(fastLen, slowLen, pvt) =>
+    eF = ta.ema(close, fastLen)
+    eS = ta.ema(close, slowLen)
+    ph = ta.pivothigh(high, pvt, pvt)
+    pl = ta.pivotlow(low,  pvt, pvt)
+    var float lastH = na
+    var float lastL = na
+    var int   sDir  = 0
+    if not na(ph)
+        lastH := ph
+    if not na(pl)
+        lastL := pl
+    if not na(lastH) and close > lastH
+        sDir := 1
+    if not na(lastL) and close < lastL
+        sDir := -1
+    sc = (eF > eS ? 1 : -1) + (close > eS ? 1 : -1) + sDir
+    sc >= 2 ? 1 : sc <= -2 ? -1 : 0
+
+b1 = nz(request.security(syminfo.tickerid, tf1, f_htfBias(21, 50, 5), lookahead = barmerge.lookahead_off))
+b2 = nz(request.security(syminfo.tickerid, tf2, f_htfBias(21, 50, 5), lookahead = barmerge.lookahead_off))
+b3 = nz(request.security(syminfo.tickerid, tf3, f_htfBias(10, 21, 4), lookahead = barmerge.lookahead_off))
+
+htfSum     = b1 + b2 + b3
+htfBias    = htfSum >= 2 ? 1 : htfSum <= -2 ? -1 : 0
+htfAligned = math.abs(htfSum) == 3
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 02b. HTF ORDER BLOCK ENGINE  (Model A context)
+// ═══════════════════════════════════════════════════════════════════════════
+// On the HTF itself: a close through the last HTF swing high is a bullish
+// break; the last down-close candle before it is the bullish OB (mirror for
+// bearish). An OB dies when an HTF candle closes through its far edge.
+// Values are taken from the last CLOSED HTF bar ([1] + lookahead_on), which
+// is the standard non-repainting request.
+
+f_htfOB(pvt, depth) =>
+    ph = ta.pivothigh(high, pvt, pvt)
+    pl = ta.pivotlow(low,  pvt, pvt)
+    var float sH  = na
+    var float sL  = na
+    var bool  hOk = false
+    var bool  lOk = false
+    var float bT  = na
+    var float bB  = na
+    var int   bTm = na
+    var float rT  = na
+    var float rB  = na
+    var int   rTm = na
+    if not na(ph)
+        sH  := ph
+        hOk := true
+    if not na(pl)
+        sL  := pl
+        lOk := true
+    if hOk and close > sH
+        hOk := false
+        int k = na
+        for i = 1 to depth
+            if na(k) and close[i] < open[i]
+                k := i
+        if not na(k)
+            bT  := high[k]
+            bB  := low[k]
+            bTm := time[k]
+    if lOk and close < sL
+        lOk := false
+        int k2 = na
+        for i = 1 to depth
+            if na(k2) and close[i] > open[i]
+                k2 := i
+        if not na(k2)
+            rT  := high[k2]
+            rB  := low[k2]
+            rTm := time[k2]
+    if not na(bB) and close < bB
+        bT  := na
+        bB  := na
+        bTm := na
+    if not na(rT) and close > rT
+        rT  := na
+        rB  := na
+        rTm := na
+    [bT, bB, bTm, rT, rB, rTm]
+
+f_htfOBClosed(pvt, depth) =>
+    [a, b, c, d, e, f] = f_htfOB(pvt, depth)
+    [a[1], b[1], c[1], d[1], e[1], f[1]]
+
+[hBT, hBB, hBTm, hST, hSB, hSTm] = request.security(syminfo.tickerid, hobTf,
+     f_htfOBClosed(hobPivot, hobDepth), lookahead = barmerge.lookahead_on)
+
+hasHB = not na(hBT) and not na(hBB)
+hasHS = not na(hST) and not na(hSB)
+hobMin  = str.tonumber(hobTf)
+hobName = na(hobMin) ? hobTf : hobMin >= 60 and hobMin % 60 == 0 ? str.tostring(hobMin / 60, "#") + "H" : hobTf + "m"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 03. SWING ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+atr = ta.atr(atrLen)
+
+phv = ta.pivothigh(high, swLen, swLen)
+plv = ta.pivotlow(low,  swLen, swLen)
+
+var float swH  = na
+var float swL  = na
+var int   swHb = na
+var int   swLb = na
+var float swH2 = na
+var float swL2 = na
+var int   swH2b= na
+var int   swL2b= na
+
+if not na(phv)
+    swH2  := swH
+    swH2b := swHb
+    swH   := phv
+    swHb  := bar_index - swLen
+if not na(plv)
+    swL2  := swL
+    swL2b := swLb
+    swL   := plv
+    swLb  := bar_index - swLen
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 04. MARKET STRUCTURE  -  BOS / CHoCH
+// ═══════════════════════════════════════════════════════════════════════════
+
+var int   msDir    = 0
+var float brokenHi = na
+var float brokenLo = na
+var bool  bosEvt   = false
+var bool  chochEvt = false
+var int   chochDir = 0
+
+bosEvt   := false
+chochEvt := false
+chochDir := 0
+
+brokeUp = not na(swH) and close > swH and (na(brokenHi) or swH != brokenHi)
+brokeDn = not na(swL) and close < swL and (na(brokenLo) or swL != brokenLo)
+
+if brokeUp
+    brokenHi := swH
+    if msDir == 1
+        bosEvt := true
+    else
+        chochEvt := true
+        chochDir := 1
+    msDir := 1
+
+if brokeDn
+    brokenLo := swL
+    if msDir == -1
+        bosEvt := true
+    else
+        chochEvt := true
+        chochDir := -1
+    msDir := -1
+
+swingRange = not na(swH) and not na(swL) ? swH - swL : na
+isRanging  = not na(swingRange) and swingRange < rangeAtrM * atr
+mktStruct  = isRanging ? "RANGING" : msDir > 0 ? "UPTREND" : msDir < 0 ? "DOWNTREND" : "RANGING"
+mktStrCol  = isRanging ? C_GRAY : msDir > 0 ? C_BULL : msDir < 0 ? C_BEAR : C_GRAY
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 05. LIQUIDITY ENGINE  -  PDH / PDL, EQH / EQL, sweeps
+// ═══════════════════════════════════════════════════════════════════════════
+
+[pdh, pdl, pdc] = request.security(syminfo.tickerid, "D", [high[1], low[1], close[1]], lookahead = barmerge.lookahead_on)
+adrRaw = request.security(syminfo.tickerid, "D", ta.sma(high - low, adrLen)[1], lookahead = barmerge.lookahead_on)
+
+newDay = ta.change(time("D")) != 0
+var float dayHi = na
+var float dayLo = na
+if newDay or na(dayHi)
+    dayHi := high
+    dayLo := low
+else
+    dayHi := math.max(dayHi, high)
+    dayLo := math.min(dayLo, low)
+
+eqTol = eqTolAtr * atr
+eqhOn = not na(swH) and not na(swH2) and math.abs(swH - swH2) <= eqTol
+eqlOn = not na(swL) and not na(swL2) and math.abs(swL - swL2) <= eqTol
+
+float liqHi = swH
+float liqLo = swL
+if usePDHL and not na(pdh)
+    liqHi := na(swH) ? pdh : math.max(swH, pdh)
+if usePDHL and not na(pdl)
+    liqLo := na(swL) ? pdl : math.min(swL, pdl)
+
+var bool pdhSwept = false
+var bool pdlSwept = false
+if newDay
+    pdhSwept := false
+    pdlSwept := false
+if not na(pdh) and high >= pdh
+    pdhSwept := true
+if not na(pdl) and low <= pdl
+    pdlSwept := true
+
+wickUp = high - math.max(open, close)
+wickDn = math.min(open, close) - low
+
+sweepUp = not na(liqHi) and high > liqHi and close < liqHi and wickUp >= sweepWick * atr
+sweepDn = not na(liqLo) and low  < liqLo and close > liqLo and wickDn >= sweepWick * atr
+
+var int   sweepBar = na
+var int   sweepDir = 0        // -1 = buy-side taken (expect short), +1 = sell-side
+var float sweepExt = na
+
+if sweepUp
+    sweepBar := bar_index
+    sweepDir := -1
+    sweepExt := high
+if sweepDn
+    sweepBar := bar_index
+    sweepDir := 1
+    sweepExt := low
+
+sweepFresh = not na(sweepBar) and (bar_index - sweepBar) <= mssWindow
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 06. PREMIUM / DISCOUNT  +  09. DISPLACEMENT
+// ═══════════════════════════════════════════════════════════════════════════
+
+eqLevel = not na(swH) and not na(swL) ? (swH + swL) / 2 : na
+
+bodySz  = math.abs(close - open)
+dispBig = bodySz >= dispMult * atr
+dispMid = bodySz >= dispMult * dispWeak * atr
+dispTxt = dispBig ? "STRONG" : dispMid ? "MODERATE" : "WEAK"
+
+// the middle candle of a 3-bar FVG is the displacement candle
+midBody = math.abs(close[1] - open[1])
+midBig  = midBody >= dispMult * atr[1]
+midMid  = midBody >= dispMult * dispWeak * atr[1]
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 04b. MSS CONFIRMATION  -  CHoCH + fresh sweep in the matching direction
+// ═══════════════════════════════════════════════════════════════════════════
+
+mssEvt = chochEvt and sweepFresh and chochDir == sweepDir
+var int    mssDir  = 0
+var int    mssBar  = na
+var string mssDisp = "NONE"
+if mssEvt
+    mssDir  := chochDir
+    mssBar  := bar_index
+    mssDisp := dispTxt
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 07. LTF ORDER BLOCK ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+var array<Zone> obs = array.new<Zone>()
+
+f_findOB(dir, lookback) =>
+    int found = na
+    for i = 1 to lookback
+        bool opp = dir > 0 ? close[i] < open[i] : close[i] > open[i]
+        if opp and na(found)
+            found := i
+    found
+
+// the engine always runs - the graphics toggle only hides the drawing
+if mssEvt
+    idx = f_findOB(mssDir, obLookback)
+    if not na(idx)
+        float zt = obUseBody ? math.max(open[idx], close[idx]) : high[idx]
+        float zb = obUseBody ? math.min(open[idx], close[idx]) : low[idx]
+        color col = gfxOB ? (mssDir > 0 ? C_BULL : C_BEAR) : na
+        bx  = box.new(bar_index - idx, zt, bar_index + 10, zb,
+                 border_color = col, border_width = 1, bgcolor = gfxOB ? color.new(col, 88) : na)
+        lb  = label.new(bar_index + 5, (zt + zb) / 2,
+                 mssDir > 0 ? "BULLISH ORDER BLOCK" : "BEARISH ORDER BLOCK",
+                 style = label.style_none, textcolor = gfxOB ? color.new(col, 10) : na, size = size.small)
+        array.push(obs, Zone.new(bx, lb, zt, zb, mssDir, "OB", "FRESH", bar_index, true))
+        if array.size(obs) > maxZones
+            Zone old = array.shift(obs)
+            box.delete(old.bx)
+            label.delete(old.lb)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 08. FVG ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+var array<Zone> fvgs = array.new<Zone>()
+
+fvgUp = low  > high[2] and (low - high[2])  >= fvgMinAtr * atr
+fvgDn = high < low[2]  and (low[2] - high)  >= fvgMinAtr * atr
+
+var string lastFvgDisp = "NONE"
+if fvgUp or fvgDn
+    lastFvgDisp := midBig ? "STRONG" : midMid ? "MODERATE" : "WEAK"
+    int   fdir = fvgUp ? 1 : -1
+    float ft   = fvgUp ? low     : low[2]
+    float fb   = fvgUp ? high[2] : high
+    color fcol = gfxFVG ? (fdir > 0 ? C_BULL : C_BEAR) : na
+    fbx  = box.new(bar_index - 2, ft, bar_index + 10, fb,
+             border_color = fcol, border_width = 1, bgcolor = gfxFVG ? color.new(fcol, 90) : na)
+    flb  = label.new(bar_index + 4, (ft + fb) / 2, "FVG (VALID)",
+             style = label.style_none, textcolor = gfxFVG ? color.new(fcol, 10) : na, size = size.tiny)
+    array.push(fvgs, Zone.new(fbx, flb, ft, fb, fdir, "FVG", "VALID", bar_index, true))
+    if array.size(fvgs) > maxZones
+        Zone oldf = array.shift(fvgs)
+        box.delete(oldf.bx)
+        label.delete(oldf.lb)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ZONE MAINTENANCE
+// ═══════════════════════════════════════════════════════════════════════════
+
+f_touch(t, b) => not na(t) and not na(b) and high >= b and low <= t
+
+// A zone is never graded against the bar that created it: a bullish FVG's top
+// IS that bar's low, so it would read PARTIAL the moment it formed.
+if array.size(obs) > 0
+    for i = array.size(obs) - 1 to 0
+        Zone z = array.get(obs, i)
+        box.set_right(z.bx, bar_index + 10)
+        label.set_x(z.lb, bar_index + 5)
+        if z.born < bar_index and f_touch(z.top, z.bot) and z.state == "FRESH"
+            z.state := "TESTED"
+            if gfxOB
+                box.set_bgcolor(z.bx, color.new(z.dir > 0 ? C_BULL : C_BEAR, 93))
+        bool killed = z.dir > 0 ? close < z.bot : close > z.top
+        if killed or (bar_index - z.born) > zoneMaxAge
+            z.alive := false
+            box.delete(z.bx)
+            label.delete(z.lb)
+            array.remove(obs, i)
+
+if array.size(fvgs) > 0
+    for i = array.size(fvgs) - 1 to 0
+        Zone z = array.get(fvgs, i)
+        box.set_right(z.bx, bar_index + 10)
+        label.set_x(z.lb, bar_index + 4)
+        bool fresh   = z.born == bar_index
+        bool entered = not fresh and f_touch(z.top, z.bot)
+        bool filled  = not fresh and (z.dir > 0 ? low <= z.bot : high >= z.top)
+        if filled
+            z.state := "FILLED"
+        else if entered and z.state == "VALID"
+            z.state := "PARTIAL"
+        if (bar_index - z.born) > zoneMaxAge and z.state == "VALID"
+            z.state := "INVALID"
+        label.set_text(z.lb, "FVG (" + z.state + ")")
+        if z.state == "FILLED" or z.state == "INVALID"
+            z.alive := false
+            box.delete(z.bx)
+            label.delete(z.lb)
+            array.remove(fvgs, i)
+
+// freshest live zone in a given direction; na if none
+f_bestIdx(array<Zone> arr, int dir) =>
+    int found = na
+    if array.size(arr) > 0 and dir != 0
+        for i = array.size(arr) - 1 to 0
+            Zone z = array.get(arr, i)
+            if na(found) and z.alive and z.dir == dir
+                found := i
+    found
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 14. SESSION + KILLZONE ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+f_inSess(s) => not na(time(timeframe.period, s, sessTz))
+f_inNY(s)   => not na(time(timeframe.period, s, NY))
+
+inSyd = f_inSess(sSydney)
+inTok = f_inSess(sTokyo)
+inLon = f_inSess(sLondon)
+inNY  = f_inSess(sNewYork)
+
+f_openWindow(inS) =>
+    var int startT = na
+    if inS and not inS[1]
+        startT := time
+    inS and not na(startT) and (time - startT) <= openMins * 60000
+
+lonOpen = f_openWindow(inLon)
+nyOpen  = f_openWindow(inNY)
+
+inKzL  = f_inNY(kzLon)
+inKzA  = f_inNY(kzNYam)
+inKzP  = f_inNY(kzNYpm)
+inKZ   = inKzL or inKzA or inKzP
+kzName = inKzL ? "LONDON KZ" : inKzA ? "NY AM KZ" : inKzP ? "NY PM KZ" : ""
+
+sessName = inLon and lonOpen ? "LONDON OPEN" :
+   inNY and nyOpen ? "NEW YORK OPEN" :
+   inLon and inNY  ? "LONDON / NY OVERLAP" :
+   inLon ? "LONDON" : inNY ? "NEW YORK" : inTok ? "TOKYO" : inSyd ? "SYDNEY" : "CLOSED"
+
+sessOK = switch tradeSess
+    "Any"               => true
+    "London only"       => inLon
+    "New York only"     => inNY
+    "London + New York" => inLon or inNY
+    "Asia only"         => inTok or inSyd
+    => true
+
+sessCol = sessOK ? C_BULL : C_GRAY
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 15. VOLUME ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+vol    = nz(volume)
+volAvg = ta.sma(vol, volLen)
+noVol  = vol == 0 or na(volAvg) or volAvg == 0
+volTxt = noVol ? "N/A" : vol > volHigh * volAvg ? "ABOVE AVG" : vol < volLow * volAvg ? "BELOW AVG" : "NORMAL"
+volCol = volTxt == "ABOVE AVG" ? C_BULL : volTxt == "BELOW AVG" ? C_BEAR : C_TEXT
+midVolOK = noVol or vol[1] > nz(volAvg[1])
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 16. NEWS FILTER  +  SPREAD
+// ═══════════════════════════════════════════════════════════════════════════
+
+f_newsState() =>
+    int  nowMin  = hour(time, newsTz) * 60 + minute(time, newsTz)
+    int  dow     = dayofweek(time, newsTz)
+    bool weekend = dow == dayofweek.saturday or dow == dayofweek.sunday
+    int  nextIn  = 99999
+    bool black   = false
+    if newsOn and not (newsSkipWe and weekend)
+        parts = str.split(str.replace_all(newsTimes, " ", ""), ",")
+        if array.size(parts) > 0
+            for i = 0 to array.size(parts) - 1
+                hm = str.split(array.get(parts, i), ":")
+                if array.size(hm) == 2
+                    float hh = str.tonumber(array.get(hm, 0))
+                    float mm = str.tonumber(array.get(hm, 1))
+                    if not na(hh) and not na(mm)
+                        int evt = int(hh) * 60 + int(mm)
+                        int til = evt - nowMin
+                        if til < 0
+                            til += 1440
+                        if til < nextIn
+                            nextIn := til
+                        int since = nowMin - evt
+                        if since < 0
+                            since += 1440
+                        if til <= newsBefore or since <= newsAfter
+                            black := true
+    [black, nextIn]
+
+[newsBlack, newsNextMin] = f_newsState()
+newsSafe = not newsOn or not newsBlack
+newsTxt  = not newsOn ? "OFF" : newsBlack ? "BLACKOUT" : "SAFE"
+newsCol  = not newsOn ? C_GRAY : newsBlack ? C_BEAR : C_BULL
+nextTxt  = not newsOn or newsNextMin >= 99999 ? "-" :
+   str.tostring(int(newsNextMin / 60)) + "H " + str.tostring(newsNextMin % 60) + "M"
+
+spreadPrice = spreadTicks * syminfo.mintick
+spreadPctA  = atr > 0 ? spreadPrice / atr * 100 : na
+spreadTxt   = na(spreadPctA) ? "-" : spreadPctA > spreadWideP * 2 ? "EXTREME" :
+   spreadPctA > spreadWideP ? "WIDE" : "NORMAL"
+spreadOK  = spreadTxt == "NORMAL"
+spreadCol = spreadTxt == "NORMAL" ? C_BULL : spreadTxt == "WIDE" ? C_GOLD : C_BEAR
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 12b. KEY LEVELS
+// ═══════════════════════════════════════════════════════════════════════════
+
+pp  = not na(pdh) ? (pdh + pdl + pdc) / 3 : na
+pr1 = not na(pp)  ? 2 * pp - pdl : na
+ps1 = not na(pp)  ? 2 * pp - pdh : na
+pr2 = not na(pp)  ? pp + (pdh - pdl) : na
+ps2 = not na(pp)  ? pp - (pdh - pdl) : na
+pr3 = not na(pp)  ? pdh + 2 * (pp - pdl) : na
+ps3 = not na(pp)  ? pdl - 2 * (pdh - pp) : na
+
+f_levels() =>
+    a = array.new<float>()
+    for v in array.from(pr1, pr2, pr3, ps1, ps2, ps3, pdh, pdl, dayHi, dayLo, swH, swL)
+        if not na(v)
+            array.push(a, v)
+    array.sort(a, order.ascending)
+    a
+
+lvl = f_levels()
+
+f_above(n) =>
+    float r = na
+    int   c = 0
+    if array.size(lvl) > 0
+        for i = 0 to array.size(lvl) - 1
+            float v = array.get(lvl, i)
+            if na(r) and v > close + syminfo.mintick
+                c += 1
+                if c == n
+                    r := v
+    r
+
+f_below(n) =>
+    float r = na
+    int   c = 0
+    if array.size(lvl) > 0
+        for i = array.size(lvl) - 1 to 0
+            float v = array.get(lvl, i)
+            if na(r) and v < close - syminfo.mintick
+                c += 1
+                if c == n
+                    r := v
+    r
+
+res2 = f_above(1)     // nearest above
+res1 = f_above(2)     // beyond it - top row of the panel
+sup1 = f_below(1)
+sup2 = f_below(2)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 20. CBDR / ASIA RANGE + STANDARD DEVIATION PROJECTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+// CBDR = 14:00-20:00 New York. ICT: the range is only reliable when it is
+// tight; a wide CBDR hands over to the Asian range (20:00-00:00), or the two
+// are combined (Flout). One range width = one SD; targets are SDs beyond it.
+
+inCB = f_inNY(cbdrSess)
+inAS = f_inNY(asiaSess)
+hiSrc = cbdrBody ? math.max(open, close) : high
+loSrc = cbdrBody ? math.min(open, close) : low
+
+var int   cbStart = na
+var float cbH     = na
+var float cbL     = na
+var int   asStart = na
+var float asH     = na
+var float asL     = na
+var float cbdrH   = na
+var float cbdrL   = na
+var bool  cbWide  = false
+var float rngH    = na
+var float rngL    = na
+var string rngName = "-"
+
+if inCB and not inCB[1]
+    cbStart := bar_index
+    cbH     := hiSrc
+    cbL     := loSrc
+else if inCB
+    cbH := math.max(cbH, hiSrc)
+    cbL := math.min(cbL, loSrc)
+
+if inAS and not inAS[1]
+    asStart := bar_index
+    asH     := hiSrc
+    asL     := loSrc
+else if inAS
+    asH := math.max(asH, hiSrc)
+    asL := math.min(asL, loSrc)
+
+cbDone = inCB[1] and not inCB and not na(cbH)
+asDone = inAS[1] and not inAS and not na(asH)
+bool newRng = false
+
+if cbDone
+    cbdrH  := cbH
+    cbdrL  := cbL
+    cbWide := not na(adrRaw) and (cbH - cbL) > cbdrMaxP / 100 * adrRaw
+    if showCbdr
+        box.new(cbStart, cbH, bar_index - 1, cbL, border_color = color.new(C_GOLD, 40),
+             bgcolor = color.new(C_GOLD, 92), text = cbWide ? "CBDR (WIDE)" : "CBDR",
+             text_color = color.new(C_GOLD, 30), text_size = size.tiny, text_halign = text.align_left, text_valign = text.align_top)
+    if rangeSrc == "CBDR" or (rangeSrc == "Auto" and not cbWide)
+        rngH    := cbH
+        rngL    := cbL
+        rngName := "CBDR"
+        newRng  := true
+
+if asDone
+    if showCbdr
+        box.new(asStart, asH, bar_index - 1, asL, border_color = color.new(C_CYAN, 50),
+             bgcolor = color.new(C_CYAN, 93), text = "ASIA", text_color = color.new(C_CYAN, 30),
+             text_size = size.tiny, text_halign = text.align_left, text_valign = text.align_top)
+    if rangeSrc == "Asia" or (rangeSrc == "Auto" and cbWide)
+        rngH    := asH
+        rngL    := asL
+        rngName := "ASIA"
+        newRng  := true
+    else if rangeSrc == "Flout" and not na(cbdrH)
+        rngH    := math.max(cbdrH, asH)
+        rngL    := math.min(cbdrL, asL)
+        rngName := "FLOUT"
+        newRng  := true
+
+rngSD = not na(rngH) ? rngH - rngL : na
+f_sd(k) => na(rngSD) ? na : k > 0 ? rngH + k * rngSD : rngL + k * rngSD
+
+var array<line>  pjL = array.new<line>()
+var array<label> pjB = array.new<label>()
+
+f_pj(y, txt, col) =>
+    array.push(pjL, line.new(bar_index, y, bar_index + 10, y, color = col, style = line.style_dotted))
+    array.push(pjB, label.new(bar_index + 10, y, txt, style = label.style_label_left,
+         color = color.new(C_BG1, 100), textcolor = col, size = size.tiny))
+
+if newRng and showCbdr and rngSD > 0
+    for l in pjL
+        line.set_x2(l, bar_index)
+    for b in pjB
+        label.delete(b)
+    array.clear(pjL)
+    array.clear(pjB)
+    f_pj(rngH, rngName + " HIGH", color.new(C_GOLD, 20))
+    f_pj(rngL, rngName + " LOW",  color.new(C_GOLD, 20))
+    for k = 1 to sdCount
+        f_pj(rngH + k * rngSD, "+" + str.tostring(k) + " SD", color.new(C_BEAR, 30))
+        f_pj(rngL - k * rngSD, "-" + str.tostring(k) + " SD", color.new(C_BULL, 30))
+
+if barstate.islast and array.size(pjL) > 0
+    for l in pjL
+        line.set_x2(l, bar_index + 10)
+    for b in pjB
+        label.set_x(b, bar_index + 10)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 21. RISK CALCULATOR CORE
+// ═══════════════════════════════════════════════════════════════════════════
+
+autoContract = str.contains(syminfo.ticker, "XAU") ? 100.0 :
+   str.contains(syminfo.ticker, "XAG") ? 5000.0 :
+   syminfo.type == "forex" ? 100000.0 : 1.0
+contract  = contractIn > 0 ? contractIn : autoContract
+fxRate    = syminfo.currency == acctCcy ? 1.0 :
+   request.currency_rate(syminfo.currency, acctCcy, ignore_invalid_currency = true)
+valPerLot = contract * nz(fxRate, 1.0)        // account money per 1.0 price move per 1.00 lot
+riskAmt   = acctBal * riskPct / 100
+curSym    = acctCcy == "USD" ? "$" : acctCcy == "EUR" ? "€" : acctCcy == "GBP" ? "£" : acctCcy == "INR" ? "₹" : acctCcy + " "
+
+f_cash(x)  => na(x) ? "-" : curSym + str.tostring(x, "#,##0.00")
+f_lots(d)  => d > 0 and valPerLot > 0 ? math.floor(riskAmt / (valPerLot * d) / lotStep + 1e-9) * lotStep : na
+f_lotTxt(l) => na(l) ? "-" : str.tostring(l, lotStep < 0.01 ? "0.000" : "0.00")
+
+// "0.01 = $10.00 | 0.02 = $20.00 ..." for a stop distance d
+f_lotTable(d, sep) =>
+    string s = ""
+    parts = str.split(str.replace_all(lotList, " ", ""), ",")
+    if array.size(parts) > 0
+        for i = 0 to array.size(parts) - 1
+            float lt = str.tonumber(array.get(parts, i))
+            if not na(lt)
+                s := s + (s == "" ? "" : sep) + f_lotTxt(lt) + " = " + f_cash(lt * valPerLot * d)
+    s
+
+f_riskLine(d) =>
+    float lt = f_lots(d)
+    str.tostring(riskPct, "0.0#") + "% = " + f_cash(riskAmt) + "  →  " +
+       (na(lt) or lt < lotStep ? "below min lot (" + f_lotTxt(lotStep) + " = " + f_cash(lotStep * valPerLot * d) + ")" : f_lotTxt(lt) + " lot")
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 22. TARGET ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+// Candidates beyond entry by at least TP1-min R, nearest first, at least 0.5R
+// apart. Missing targets fall back to R multiples, always beyond the last.
+
+f_targets(int dir, float entry, float R) =>
+    a = array.new<float>()
+    if tgtMode == "CBDR SD projections" and not na(rngSD) and rngSD > 0
+        array.push(a, rngH)
+        array.push(a, rngL)
+        array.push(a, (rngH + rngL) / 2)
+        for k = 1 to sdCount
+            array.push(a, rngH + k * rngSD)
+            array.push(a, rngL - k * rngSD)
+    else if tgtMode == "Key levels"
+        for v in lvl
+            array.push(a, v)
+    d = array.new<float>()
+    for v in a
+        if not na(v) and dir * (v - entry) >= tp1MinR * R
+            array.push(d, dir * (v - entry))
+    array.sort(d, order.ascending)
+    float t1 = na
+    float t2 = na
+    float t3 = na
+    float last = na
+    if array.size(d) > 0
+        for i = 0 to array.size(d) - 1
+            float x = array.get(d, i)
+            if na(last) or x - last >= 0.5 * R
+                if na(t1)
+                    t1 := x
+                else if na(t2)
+                    t2 := x
+                else if na(t3)
+                    t3 := x
+                last := x
+    t1 := na(t1) ? math.max(rr1, tp1MinR) * R : t1
+    t2 := na(t2) ? math.max(rr2 * R, t1 + 0.5 * R) : t2
+    t3 := na(t3) ? math.max(rr3 * R, t2 + 0.5 * R) : t3
+    [entry + dir * t1, entry + dir * t2, entry + dir * t3]
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 10. MODEL A  -  HTF OB TAP  ->  REACTION  ->  FVG
+// ═══════════════════════════════════════════════════════════════════════════
+
+var int   tapDir    = 0
+var int   tapBar    = na
+var float tapExt    = na
+var float tapTop    = na
+var float tapBot    = na
+var int   tapObT    = na
+var int   usedBullT = na
+var int   usedBearT = na
+
+bullTapNow = useA and hasHB and (na(usedBullT) or hBTm != usedBullT) and low <= hBT and close > hBB
+bearTapNow = useA and hasHS and (na(usedBearT) or hSTm != usedBearT) and high >= hSB and close < hST
+sameBull   = tapDir == 1  and not na(tapObT) and not na(hBTm) and tapObT == hBTm
+sameBear   = tapDir == -1 and not na(tapObT) and not na(hSTm) and tapObT == hSTm
+
+if bullTapNow and not sameBull
+    tapDir := 1
+    tapBar := bar_index
+    tapExt := low
+    tapTop := hBT
+    tapBot := hBB
+    tapObT := hBTm
+else if bearTapNow and not sameBear
+    tapDir := -1
+    tapBar := bar_index
+    tapExt := high
+    tapTop := hST
+    tapBot := hSB
+    tapObT := hSTm
+
+if tapDir == 1
+    tapExt := math.min(tapExt, low)
+    if close < tapBot
+        usedBullT := tapObT
+        tapDir    := 0
+if tapDir == -1
+    tapExt := math.max(tapExt, high)
+    if close > tapTop
+        usedBearT := tapObT
+        tapDir    := 0
+if tapDir != 0 and bar_index - tapBar > tapBars
+    tapDir := 0
+
+dispOkA = not reqDispA or midMid
+aLong   = tapDir == 1  and fvgUp and bar_index > tapBar and high[2] > tapExt and dispOkA
+aShort  = tapDir == -1 and fvgDn and bar_index > tapBar and low[2]  < tapExt and dispOkA
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 11. MODEL B  -  SWEEP  ->  MSS  ->  FVG
+// ═══════════════════════════════════════════════════════════════════════════
+
+var int   armDir = 0
+var int   armBar = na
+var float armExt = na
+
+if useB and mssEvt
+    armDir := mssDir
+    armBar := bar_index
+    armExt := sweepExt
+
+bNew = armDir == 1 and fvgUp or armDir == -1 and fvgDn
+
+// on the MSS bar, a still-VALID FVG printed since the sweep counts too
+float bOldTop = na
+float bOldBot = na
+if armDir != 0 and not bNew and armBar == bar_index
+    iF = f_bestIdx(fvgs, armDir)
+    if not na(iF)
+        Zone zq = array.get(fvgs, iF)
+        if zq.state == "VALID" and not na(sweepBar) and zq.born >= sweepBar
+            bOldTop := zq.top
+            bOldBot := zq.bot
+bOld = not na(bOldTop)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 12. CANDIDATE  -  refined entry, stop, targets, score
+// ═══════════════════════════════════════════════════════════════════════════
+
+int    cDir   = 0
+string cModel = ""
+float  cTop   = na
+float  cBot   = na
+float  cExt   = na
+float  cEdge  = na
+
+if aLong or aShort
+    cDir   := aLong ? 1 : -1
+    cModel := "A"
+    cTop   := aLong ? low : low[2]
+    cBot   := aLong ? high[2] : high
+    cExt   := tapExt
+    cEdge  := aLong ? tapBot : tapTop
+else if bNew or bOld
+    cDir   := armDir
+    cModel := "B"
+    cTop   := bOld ? bOldTop : armDir > 0 ? low : low[2]
+    cBot   := bOld ? bOldBot : armDir > 0 ? high[2] : high
+    cExt   := armExt
+    cEdge  := armExt
+
+float  cEntry = na
+float  cSL    = na
+float  cR     = na
+float  cTP1   = na
+float  cTP2   = na
+float  cTP3   = na
+float  cRR2   = na
+int    cScore = 0
+bool   cValid = false
+string cWhy   = ""
+
+if cDir != 0
+    cEntry := entryMode == "FVG CE (50%)" ? (cTop + cBot) / 2 : cDir > 0 ? cTop : cBot
+    float slRaw = slMode == "FVG far edge" ? (cDir > 0 ? cBot : cTop) :
+       slMode == "HTF OB / sweep edge" ? cEdge : cExt
+    cSL := slRaw - cDir * (slBufAtr * atr + spreadPrice)
+    cR  := cDir * (cEntry - cSL)
+    if cR < minSlAtr * atr
+        cSL := cEntry - cDir * minSlAtr * atr
+        cR  := minSlAtr * atr
+    [t1, t2, t3] = f_targets(cDir, cEntry, cR)
+    cTP1 := t1
+    cTP2 := t2
+    cTP3 := t3
+    cRR2 := cDir * (cTP2 - cEntry) / cR
+
+    // score, 100 max
+    bool inHtfOB = cDir > 0 ? hasHB and cExt <= hBT and cExt >= hBB - atr : hasHS and cExt >= hSB and cExt <= hST + atr
+    int sHTF  = htfBias == cDir ? (htfAligned ? 20 : 12) : 0
+    int sTrig = 15
+    int sConf = cModel == "A" ? (sweepFresh and sweepDir == cDir ? 5 : 0) : (inHtfOB ? 5 : 0)
+    int sDisp = midBig ? 12 : midMid ? 7 : 0
+    int sMSS  = cModel == "B" or msDir == cDir ? 10 : 0
+    int sPD   = not na(eqLevel) and (cDir > 0 ? cEntry < eqLevel : cEntry > eqLevel) ? 10 : 0
+    int sKZ   = inKZ ? 8 : 0
+    int sRR   = cRR2 >= 3 ? 10 : cRR2 >= 2 ? 6 : 0
+    int sVol  = midVolOK ? 5 : 0
+    int sNews = newsSafe ? 5 : 0
+    cScore := sHTF + sTrig + sConf + sDisp + sMSS + sPD + sKZ + sRR + sVol + sNews
+
+    cWhy := cR > maxSlAtr * atr ? "STOP TOO WIDE" :
+       cRR2 < minRR2 ? "R:R " + str.tostring(cRR2, "0.0") + " < " + str.tostring(minRR2, "0.0") :
+       cScore < minScore ? "SCORE " + str.tostring(cScore) + " < " + str.tostring(minScore) :
+       reqHTF and htfBias != cDir ? "AGAINST HTF BIAS" :
+       not sessOK ? "OUTSIDE SESSION" : not newsSafe ? "NEWS BLACKOUT" : not spreadOK ? "SPREAD" : ""
+    cValid := cWhy == ""
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 13. TRADE ENGINE  -  pending limit -> fill -> partials -> BE -> trail
+// ═══════════════════════════════════════════════════════════════════════════
+
+var int    tState  = 0          // 0 none, 1 pending, 2 active
+var int    tDir    = 0
+var string tModel  = ""
+var int    tScore  = 0
+var float  tEntry  = na
+var float  tSL0    = na
+var float  tSL     = na
+var float  tTP1    = na
+var float  tTP2    = na
+var float  tTP3    = na
+var float  tRisk      = na
+var float  tLots   = na
+var int    tBorn   = na
+var int    tFill   = na
+var bool   tHit1   = false
+var bool   tHit2   = false
+var bool   tBE     = false
+var bool   tTrail  = false
+var float  tReal   = 0.0
+var float  tRem    = 1.0
+var float  tBest   = na
+var line   lnE     = na
+var line   lnS     = na
+var line   lnT1    = na
+var line   lnT2    = na
+var line   lnT3    = na
+var label  lbPend  = na
+var string lastRes = "-"
+var string lastRej = ""
+
+var int   nWin   = 0
+var int   nLoss  = 0
+var int   nBE    = 0
+var int   streak = 0
+var float netR   = 0.0
+var float grossW = 0.0
+var float grossL = 0.0
+var float rrSum  = 0.0
+var int   nFill  = 0
+var float tRR2   = na
+
+bool evPend = false
+bool evFill = false
+bool evTP1  = false
+bool evTP2  = false
+bool evBE   = false
+bool evExit = false
+bool evCanc = false
+string why  = ""
+
+p1 = pTP1 / 100
+p2 = math.min(pTP2 / 100, 1 - p1)
+
+// ---- 13.1 pending order: fill / cancel ----
+if tState == 1 and bar_index > tBorn
+    bool touched = tDir > 0 ? low <= tEntry : high >= tEntry
+    if touched
+        tState := 2
+        tFill  := bar_index
+        tBest  := tEntry
+        evFill := true
+        rrSum  += tRR2
+        nFill  += 1
+        label.delete(lbPend)
+        if gfxTrade
+            label.new(bar_index, tDir > 0 ? low : high, (tDir > 0 ? "BUY " : "SELL ") + f_lotTxt(tLots),
+                 style = tDir > 0 ? label.style_label_up : label.style_label_down,
+                 color = tDir > 0 ? C_BULL : C_BEAR, textcolor = color.black, size = size.tiny)
+        // conservative: a fill bar that also reaches the stop is a full loss
+        if tDir > 0 ? low <= tSL : high >= tSL
+            tReal  := -1.0
+            tRem   := 0.0
+            evExit := true
+            why    := "STOP LOSS"
+    else
+        bool missed = tDir > 0 ? high >= tTP1 : low <= tTP1
+        why := missed ? "MISSED (TP1 FIRST)" : bar_index - tBorn > pendBars ? "EXPIRED" :
+           newsCancel and not newsSafe ? "NEWS" : (tDir > 0 ? close < tSL : close > tSL) ? "INVALIDATED" : ""
+        if why != ""
+            evCanc := true
+
+// ---- 13.2 active trade: stop first (conservative), then targets ----
+if tState == 2 and bar_index > tFill and not evExit
+    bool slHit = tDir > 0 ? low <= tSL : high >= tSL
+    if slHit
+        float px = tDir > 0 ? math.min(open, tSL) : math.max(open, tSL)
+        tReal  += tRem * tDir * (px - tEntry) / tRisk
+        tRem   := 0.0
+        evExit := true
+        why    := tTrail ? "TRAIL STOP" : tBE ? "BREAKEVEN" : "STOP LOSS"
+    else
+        if not tHit1 and (tDir > 0 ? high >= tTP1 : low <= tTP1)
+            tHit1 := true
+            evTP1 := true
+            tReal += p1 * tDir * (tTP1 - tEntry) / tRisk
+            tRem  -= p1
+        if tHit1 and not tHit2 and (tDir > 0 ? high >= tTP2 : low <= tTP2)
+            tHit2 := true
+            evTP2 := true
+            tReal += p2 * tDir * (tTP2 - tEntry) / tRisk
+            tRem  -= p2
+        if tHit2 and (tDir > 0 ? high >= tTP3 : low <= tTP3)
+            tReal  += tRem * tDir * (tTP3 - tEntry) / tRisk
+            tRem   := 0.0
+            evExit := true
+            why    := "TP3"
+        if not evExit and tRem <= 1e-9
+            evExit := true
+            why    := tHit2 ? "TP2" : "TP1"
+
+    // ---- 13.3 management for the next bar: breakeven, then trail ----
+    if not evExit
+        tBest := tDir > 0 ? math.max(tBest, high) : math.min(tBest, low)
+        bool beNow = beMode == "At TP1" ? tHit1 : beMode == "At R multiple" ? tDir * (tBest - tEntry) >= beAtR * tRisk : false
+        if beNow and not tBE
+            float beSL = tEntry + tDir * beLockR * tRisk
+            if tDir * (beSL - tSL) > 0
+                tSL   := beSL
+                evBE  := true
+            tBE := true
+        bool trailOn = trailMode != "Off" and (trailFrom == "After TP1" ? tHit1 : trailFrom == "After TP2" ? tHit2 : tBE)
+        if trailOn
+            float cand = trailMode == "ATR" ? tBest - tDir * trailAtr * atr :
+               tDir > 0 ? (not na(swL) and swLb > tFill ? swL - trailBuf * atr : na) :
+               (not na(swH) and swHb > tFill ? swH + trailBuf * atr : na)
+            if not na(cand) and tDir * (cand - tSL) > 0 and tDir * (close - cand) > 0
+                tSL    := cand
+                tTrail := true
+
+// ---- 13.4 close-out / cancel bookkeeping ----
+if evExit
+    if tReal > 0.05
+        nWin   += 1
+        streak += 1
+        grossW += tReal
+    else if tReal < -0.05
+        nLoss  += 1
+        streak := 0
+        grossL += -tReal
+    else
+        nBE += 1
+    netR    += tReal
+    lastRes := why + " " + f_r(tReal)
+    if gfxTrade
+        label.new(bar_index, tDir > 0 ? high : low, why + "\n" + f_r(tReal) + "  " + f_cash(tReal * riskAmt),
+             style = tDir > 0 ? label.style_label_down : label.style_label_up,
+             color = color.new(tReal > 0.05 ? C_BULL : tReal < -0.05 ? C_BEAR : C_GOLD, 15),
+             textcolor = color.black, size = size.tiny)
+    for l in array.from(lnE, lnS, lnT1, lnT2, lnT3)
+        line.set_x2(l, bar_index)
+    tState := 0
+
+if evCanc
+    lastRes := "CANCELLED · " + why
+    label.delete(lbPend)
+    for l in array.from(lnE, lnS, lnT1, lnT2, lnT3)
+        line.delete(l)
+    tState := 0
+
+// ---- 13.5 new pending order from a valid candidate ----
+if cDir != 0 and not cValid
+    lastRej := (cModel == "A" ? "A " : "B ") + (cDir > 0 ? "BUY" : "SELL") + " SKIPPED · " + cWhy
+
+placeNew = cValid and (tState == 0 or (tState == 1 and cScore > tScore))
+if placeNew
+    if tState == 1
+        label.delete(lbPend)
+        for l in array.from(lnE, lnS, lnT1, lnT2, lnT3)
+            line.delete(l)
+    tState := 1
+    tDir   := cDir
+    tModel := cModel
+    tScore := cScore
+    tEntry := cEntry
+    tSL0   := cSL
+    tSL    := cSL
+    tTP1   := cTP1
+    tTP2   := cTP2
+    tTP3   := cTP3
+    tRisk     := cR
+    tLots  := f_lots(cR)
+    tBorn  := bar_index
+    tFill  := na
+    tHit1  := false
+    tHit2  := false
+    tBE    := false
+    tTrail := false
+    tReal  := 0.0
+    tRem   := 1.0
+    tRR2   := cRR2
+    evPend := true
+    lastRej := ""
+    if cModel == "A"
+        if cDir > 0
+            usedBullT := tapObT
+        else
+            usedBearT := tapObT
+        tapDir := 0
+    else
+        armDir := 0
+    if gfxTrade
+        lnE  := line.new(bar_index - 2, tEntry, bar_index + 5, tEntry, color = C_GOLD, width = 2)
+        lnS  := line.new(bar_index - 2, tSL,    bar_index + 5, tSL,    color = C_BEAR, style = line.style_dashed)
+        lnT1 := line.new(bar_index - 2, tTP1,   bar_index + 5, tTP1,   color = C_BULL, style = line.style_dotted)
+        lnT2 := line.new(bar_index - 2, tTP2,   bar_index + 5, tTP2,   color = C_BULL, style = line.style_dotted)
+        lnT3 := line.new(bar_index - 2, tTP3,   bar_index + 5, tTP3,   color = C_BULL, style = line.style_dotted)
+    if showPend
+        string hdr = (tDir > 0 ? "BUY LIMIT " : "SELL LIMIT ") + f_px(tEntry) + "   · MODEL " + tModel +
+           (tModel == "A" ? " " + hobName + " OB+FVG" : " SWEEP+MSS") + " · SCORE " + str.tostring(tScore)
+        string lv  = "SL " + f_px(tSL) + " (" + str.tostring(tRisk, format.mintick) + ")   TP1 " + f_px(tTP1) +
+           "   TP2 " + f_px(tTP2) + "   TP3 " + f_px(tTP3) + "   R:R 1:" + str.tostring(cRR2, "0.0")
+        lbPend := label.new(bar_index + 6, tEntry, hdr + "\n" + lv + "\n" + f_lotTable(tRisk, "  |  ") + "\n" + f_riskLine(tRisk),
+             style = label.style_label_left, color = color.new(C_BG1, 10), textcolor = C_GOLD,
+             size = size.small, textalign = text.align_left, text_font_family = font.family_monospace)
+
+// arm/tap timeouts after candidate handling
+if armDir != 0 and (bar_index - armBar > mssWindow or (armDir > 0 ? close < armExt : close > armExt))
+    armDir := 0
+
+// keep the live trade's lines and pending label moving with price
+if tState != 0 and gfxTrade
+    for l in array.from(lnE, lnS, lnT1, lnT2, lnT3)
+        line.set_x2(l, bar_index + 5)
+if tState == 1 and showPend
+    label.set_x(lbPend, bar_index + 6)
+
+openR   = tState == 2 ? tReal + tRem * tDir * (close - tEntry) / tRisk : na
+nTr     = nWin + nLoss + nBE
+winRate = nTr > 0 ? nWin / nTr * 100 : na
+pf      = grossL > 0 ? grossW / grossL : na
+expR    = nTr > 0 ? netR / nTr : na
+rrAvg   = nFill > 0 ? rrSum / nFill : na
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DASHBOARD STATE
+// ═══════════════════════════════════════════════════════════════════════════
+
+ctxDir = tState != 0 ? tDir : tapDir != 0 ? tapDir : armDir != 0 ? armDir : htfBias
+forming = tapDir != 0 or armDir != 0
+
+formScore = forming ? (htfBias == ctxDir ? (htfAligned ? 20 : 12) : 0) + 15 + (inKZ ? 8 : 0) +
+   (newsSafe ? 5 : 0) + (msDir == ctxDir ? 10 : 0) : 0
+conf = tState != 0 ? tScore : formScore
+
+confBand = conf >= 85 ? "STRONG CONFLUENCE" : conf >= 65 ? "GOOD SETUP" : "WATCHLIST ONLY"
+confCol  = conf >= 85 ? C_BULL : conf >= 65 ? C_GOLD : C_GRAY
+confluenceTxt = conf >= 85 ? "HIGH" : conf >= 65 ? "MEDIUM" : "LOW"
+
+rrNow     = tState != 0 ? tDir * (tTP2 - tEntry) / tRisk : na
+riskTxt   = na(rrNow) ? "-" : rrNow >= 3 ? "LOW" : rrNow >= 2 ? "MEDIUM" : "HIGH"
+riskCol   = riskTxt == "LOW" ? C_BULL : riskTxt == "MEDIUM" ? C_GOLD : riskTxt == "-" ? C_GRAY : C_BEAR
+rewardTxt = na(rrNow) ? "-" : rrNow >= 3 ? "HIGH" : rrNow >= 2 ? "MEDIUM" : "LOW"
+rewardCol = rewardTxt == "HIGH" ? C_BULL : rewardTxt == "MEDIUM" ? C_GOLD : rewardTxt == "-" ? C_GRAY : C_BEAR
+
+noTrade   = tState == 0 and (not sessOK or not newsSafe or not spreadOK)
+statusTxt = tState == 2 ? "IN TRADE · " + (tDir > 0 ? "BUY" : "SELL") :
+   tState == 1 ? "ENTRY READY · " + (tDir > 0 ? "BUY LIMIT" : "SELL LIMIT") :
+   noTrade ? "NO TRADE" : forming ? "SETUP FORMING" : "WAIT"
+statusCol = tState != 0 ? (tDir > 0 ? C_BULL : C_BEAR) : noTrade ? C_BEAR : C_GOLD
+statusDot = tState == 2 ? "● " : tState == 1 ? "◉ " : noTrade ? "✖ " : "◐ "
+
+iOB      = f_bestIdx(obs,  ctxDir)
+iFVG     = f_bestIdx(fvgs, ctxDir)
+hasOB    = not na(iOB)
+hasFVG   = not na(iFVG)
+obState  = hasOB  ? array.get(obs,  iOB).state  : "NONE"
+fvgState = hasFVG ? array.get(fvgs, iFVG).state : "NONE"
+
+mssRecent = not na(mssBar) and bar_index - mssBar <= 60
+hobTxt = tapDir > 0 ? "✔ BULL REACTION" : tapDir < 0 ? "✔ BEAR REACTION" :
+   tState != 0 and tModel == "A" ? "✔ USED" : hasHB or hasHS ? "◦ WAITING TAP" : "✖ NONE"
+hobCol = tapDir != 0 or (tState != 0 and tModel == "A") ? C_BULL : hasHB or hasHS ? C_GOLD : C_BEAR
+
+modelTxt  = tState != 0 ? (tModel == "A" ? "A · " + hobName + " OB + FVG" : "B · SWEEP + MSS + FVG") :
+   tapDir != 0 ? "A · forming" : armDir != 0 ? "B · forming" : "-"
+tStatTxt  = tState == 1 ? "PENDING · " + str.tostring(bar_index - tBorn) + "/" + str.tostring(pendBars) + " bars" :
+   tState == 2 ? (tTrail ? "TRAILING SL" : tBE ? "BREAKEVEN" : "ACTIVE") + " · " + f_r(openR) :
+   lastRej != "" ? lastRej : lastRes
+tStatCol  = tState == 2 ? (openR >= 0 ? C_BULL : C_BEAR) : tState == 1 ? C_GOLD : C_GRAY
+
+trendVal = (b1 + b2 + b3 + msDir) / 4.0
+trendTxt = trendVal > 0.25 ? "BULLISH" : trendVal < -0.25 ? "BEARISH" : "NEUTRAL"
+trendCol = trendVal > 0.25 ? C_BULL : trendVal < -0.25 ? C_BEAR : C_GRAY
+
+ckHTF = ctxDir != 0 and htfBias == ctxDir
+ckHOB = tapDir != 0 or (tState != 0 and tModel == "A")
+ckFVG = tState != 0 or fvgState == "VALID"
+ckMSS = (sweepFresh or mssRecent) and mssDir == ctxDir
+ckCB  = tgtMode == "CBDR SD projections" and not na(rngSD)
+ckKZ  = inKZ
+ckNWS = newsSafe
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 18. CHART GRAPHICS
+// ═══════════════════════════════════════════════════════════════════════════
+
+var line  lnPDH = na
+var line  lnPDL = na
+var label lbPDH = na
+var label lbPDL = na
+var box   bxHB  = na
+var box   bxHS  = na
+
+if barstate.islast
+    if gfxLiq and not na(pdh)
+        line.delete(lnPDH)
+        line.delete(lnPDL)
+        label.delete(lbPDH)
+        label.delete(lbPDL)
+        lnPDH := line.new(bar_index - 300, pdh, bar_index + 12, pdh, color = C_LIQ,  style = line.style_dashed)
+        lnPDL := line.new(bar_index - 300, pdl, bar_index + 12, pdl, color = C_BULL, style = line.style_dashed)
+        lbPDH := label.new(bar_index - 160, pdh, pdhSwept ? "PREVIOUS HIGH - SWEPT" : "PREVIOUS HIGH",
+                 style = label.style_none, textcolor = C_TEXT, size = size.small)
+        lbPDL := label.new(bar_index - 160, pdl, pdlSwept ? "PREVIOUS LOW - SWEPT" : "PREVIOUS LOW",
+                 style = label.style_none, textcolor = C_BULL, size = size.small)
+    box.delete(bxHB)
+    box.delete(bxHS)
+    if gfxHOB and hasHB
+        bxHB := box.new(bar_index - 60, hBT, bar_index + 15, hBB, border_color = color.new(C_BULL, 30),
+             bgcolor = color.new(C_BULL, 85), text = hobName + " BULLISH OB", text_color = color.new(C_BULL, 0),
+             text_size = size.small, text_halign = text.align_right)
+    if gfxHOB and hasHS
+        bxHS := box.new(bar_index - 60, hST, bar_index + 15, hSB, border_color = color.new(C_BEAR, 30),
+             bgcolor = color.new(C_BEAR, 85), text = hobName + " BEARISH OB", text_color = color.new(C_BEAR, 0),
+             text_size = size.small, text_halign = text.align_right)
+
+if gfxEq and not na(phv) and eqhOn and not na(swH2b)
+    line.new(swH2b, swH2, swHb, swH, color = C_LIQ, style = line.style_dotted)
+    label.new(swHb, swH, "EQUAL HIGH", style = label.style_none, textcolor = C_LIQ, size = size.tiny)
+
+if gfxEq and not na(plv) and eqlOn and not na(swL2b)
+    line.new(swL2b, swL2, swLb, swL, color = C_BULL, style = line.style_dotted)
+    label.new(swLb, swL, "EQUAL LOW", style = label.style_none, textcolor = C_BULL, size = size.tiny)
+
+if gfxSweep and (sweepUp or sweepDn)
+    label.new(bar_index, sweepUp ? high : low, "LIQUIDITY SWEEP",
+         style = sweepUp ? label.style_label_down : label.style_label_up,
+         color = color.new(C_LIQ, 20), textcolor = color.white, size = size.tiny)
+
+if gfxHOB and (bullTapNow and not sameBull or bearTapNow and not sameBear)
+    label.new(bar_index, bullTapNow ? low : high, hobName + " OB TAP",
+         style = bullTapNow ? label.style_label_up : label.style_label_down,
+         color = color.new(C_GOLD, 25), textcolor = color.black, size = size.tiny)
+
+if gfxStruct and bosEvt
+    float bl = msDir > 0 ? brokenHi : brokenLo
+    line.new(bar_index - swLen, bl, bar_index, bl, color = C_GRAY, style = line.style_dashed)
+    label.new(bar_index, bl, "BOS", style = label.style_none, textcolor = C_TEXT, size = size.tiny)
+
+if gfxStruct and chochEvt
+    float cl  = chochDir > 0 ? brokenHi : brokenLo
+    color ccl = mssEvt ? C_LIQ : C_GOLD
+    string ct = mssEvt ? "MSS (" + (chochDir > 0 ? "BULLISH" : "BEARISH") + ")" : "CHoCH"
+    line.new(bar_index - swLen, cl, bar_index, cl, color = ccl, style = line.style_dashed)
+    label.new(bar_index, cl, ct, style = label.style_none, textcolor = ccl, size = size.tiny)
+
+// live stop path: initial stop, then breakeven, then trail
+plot(gfxTrade and tState == 2 ? tSL : na, "Live stop", color = C_BEAR, style = plot.style_linebr, linewidth = 2)
+
+// ---- live risk calculator beside price ----
+var label lbCalc = na
+if barstate.islast
+    label.delete(lbCalc)
+    if showCalc
+        float  dist = calcSlIn > 0 ? calcSlIn : tState != 0 ? tRisk : calcAtr * atr
+        string src  = calcSlIn > 0 ? "manual" : tState != 0 ? "setup stop" : str.tostring(calcAtr, "0.0#") + " ATR"
+        string sides = tState != 0 ? "" : "\nBUY SL " + f_px(close - dist) + "  ·  SELL SL " + f_px(close + dist)
+        lbCalc := label.new(bar_index + calcOff, close,
+             "RISK CALC @ " + f_px(close) + "\nSL distance " + str.tostring(dist, format.mintick) + " (" + src + ")" + sides +
+             "\n" + f_lotTable(dist, "\n") + "\n" + f_riskLine(dist),
+             style = label.style_label_left, color = color.new(C_BG1, 5), textcolor = C_TEXT,
+             size = size.small, textalign = text.align_left, text_font_family = font.family_monospace)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 17. DASHBOARD UI
+// ═══════════════════════════════════════════════════════════════════════════
+
+f_stars(pct) =>
+    int    full = int(math.floor(pct / 20))
+    bool   half = (pct - full * 20) >= 10 and full < 5
+    string s = ""
+    for i = 1 to 5
+        s := s + (i <= full ? "★" : "☆")
+    s + (half ? "½" : "")
+
+f_gauge(v01, n) =>
+    int    pos = int(math.round(math.max(0.0, math.min(1.0, v01)) * (n - 1)))
+    string s = ""
+    for i = 0 to n - 1
+        s := s + (i == pos ? "●" : "─")
+    s
+
+f_tick(ok)    => ok ? "✔" : "✖"
+f_tickCol(ok) => ok ? C_BULL : C_BEAR
+
+f_grad(t01) =>
+    t01 < 0.5 ? color.from_gradient(t01, 0.0, 0.5, C_BEAR, C_GOLD) : color.from_gradient(t01, 0.5, 1.0, C_GOLD, C_BULL)
+
+var int LCOLS = 12
+var int LROWS = 31
+var int RCOLS = 12
+var int RROWS = 35
+var int BCOLS = 24
+var int BROWS = 4
+
+var table tL = na
+var table tR = na
+var table tB = na
+
+f_span(t, c0, r0, c1, r1, txt, col, bg, hal, sz) =>
+    for c = c0 to c1
+        for r = r0 to r1
+            table.cell(t, c, r, c == c0 and r == r0 ? txt : "", text_color = col,
+                 bgcolor = bg, text_halign = hal, text_valign = text.align_center, text_size = sz)
+    if c1 > c0 or r1 > r0
+        table.merge_cells(t, c0, r0, c1, r1)
+
+f_headL(r, txt) => f_span(tL, 0, r, LCOLS - 1, r, "  " + txt, C_GOLD, C_HEAD, text.align_left,   txtSize)
+f_headR(r, txt) => f_span(tR, 0, r, RCOLS - 1, r, txt,        C_GOLD, C_HEAD, text.align_center, txtSize)
+
+f_rowL(r, lc, lab, val, vcol) =>
+    f_span(tL, 0,      r, lc,        r, "  " + lab, C_GRAY, C_BG3, text.align_left,  txtSize)
+    f_span(tL, lc + 1, r, LCOLS - 1, r, val + "  ", vcol,   C_BG3, text.align_right, txtSize)
+
+f_rowR(r, lc, lab, val, vcol, hal) =>
+    f_span(tR, 0,      r, lc,        r, "  " + lab, C_GRAY, C_BG3, text.align_left, txtSize)
+    f_span(tR, lc + 1, r, RCOLS - 1, r, val + "  ", vcol,   C_BG3, hal,             txtSize)
+
+f_meter(t, r, c0, c1, v01) =>
+    int n   = c1 - c0 + 1
+    int pos = c0 + int(math.round(math.max(0.0, math.min(1.0, v01)) * (n - 1)))
+    for c = c0 to c1
+        float t01 = n > 1 ? (c - c0) / float(n - 1) : 0.5
+        color gc  = f_grad(t01)
+        bool  hit = c == pos
+        table.cell(t, c, r, hit ? "▮" : "", text_color = color.white,
+             bgcolor = color.new(gc, hit ? 0 : 55), text_halign = text.align_center,
+             text_valign = text.align_center, text_size = size.tiny)
+
+f_pair(a, b) => f_px(a) + " / " + f_px(b)
+
+if barstate.islast
+
+    // ─────────── LEFT COLUMN : analysis ───────────
+    if showLeft
+        table.delete(tL)
+        tL := table.new(position.top_left, LCOLS, LROWS, bgcolor = C_BG2, frame_color = C_FRAME, frame_width = 1, border_color = C_FRAME, border_width = 1)
+
+        f_span(tL,  0, 0,  9, 0, "  KRISHNA SMC PRO DASHBOARD", C_GOLD, C_HEAD, text.align_left,  size.normal)
+        f_span(tL, 10, 0, 11, 0, "👑  ",                        C_GOLD, C_HEAD, text.align_right, size.normal)
+
+        f_span(tL, 0, 1,  2, 1, "  SYMBOL",              C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 3, 1,  5, 1, syminfo.ticker,          C_CYAN, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 6, 1,  8, 1, "TIMEFRAME",             C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 9, 1, 11, 1, timeframe.period + "  ", C_TEXT, C_BG3, text.align_right, txtSize)
+
+        f_span(tL, 0, 2,  2, 2, "  CURRENT PRICE", C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 3, 2,  5, 2, f_px(close),       C_TEXT, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 6, 2,  8, 2, "SPREAD",          C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 9, 2, 11, 2, str.tostring(spreadPrice, format.mintick) + "  ", C_BULL, C_BG3, text.align_right, txtSize)
+
+        f_headL(3, "HIGHER TIMEFRAME BIAS")
+        f_span(tL, 0, 4, 3, 4, "  1H BIAS",    C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 4, 4, 6, 4, f_arrow(b1) + f_biasTxt(b1), f_biasCol(b1), C_BG3, text.align_right, txtSize)
+        f_span(tL, 0, 5, 3, 5, "  4H BIAS",    C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 4, 5, 6, 5, f_arrow(b2) + f_biasTxt(b2), f_biasCol(b2), C_BG3, text.align_right, txtSize)
+        f_span(tL, 0, 6, 3, 6, "  DAILY BIAS", C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 4, 6, 6, 6, f_arrow(b3) + (b3 > 0 ? "BUY" : b3 < 0 ? "SELL" : "NEUTRAL"), f_biasCol(b3), C_BG3, text.align_right, txtSize)
+        f_span(tL, 0, 7, 3, 7, "  MARKET STRUCTURE", C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 4, 7, 6, 7, mktStruct, mktStrCol, C_BG3, text.align_right, txtSize)
+        f_span(tL, 7, 4, 11, 7, showAnimal ? (msDir > 0 ? "🐂" : msDir < 0 ? "🐻" : "⚖") : "", mktStrCol, C_BG3, text.align_center, size.huge)
+
+        f_headL(8, "SMART MONEY CONFIRMATIONS")
+        f_rowL(9,  6, "◦ " + hobName + " ORDER BLOCK", hobTxt, hobCol)
+        f_rowL(10, 6, "◦ PREVIOUS HIGH",   pdhSwept ? "✔ SWEPT" : "✖ NOT SWEPT", pdhSwept ? C_BULL : C_BEAR)
+        f_rowL(11, 6, "◦ PREVIOUS LOW",    pdlSwept ? "✔ SWEPT" : "✖ NOT SWEPT", pdlSwept ? C_BULL : C_BEAR)
+        f_rowL(12, 6, "◦ LIQUIDITY SWEEP", sweepFresh ? "✔ " + (sweepDir > 0 ? "SELL-SIDE" : "BUY-SIDE") : "✖ NONE", sweepFresh ? C_BULL : C_BEAR)
+        f_rowL(13, 6, "◦ MSS",             mssRecent ? "✔ " + (mssDir > 0 ? "BULLISH" : "BEARISH") : "✖ NOT YET", mssRecent ? C_BULL : C_BEAR)
+        f_rowL(14, 6, "◦ DISPLACEMENT",    lastFvgDisp == "NONE" ? "✖ NONE" : "✔ " + lastFvgDisp, lastFvgDisp == "STRONG" ? C_BULL : lastFvgDisp == "MODERATE" ? C_GOLD : C_BEAR)
+        f_rowL(15, 6, "◦ FVG",             hasFVG ? "✔ " + fvgState : "✖ NONE", fvgState == "VALID" ? C_BULL : hasFVG ? C_GOLD : C_BEAR)
+        f_rowL(16, 6, "◦ ORDER BLOCK",     hasOB  ? "✔ " + obState  : "✖ NONE", obState == "FRESH" ? C_BULL : hasOB ? C_GOLD : C_BEAR)
+        f_rowL(17, 6, "◦ " + (rngName == "-" ? "CBDR" : rngName) + " RANGE",
+             na(rngSD) ? "✖ BUILDING" : "✔ " + f_pips(rngSD) + " PIPS" + (cbWide and rngName != "CBDR" ? " · CBDR WIDE" : ""),
+             na(rngSD) ? C_BEAR : C_BULL)
+
+        f_headL(18, "NEWS & SESSION FILTER")
+        f_rowL(19, 6, "HIGH IMPACT NEWS", "● " + newsTxt,   newsCol)
+        f_rowL(20, 6, "NEXT NEWS",        nextTxt,          C_TEXT)
+        f_rowL(21, 6, "TRADING SESSION",  "● " + sessName + (inKZ ? " · " + kzName : ""), sessCol)
+        f_rowL(22, 6, "VOLUME",           "● " + volTxt,    volCol)
+        f_rowL(23, 6, "SPREAD CONDITION", "● " + spreadTxt, spreadCol)
+
+        f_headL(24, "ENTRY QUALITY")
+        f_span(tL, 0, 25,  6, 25, "  " + f_stars(conf), C_GOLD, C_BG3, text.align_left,  size.normal)
+        f_span(tL, 7, 25, 11, 25, str.tostring(conf) + "%  ", confCol, C_BG3, text.align_right, size.normal)
+
+        f_meter(tL, 26, 0, 6, conf / 100)
+        f_span(tL,  7, 26,  9, 26, "CONFLUENCE",         C_GRAY, C_BG3, text.align_left,  txtSize)
+        f_span(tL, 10, 26, 11, 26, confluenceTxt + "  ", confCol, C_BG3, text.align_right, txtSize)
+
+        f_span(tL,  0, 27,  6, 27, "  " + confBand, confCol,   C_BG3, text.align_left,  size.tiny)
+        f_span(tL,  7, 27,  9, 27, "RISK",          C_GRAY,    C_BG3, text.align_left,  txtSize)
+        f_span(tL, 10, 27, 11, 27, riskTxt + "  ",  riskCol,   C_BG3, text.align_right, txtSize)
+
+        f_span(tL,  0, 28,  6, 28, "",                 C_GRAY,    C_BG3, text.align_left,  txtSize)
+        f_span(tL,  7, 28,  9, 28, "REWARD POTENTIAL", C_GRAY,    C_BG3, text.align_left,  txtSize)
+        f_span(tL, 10, 28, 11, 28, rewardTxt + "  ",   rewardCol, C_BG3, text.align_right, txtSize)
+
+        f_headL(29, "DASHBOARD STATUS")
+        f_span(tL, 0, 30, LCOLS - 1, 30, statusDot + statusTxt, statusCol, color.new(statusCol, 86), text.align_center, size.large)
+
+    // ─────────── RIGHT COLUMN : decision ───────────
+    if showRight
+        table.delete(tR)
+        tR := table.new(position.top_right, RCOLS, RROWS, bgcolor = C_BG2, frame_color = C_FRAME, frame_width = 1, border_color = C_FRAME, border_width = 1)
+
+        f_headR(0, "KEY LEVELS")
+        f_rowR(1, 6, "Resistance 1", f_px(res1), C_BEAR, text.align_right)
+        f_rowR(2, 6, "Resistance 2", f_px(res2), C_BEAR, text.align_right)
+        f_rowR(3, 6, "Pivot",        f_px(pp),   C_GOLD, text.align_right)
+        f_rowR(4, 6, "Support 1",    f_px(sup1), C_BULL, text.align_right)
+        f_rowR(5, 6, "Support 2",    f_px(sup2), C_BULL, text.align_right)
+
+        f_headR(6, (rngName == "-" ? "CBDR" : rngName) + " PROJECTIONS")
+        f_rowR(7,  4, "HIGH / LOW", f_pair(rngH, rngL),         C_GOLD, text.align_right)
+        f_rowR(8,  4, "±1 SD",      f_pair(f_sd(1), f_sd(-1)), C_TEXT, text.align_right)
+        f_rowR(9,  4, "±2 SD",      f_pair(f_sd(2), f_sd(-2)), C_TEXT, text.align_right)
+        f_rowR(10, 4, "±3 SD",      f_pair(f_sd(3), f_sd(-3)), C_TEXT, text.align_right)
+
+        f_headR(11, "TREND METER")
+        f_meter(tR, 12, 0, RCOLS - 1, (trendVal + 1) / 2)
+        f_span(tR, 0, 13, RCOLS - 1, 13, trendTxt, trendCol, C_BG3, text.align_center, size.normal)
+
+        bool hasT = tState != 0
+        float lotNow = hasT ? tLots : na
+        f_headR(14, "TRADE SETUP SUMMARY")
+        f_rowR(15, 4, "DIRECTION",  hasT ? (tDir > 0 ? "↑ BUY" : "↓ SELL") : "-", hasT ? (tDir > 0 ? C_BULL : C_BEAR) : C_GRAY, text.align_right)
+        f_rowR(16, 4, "MODEL",      modelTxt, C_TEXT, text.align_right)
+        f_rowR(17, 4, "SCORE",      hasT ? str.tostring(tScore) + " / 100 · " + confluenceTxt : "-", confCol, text.align_right)
+        f_rowR(18, 4, "ENTRY",      hasT ? (tState == 1 ? "LIMIT " : "FILLED ") + f_px(tEntry) : "-", C_GOLD, text.align_right)
+        f_rowR(19, 4, "STOP LOSS",  hasT ? f_px(tSL) + (tSL != tSL0 ? " (moved)" : "") : "-", C_BEAR, text.align_right)
+        f_rowR(20, 4, "TARGET 1",   hasT ? f_px(tTP1) + (tHit1 ? " ✔" : "") : "-", C_BULL, text.align_right)
+        f_rowR(21, 4, "TARGET 2",   hasT ? f_px(tTP2) + (tHit2 ? " ✔" : "") : "-", C_BULL, text.align_right)
+        f_rowR(22, 4, "TARGET 3",   hasT ? f_px(tTP3) : "-", C_BULL, text.align_right)
+        f_rowR(23, 4, "R : R",      hasT ? str.tostring(tDir * (tTP1 - tEntry) / tRisk, "0.0") + " / " + str.tostring(tDir * (tTP2 - tEntry) / tRisk, "0.0") + " / " + str.tostring(tDir * (tTP3 - tEntry) / tRisk, "0.0") : "-", C_GOLD, text.align_right)
+        f_rowR(24, 4, "LOT @ " + str.tostring(riskPct, "0.0#") + "%", hasT ? f_lotTxt(lotNow) + " · " + f_cash(nz(lotNow) * valPerLot * tRisk) : "-", C_CYAN, text.align_right)
+        f_rowR(25, 4, "STATUS",     tStatTxt, tStatCol, text.align_right)
+
+        f_headR(26, "QUICK CHECKLIST")
+        f_rowR(27, 9, "HTF BIAS ALIGNMENT",    f_tick(ckHTF), f_tickCol(ckHTF), text.align_center)
+        f_rowR(28, 9, hobName + " OB REACTION", f_tick(ckHOB), f_tickCol(ckHOB), text.align_center)
+        f_rowR(29, 9, "FVG CONFIRMATION",      f_tick(ckFVG), f_tickCol(ckFVG), text.align_center)
+        f_rowR(30, 9, "LIQUIDITY / MSS",       f_tick(ckMSS), f_tickCol(ckMSS), text.align_center)
+        f_rowR(31, 9, "CBDR TARGETS",          f_tick(ckCB),  f_tickCol(ckCB),  text.align_center)
+        f_rowR(32, 9, "KILLZONE",              f_tick(ckKZ),  f_tickCol(ckKZ),  text.align_center)
+        f_rowR(33, 9, "NEWS FILTER",           f_tick(ckNWS), f_tickCol(ckNWS), text.align_center)
+        f_rowR(34, 9, "RISK " + str.tostring(riskPct, "0.0#") + "% SIZED", f_tick(hasT and nz(lotNow) >= lotStep), f_tickCol(hasT and nz(lotNow) >= lotStep), text.align_center)
+
+    // ─────────── BOTTOM : session bar + market statistics ───────────
+    if showBottom
+        table.delete(tB)
+        tB := table.new(position.bottom_center, BCOLS, BROWS, bgcolor = C_BG1, frame_color = C_FRAME, frame_width = 1, border_color = C_FRAME, border_width = 1)
+
+        cSyd = inSyd ? #1E5AA8 : color.new(#1E5AA8, 72)
+        cTok = inTok ? #1B4FA0 : color.new(#1B4FA0, 72)
+        cLon = inLon ? #1E7A3C : color.new(#1E7A3C, 72)
+        cNYk = inNY  ? #8A6D1F : color.new(#8A6D1F, 72)
+
+        f_span(tB,  0, 0,  3, 0, "SESSION TIME", C_GRAY, C_BG1, text.align_center, txtSize)
+        f_span(tB,  4, 0,  7, 0, "SYDNEY",   inSyd ? color.white : C_GRAY, cSyd, text.align_center, txtSize)
+        f_span(tB,  8, 0, 11, 0, "TOKYO",    inTok ? color.white : C_GRAY, cTok, text.align_center, txtSize)
+        f_span(tB, 12, 0, 17, 0, "LONDON",   inLon ? color.white : C_GRAY, cLon, text.align_center, txtSize)
+        f_span(tB, 18, 0, 23, 0, "NEW YORK", inNY  ? color.white : C_GRAY, cNYk, text.align_center, txtSize)
+
+        rangePos = dayHi > dayLo ? (close - dayLo) / (dayHi - dayLo) : 0.5
+        rrShow   = not na(rrNow) ? rrNow : rrAvg
+
+        f_span(tB,  0, 1,  3, 1, "TODAY'S RANGE",    C_GRAY, C_BG1, text.align_center, txtSize)
+        f_span(tB,  4, 1,  7, 1, "AVG DAILY RANGE",  C_GRAY, C_BG1, text.align_center, txtSize)
+        f_span(tB,  8, 1, 11, 1, "RISK TO REWARD",   C_GRAY, C_BG1, text.align_center, txtSize)
+        f_span(tB, 12, 1, 15, 1, "WIN RATE",         C_GRAY, C_BG1, text.align_center, txtSize)
+        f_span(tB, 16, 1, 19, 1, "CONSECUTIVE WINS", C_GRAY, C_BG1, text.align_center, txtSize)
+        f_span(tB, 20, 1, 23, 1, "ACCOUNT RISK",     C_GRAY, C_BG1, text.align_center, txtSize)
+
+        f_span(tB,  0, 2,  3, 2, f_px(dayLo) + " – " + f_px(dayHi), C_TEXT, C_BG1, text.align_center, size.normal)
+        f_span(tB,  4, 2,  7, 2, na(adrRaw) ? "-" : f_pips(adrRaw) + " PIPS", C_TEXT, C_BG1, text.align_center, size.normal)
+        f_span(tB,  8, 2, 11, 2, na(rrShow) ? "-" : "1 : " + str.tostring(rrShow, "#.#"), C_GOLD, C_BG1, text.align_center, size.normal)
+        f_span(tB, 12, 2, 15, 2, na(winRate) ? "-" : str.tostring(winRate, "#") + "%", na(winRate) ? C_GRAY : winRate >= 50 ? C_BULL : C_BEAR, C_BG1, text.align_center, size.normal)
+        f_span(tB, 16, 2, 19, 2, str.tostring(streak), streak > 0 ? C_BULL : C_GRAY, C_BG1, text.align_center, size.normal)
+        f_span(tB, 20, 2, 23, 2, str.tostring(riskPct, "0.00") + "% · " + f_cash(riskAmt), C_GOLD, C_BG1, text.align_center, size.normal)
+
+        string perf = nTr == 0 ? "NO CLOSED TRADES ON THIS CHART YET" :
+           "TRADES " + str.tostring(nTr) + " (" + str.tostring(nWin) + "W " + str.tostring(nLoss) + "L " + str.tostring(nBE) + "BE)" +
+           "   NET " + f_r(netR) + " · " + f_cash(netR * riskAmt) +
+           "   PF " + (na(pf) ? "∞" : str.tostring(pf, "0.00")) + "   EXPECTANCY " + f_r(expR)
+        f_span(tB,  0, 3,  3, 3, f_gauge(rangePos, 13), C_GOLD, C_BG1, text.align_center, size.tiny)
+        f_span(tB,  4, 3, 19, 3, perf, netR >= 0 ? C_BULL : C_BEAR, C_BG1, text.align_center, size.tiny)
+        f_span(tB, 20, 3, 23, 3, "KRISHNA SMC PRO v2.0  ", color.new(C_GRAY, 30), C_BG1, text.align_right, size.tiny)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 19. ALERT ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+alertcondition(sweepUp or sweepDn, "SMC | Liquidity sweep",  "KRISHNA SMC PRO: liquidity sweep")
+alertcondition(mssEvt,             "SMC | MSS confirmed",    "KRISHNA SMC PRO: MSS confirmed")
+alertcondition(bullTapNow or bearTapNow, "SMC | HTF OB tap", "KRISHNA SMC PRO: HTF order block tapped")
+alertcondition(evPend,             "SMC | Pending order",    "KRISHNA SMC PRO: new limit order")
+alertcondition(evFill,             "SMC | Order filled",     "KRISHNA SMC PRO: order filled")
+alertcondition(evTP1 or evTP2,     "SMC | Target hit",       "KRISHNA SMC PRO: target hit")
+alertcondition(evBE,               "SMC | Stop to breakeven","KRISHNA SMC PRO: stop moved to breakeven")
+alertcondition(evExit,             "SMC | Trade closed",     "KRISHNA SMC PRO: trade closed")
+
+if evPend
+    alert(str.format("KRISHNA SMC PRO  {0} {1} {2}  ·  model {3}  ·  score {4}\nEntry {5}   SL {6}\nTP1 {7}   TP2 {8}   TP3 {9}\n{10}\n{11}",
+         tDir > 0 ? "BUY LIMIT" : "SELL LIMIT", syminfo.ticker, timeframe.period, tModel, str.tostring(tScore),
+         f_px(tEntry), f_px(tSL), f_px(tTP1), f_px(tTP2), f_px(tTP3),
+         f_lotTable(tRisk, " | "), f_riskLine(tRisk)), alert.freq_once_per_bar_close)
+if evFill
+    alert("KRISHNA SMC PRO  " + (tDir > 0 ? "BUY" : "SELL") + " FILLED " + syminfo.ticker + " @ " + f_px(tEntry) + "  SL " + f_px(tSL) + "  lot " + f_lotTxt(tLots), alert.freq_once_per_bar_close)
+if evTP1 or evTP2 or evBE
+    alert("KRISHNA SMC PRO  " + syminfo.ticker + (evTP2 ? " TP2 hit" : evTP1 ? " TP1 hit" : "") + (evBE ? " · stop to BE " + f_px(tSL) : ""), alert.freq_once_per_bar_close)
+if evExit
+    alert("KRISHNA SMC PRO  " + syminfo.ticker + " closed: " + why + " " + f_r(tReal), alert.freq_once_per_bar_close)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 19b. DATA WINDOW
+// ═══════════════════════════════════════════════════════════════════════════
+
+plot(conf,                                  "Score",       display = display.data_window)
+plot(tState,                                "Trade state", display = display.data_window)
+plot(tState != 0 ? tDir : 0,                "Trade dir",   display = display.data_window)
+plot(tState != 0 ? tEntry : na,             "Entry",       display = display.data_window)
+plot(tState != 0 ? tSL : na,                "Stop",        display = display.data_window)
+plot(tState != 0 ? tTP1 : na,               "TP1",         display = display.data_window)
+plot(tState != 0 ? tTP2 : na,               "TP2",         display = display.data_window)
+plot(tState != 0 ? tTP3 : na,               "TP3",         display = display.data_window)
+plot(tState != 0 ? tLots : na,              "Lots",        display = display.data_window)
+plot(netR,                                  "Net R",       display = display.data_window)
