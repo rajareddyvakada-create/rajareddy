@@ -290,14 +290,20 @@ f_targets(_isLong, _entry, _risk) =>
             if not na(_v) and (_isLong ? _v > _entry + atrC * 0.2 : _v < _entry - atrC * 0.2)
                 array.push(_cand, _v)
         array.sort(_cand, _isLong ? order.ascending : order.descending)
+    // Pine v5 evaluates both sides of and/or, so never read the array inside a condition
     _tps = array.new_float()
+    float _last = na
     for _v in _cand
-        if array.size(_tps) < 3 and (array.size(_tps) == 0 or math.abs(_v - array.get(_tps, array.size(_tps) - 1)) > atrC * 0.2)
-            array.push(_tps, _v)
+        if array.size(_tps) < 3
+            if na(_last) or math.abs(_v - _last) > atrC * 0.2
+                array.push(_tps, _v)
+                _last := _v
+    if na(_last)
+        _last := _entry
     _step = _isLong ? _risk : -_risk
     while array.size(_tps) < 3
-        _last = array.size(_tps) == 0 ? _entry : array.get(_tps, array.size(_tps) - 1)
-        array.push(_tps, _last + _step)
+        _last := _last + _step
+        array.push(_tps, _last)
     [array.get(_tps, 0), array.get(_tps, 1), array.get(_tps, 2)]
 
 var array<line>  mapLines  = array.new<line>()
