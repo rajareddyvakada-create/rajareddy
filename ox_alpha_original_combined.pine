@@ -1,0 +1,219 @@
+//@version=5
+indicator("Ox Alpha — 30m Engine + 3m Execution + Auto-TP", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ══════════════════ INPUTS ══════════════════
+htf        = input.timeframe("30",  "Engine Timeframe (UT)")
+htfTP      = input.timeframe("30",  "TP Map Timeframe (HTF zones)")
+kv1        = input.float(1.0,  "UT1 Factor", step=0.1)
+ap1        = input.int(10,     "UT1 ATR Length", minval=1)
+kv2        = input.float(3.0,  "UT2 Factor (slow/context)", step=0.1)
+ap2        = input.int(30,     "UT2 ATR Length", minval=1)
+useLive    = input.bool(true,  "Use LIVE 30m signal for early 3m entry (repaint)")
+showTP     = input.bool(true,  "Show TP Map on Signals")
+pocLookback= input.int(400,    "Session Profile Lookback (bars)", minval=50)
+gateLen    = input.int(3,      "3m Gate Lookback", minval=1)
+atr3Len    = input.int(14,     "3m ATR Length")
+
+src = close
+
+// ══════════════════ UT ENGINE (shared function) ══════════════════
+f_ut(_src, _kv, _ap) =>
+    _nLoss = _kv * ta.atr(_ap)
+    var float _stop = na
+    _stop := _src > nz(_stop[1]) and _src[1] > nz(_stop[1]) ? math.max(nz(_stop[1]), _src - _nLoss) :
+             _src < nz(_stop[1]) and _src[1] < nz(_stop[1]) ? math.min(nz(_stop[1]), _src + _nLoss) :
+             _src > nz(_stop[1]) ? _src - _nLoss : _src + _nLoss
+    var int _pos = 0
+    _pos := _src[1] < nz(_stop[1]) and _src > nz(_stop[1]) ? 1 :
+            _src[1] > nz(_stop[1]) and _src < nz(_stop[1]) ? -1 : nz(_pos[1])
+    [_stop, _pos, ta.crossover(_src, _stop), ta.crossunder(_src, _stop)]
+
+// ---- CONFIRMED 30m (non-repainting, bar-close based) ----
+[tStop,  tPos,  tBuy,  tSell ] = request.security(syminfo.tickerid, htf, f_ut(src, kv1, ap1)[1], lookahead=barmerge.lookahead_on)
+[tStop2, tPos2, tBuy2, tSell2] = request.security(syminfo.tickerid, htf, f_ut(src, kv2, ap2)[1], lookahead=barmerge.lookahead_on)
+
+// ---- LIVE 30m (repainting — fires during the forming 30m bar) ----
+[lStop, lPos, lBuy, lSell] = request.security(syminfo.tickerid, htf, f_ut(src, kv1, ap1), lookahead=barmerge.lookahead_off)
+
+// ---- Confirmed flips seen from 3m ----
+confBuy  = not na(tStop[1]) and close > tStop[1] and close[1] <= tStop[1] and tPos[1] == -1
+confSell = not na(tStop[1]) and close < tStop[1] and close[1] >= tStop[1] and tPos[1] ==  1
+
+// ---- LIVE early flips (the "E" signals) ----
+liveBuyEarly  = useLive and not na(lStop) and close > lStop and close[1] <= lStop and lPos[1] == -1
+liveSellEarly = useLive and not na(lStop) and close < lStop and close[1] >= lStop and lPos[1] ==  1
+
+// Merged signal = early OR confirmed
+sigBuy  = liveBuyEarly  or confBuy
+sigSell = liveSellEarly or confSell
+
+// ══════════════════ 3m STRUCTURE: BOS / CHoCH ══════════════════
+atr3   = ta.atr(atr3Len)
+swingL = ta.lowest(low,  gateLen)[1]
+swingH = ta.highest(high, gateLen)[1]
+
+var int structTrend = 0
+bosUp   = close > swingH and structTrend <= 0
+bosDn   = close < swingL and structTrend >= 0
+chochUp = close > swingH and structTrend == -1
+chochDn = close < swingL and structTrend ==  1
+structTrend := bosUp ? 1 : bosDn ? -1 : structTrend
+
+// ══════════════════ 3m POI TRACKERS (FVG + OB) ══════════════════
+// Bullish FVG: low[0] > high[2]
+fvgBullLo = low > high[2] ? high[2] : na
+fvgBullHi = low > high[2] ? low    : na
+// Bearish FVG: high[0] < low[2]
+fvgBearLo = high < low[2] ? high   : na
+fvgBearHi = high < low[2] ? low[2] : na
+
+var float obBullLo = na, var float obBullHi = na
+var float obBearLo = na, var float obBearHi = na
+bearCandle = close < open and volume > ta.sma(volume, 20) * 1.5
+bullCandle = close > open and volume > ta.sma(volume, 20) * 1.5
+if bearCandle
+    obBearLo := low, obBearHi := high
+if bullCandle
+    obBullLo := low, obBullHi := high
+
+// Sweep of swing (liquidity grab)
+sweepLow  = low  < ta.lowest(low,  gateLen)[2] and close > ta.lowest(low,  gateLen)[2]
+sweepHigh = high > ta.highest(high, gateLen)[2] and close < ta.highest(high, gateLen)[2]
+
+// ══════════════════ SESSION VWAP VOLUME PROFILE (POC/VAH/VAL) ══════════════════
+newSession = timeframe.change("D")
+var float poc  = na
+var float vah  = na
+var float val  = na
+var array<float> bins  = na
+var array<float> prices = na
+binSize = atr3 * 2
+if newSession or na(bins)
+    bins := array.new<float>()
+    prices := array.new<float>()
+if not na(bins)
+    idx = math.round((close - ta.lowest(low, pocLookback)) / binSize)
+    if idx >= 0
+        if idx >= array.size(bins)
+            array.push(bins, 0.0), array.push(prices, close)
+        array.set(bins, idx, nz(array.get(bins, idx)) + volume)
+    if barstate.islast and array.size(bins) > 0
+        maxV = array.max(bins)
+        pocIdx = array.indexof(bins, maxV)
+        poc := array.get(prices, math.min(pocIdx, array.size(prices) - 1))
+        totVol = array.sum(bins)
+        acc = 0.0, loIdx = pocIdx, hiIdx = pocIdx
+        while acc < totVol * 0.70 and (loIdx > 0 or hiIdx < array.size(bins) - 1)
+            loV = loIdx > 0 ? array.get(bins, loIdx - 1) : -1.0
+            hiV = hiIdx < array.size(bins) - 1 ? array.get(bins, hiIdx + 1) : -1.0
+            if hiV >= loV
+                hiIdx += 1, acc += hiV
+            else
+                loIdx -= 1, acc += loV
+        vah := array.get(prices, math.min(hiIdx, array.size(prices) - 1))
+        val := array.get(prices, math.max(loIdx, 0))
+
+// ══════════════════ POI FILTER + GATE ══════════════════
+gateUp = close > ta.highest(high, gateLen)[1]
+gateDn = close < ta.lowest(low,  gateLen)[1]
+
+nearBullPOI = (not na(fvgBullLo) and low <= fvgBullHi and low >= fvgBullLo - atr3) or
+              (not na(obBullLo) and low <= obBullHi + atr3 and low >= obBullLo - atr3) or
+              (not na(poc) and math.abs(low - poc) < atr3) or sweepLow
+nearBearPOI = (not na(fvgBearLo) and high >= fvgBearLo and high <= fvgBearHi + atr3) or
+              (not na(obBearLo) and high >= obBearLo - atr3 and high <= obBearHi + atr3) or
+              (not na(poc) and math.abs(high - poc) < atr3) or sweepHigh
+
+buyOK  = sigBuy  and nearBullPOI and gateUp and structTrend ==  1 and (na(tPos2) or tPos2 ==  1)
+sellOK = sigSell and nearBearPOI and gateDn and structTrend == -1 and (na(tPos2) or tPos2 == -1)
+
+// ══════════════════ PLOTS ══════════════════
+plot(useLive ? lStop : na,  "30m UT LIVE Stop",      color=color.new(color.aqua, 0),  linewidth=2)
+plot(tStop,                 "30m UT Confirmed Stop", color=color.new(color.teal, 60), linewidth=1)
+plot(tStop2,                "30m UT2 Slow Stop",     color=tPos2 == 1 ? color.new(color.green, 70) : color.new(color.red, 70), linewidth=1)
+plot(poc, "POC", color=color.new(color.yellow, 40), style=plot.style_linebr)
+plot(vah, "VAH", color=color.new(color.red, 70),    style=plot.style_linebr)
+plot(val, "VAL", color=color.new(color.green, 70),  style=plot.style_linebr)
+
+plotshape(buyOK,  "BUY",  shape.labelup,   location.belowbar, color.new(color.green, 0), text="BOS\nBUY",  textcolor=color.white, size=size.small)
+plotshape(sellOK, "SELL", shape.labeldown, location.abovebar, color.new(color.red, 0),   text="BOS\nSELL", textcolor=color.white, size=size.small)
+plotshape(chochUp and not buyOK,  "CHoCH Up", shape.triangleup,   location.belowbar, color.new(color.lime, 40), size=size.tiny, text="CHoCH")
+plotshape(chochDn and not sellOK, "CHoCH Dn", shape.triangledown, location.abovebar, color.new(color.maroon, 40), size=size.tiny, text="CHoCH")
+plotshape(liveBuyEarly  and not confBuy, "Early Buy",  shape.circle, location.belowbar, color.new(color.aqua, 0), size=size.tiny, text="E")
+plotshape(liveSellEarly and not confSell, "Early Sell", shape.circle, location.abovebar, color.new(color.aqua, 0), size=size.tiny, text="E")
+
+// ══════════════════ AUTO TP PROJECTION (HTF POI-BASED) ══════════════════
+// ---- Fetch HTF zones (confirmed, no repaint) ----
+[htfOBlo, htfOBhi, htfFVGlo, htfFVGhi, htfDir] = request.security(syminfo.tickerid, htfTP,
+     [obBearLo, obBearHi, fvgBullLo, fvgBullHi, structTrend], lookahead=barmerge.lookahead_off)
+
+// ---- TP1 = nearest 3m FVG edge in trade direction ----
+tp1Long  = not na(fvgBearLo) and fvgBearLo > close ? fvgBearLo : not na(fvgBullLo) ? fvgBullHi : na
+tp1Short = not na(fvgBullLo) and fvgBullLo < close ? fvgBullLo : not na(fvgBearLo) ? fvgBearHi : na
+
+// ---- TP2 = nearest HTF opposing zone edge ----
+htfUp = not na(htfOBlo) and htfOBlo > close ? htfOBlo : not na(htfFVGlo) and htfFVGlo > close ? htfFVGlo : na
+htfDn = not na(htfOBhi) and htfOBhi < close ? htfOBhi : not na(htfFVGhi) and htfFVGhi < close ? htfFVGhi : na
+tp2Long  = htfUp
+tp2Short = htfDn
+
+// ---- TP3 = session POC ----
+tp3 = poc
+
+var line   tp1L = na, var line   tp2L = na, var line   tp3L = na
+var label  tp1B = na, var label  tp2B = na, var label  tp3B = na
+
+if showTP and (buyOK or sellOK)
+    line.delete(tp1L),  line.delete(tp2L),  line.delete(tp3L)
+    label.delete(tp1B), label.delete(tp2B), label.delete(tp3B)
+    isL   = buyOK
+    t1    = isL ? tp1Long  : tp1Short
+    t2    = isL ? tp2Long  : tp2Short
+    t3    = tp3
+    eBar  = bar_index + 15
+    if not na(t1)
+        tp1L := line.new(bar_index, t1, eBar, t1, color=color.new(color.green, 0), style=line.style_dashed, width=1)
+        tp1B := label.new(eBar, t1, "TP1 50% → BE", style=label.style_label_left, color=color.new(color.green, 80), textcolor=color.green, size=size.small)
+    if not na(t2)
+        tp2L := line.new(bar_index, t2, eBar, t2, color=color.new(color.orange, 0), style=line.style_dashed, width=2)
+        tp2B := label.new(eBar, t2, "TP2 30% (HTF zone)", style=label.style_label_left, color=color.new(color.orange, 80), textcolor=color.orange, size=size.small)
+    if not na(t3)
+        tp3L := line.new(bar_index, t3, eBar, t3, color=color.new(color.yellow, 0), style=line.style_dotted, width=2)
+        tp3B := label.new(eBar, t3, "TP3 Runner (POC)", style=label.style_label_left, color=color.new(color.yellow, 80), textcolor=color.yellow, size=size.small)
+
+// ══════════════════ HTF ZONE AHEAD WARNING ══════════════════
+nearHTFzone = (not na(htfOBlo) and math.abs(close - htfOBlo) <= atr3 * 0.5) or
+              (not na(htfFVGlo) and math.abs(close - htfFVGlo) <= atr3 * 0.5)
+plotshape(nearHTFzone and barstate.isconfirmed, "HTF Zone Ahead", shape.diamond, location.abovebar, color.new(color.yellow, 0), size=size.tiny)
+alertcondition(nearHTFzone, "HTF Zone Ahead", "Ox Alpha: price approaching HTF reaction zone — tighten stop / take partial")
+
+// ══════════════════ DASHBOARD (table top-right) ══════════════════
+var table dash = table.new(position.top_right, 2, 8, bgcolor=color.new(color.black, 20), border_width=1, border_color=color.new(color.gray, 50))
+if barstate.islast
+    trendTxt = structTrend == 1 ? "BULL" : structTrend == -1 ? "BEAR" : "FLAT"
+    trendCol = structTrend == 1 ? color.green : structTrend == -1 ? color.red : color.gray
+    ut2Txt   = tPos2 == 1 ? "BULL" : tPos2 == -1 ? "BEAR" : "—"
+    table.cell(dash, 0, 0, "OX ALPHA", text_color=color.aqua,  text_size=size.small)
+    table.cell(dash, 1, 0, "30m/3m",     text_color=color.gray, text_size=size.small)
+    table.cell(dash, 0, 1, "3m Trend",   text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 1, trendTxt,     text_color=trendCol,   text_size=size.small)
+    table.cell(dash, 0, 2, "30m UT1",    text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 2, tPos == 1 ? "BULL" : tPos == -1 ? "BEAR" : "—", text_color=tPos == 1 ? color.green : color.red, text_size=size.small)
+    table.cell(dash, 0, 3, "30m UT2",    text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 3, ut2Txt,       text_color=tPos2 == 1 ? color.green : color.red, text_size=size.small)
+    table.cell(dash, 0, 4, "POC",        text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 4, na(poc) ? "—" : str.tostring(poc, format.mintick), text_color=color.yellow, text_size=size.small)
+    table.cell(dash, 0, 5, "VAH",        text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 5, na(vah) ? "—" : str.tostring(vah, format.mintick), text_color=color.red, text_size=size.small)
+    table.cell(dash, 0, 6, "VAL",        text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 6, na(val) ? "—" : str.tostring(val, format.mintick), text_color=color.green, text_size=size.small)
+    table.cell(dash, 0, 7, "HTF Zone",   text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 7, nearHTFzone ? "AHEAD ⚠" : "CLEAR", text_color=nearHTFzone ? color.yellow : color.gray, text_size=size.small)
+
+// ══════════════════ ALERTS ══════════════════
+alertcondition(buyOK,              "Buy Signal",        "Ox Alpha: BUY — BOS/CHoCH + POI + Gate + Trend aligned")
+alertcondition(sellOK,             "Sell Signal",       "Ox Alpha: SELL — BOS/CHoCH + POI + Gate + Trend aligned")
+alertcondition(liveBuyEarly,       "Early Buy (E)",     "Ox Alpha: EARLY BUY — live 30m flip detected")
+alertcondition(liveSellEarly,      "Early Sell (E)",    "Ox Alpha: EARLY SELL — live 30m flip detected")
+alertcondition(confBuy,            "Confirmed Buy",     "Ox Alpha: CONFIRMED 30m Buy flip")
+alertcondition(confSell,           "Confirmed Sell",    "Ox Alpha: CONFIRMED 30m Sell flip")
