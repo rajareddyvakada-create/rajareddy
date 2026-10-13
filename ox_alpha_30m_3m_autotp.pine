@@ -25,7 +25,7 @@ f_ut(_src, _kv, _ap) =>
              _src > nz(_stop[1]) ? _src - _nLoss : _src + _nLoss
     var int _pos = 0
     _pos := _src[1] < nz(_stop[1]) and _src > nz(_stop[1]) ? 1 :
-            _src[1] > nz(_stop[1]) and _src < nz(_stop[1]) ? -1 : nz(_pos[1])
+             _src[1] > nz(_stop[1]) and _src < nz(_stop[1]) ? -1 : nz(_pos[1])
     [_stop, _pos, ta.crossover(_src, _stop), ta.crossunder(_src, _stop)]
 
 // Previous-bar values of f_ut (Pine can't apply [1] to a tuple-returning call directly)
