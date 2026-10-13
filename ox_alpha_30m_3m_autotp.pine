@@ -20,12 +20,9 @@ src = close
 f_ut(_src, _kv, _ap) =>
     _nLoss = _kv * ta.atr(_ap)
     var float _stop = na
-    _stop := _src > nz(_stop[1]) and _src[1] > nz(_stop[1]) ? math.max(nz(_stop[1]), _src - _nLoss) :
-             _src < nz(_stop[1]) and _src[1] < nz(_stop[1]) ? math.min(nz(_stop[1]), _src + _nLoss) :
-             _src > nz(_stop[1]) ? _src - _nLoss : _src + _nLoss
+    _stop := _src > nz(_stop[1]) and _src[1] > nz(_stop[1]) ? math.max(nz(_stop[1]), _src - _nLoss) : _src < nz(_stop[1]) and _src[1] < nz(_stop[1]) ? math.min(nz(_stop[1]), _src + _nLoss) : _src > nz(_stop[1]) ? _src - _nLoss : _src + _nLoss
     var int _pos = 0
-    _pos := _src[1] < nz(_stop[1]) and _src > nz(_stop[1]) ? 1 :
-             _src[1] > nz(_stop[1]) and _src < nz(_stop[1]) ? -1 : nz(_pos[1])
+    _pos := _src[1] < nz(_stop[1]) and _src > nz(_stop[1]) ? 1 : _src[1] > nz(_stop[1]) and _src < nz(_stop[1]) ? -1 : nz(_pos[1])
     [_stop, _pos, ta.crossover(_src, _stop), ta.crossunder(_src, _stop)]
 
 // Previous-bar values of f_ut (Pine can't apply [1] to a tuple-returning call directly)
@@ -169,12 +166,8 @@ val = vpAnchor + loK * vpBin
 gateUp = close > swingH
 gateDn = close < swingL
 
-nearBullPOI = (not na(fvgBullLo) and low <= fvgBullHi and low >= fvgBullLo - atr3) or
-              (not na(obBullLo) and low <= obBullHi + atr3 and low >= obBullLo - atr3) or
-              (not na(poc) and math.abs(low - poc) < atr3) or sweepLow
-nearBearPOI = (not na(fvgBearLo) and high >= fvgBearLo and high <= fvgBearHi + atr3) or
-              (not na(obBearLo) and high >= obBearLo - atr3 and high <= obBearHi + atr3) or
-              (not na(poc) and math.abs(high - poc) < atr3) or sweepHigh
+nearBullPOI = (not na(fvgBullLo) and low <= fvgBullHi and low >= fvgBullLo - atr3) or (not na(obBullLo) and low <= obBullHi + atr3 and low >= obBullLo - atr3) or (not na(poc) and math.abs(low - poc) < atr3) or sweepLow
+nearBearPOI = (not na(fvgBearLo) and high >= fvgBearLo and high <= fvgBearHi + atr3) or (not na(obBearLo) and high >= obBearLo - atr3 and high <= obBearHi + atr3) or (not na(poc) and math.abs(high - poc) < atr3) or sweepHigh
 
 buyOK  = sigBuy  and nearBullPOI and gateUp and structTrend ==  1 and (na(tPos2) or tPos2 ==  1)
 sellOK = sigSell and nearBearPOI and gateDn and structTrend == -1 and (na(tPos2) or tPos2 == -1)
@@ -196,8 +189,7 @@ plotshape(liveSellEarly and not confSell, "Early Sell", shape.circle, location.a
 
 // ══════════════════ AUTO TP PROJECTION (HTF POI-BASED) ══════════════════
 // ---- Fetch HTF zones (confirmed, no repaint: previous closed HTF bar) ----
-[htfBearOB, htfBearFVG, htfBullOB, htfBullFVG, htfDir] = request.security(syminfo.tickerid, htfTP,
-     [obBearLo[1], fvgBearLo[1], obBullHi[1], fvgBullHi[1], structTrend[1]], lookahead=barmerge.lookahead_on)
+[htfBearOB, htfBearFVG, htfBullOB, htfBullFVG, htfDir] = request.security(syminfo.tickerid, htfTP, [obBearLo[1], fvgBearLo[1], obBullHi[1], fvgBullHi[1], structTrend[1]], lookahead=barmerge.lookahead_on)
 
 f_nearAbove(_a, _b, _ref) =>
     _okA = not na(_a) and _a > _ref
@@ -252,10 +244,7 @@ if showTP and (buyOK or sellOK)
 
 // ══════════════════ HTF ZONE AHEAD WARNING ══════════════════
 zoneDist    = atr3 * 0.5
-nearHTFzone = (not na(htfBearOB)  and math.abs(close - htfBearOB)  <= zoneDist) or
-              (not na(htfBearFVG) and math.abs(close - htfBearFVG) <= zoneDist) or
-              (not na(htfBullOB)  and math.abs(close - htfBullOB)  <= zoneDist) or
-              (not na(htfBullFVG) and math.abs(close - htfBullFVG) <= zoneDist)
+nearHTFzone = (not na(htfBearOB)  and math.abs(close - htfBearOB)  <= zoneDist) or (not na(htfBearFVG) and math.abs(close - htfBearFVG) <= zoneDist) or (not na(htfBullOB)  and math.abs(close - htfBullOB)  <= zoneDist) or (not na(htfBullFVG) and math.abs(close - htfBullFVG) <= zoneDist)
 plotshape(nearHTFzone and barstate.isconfirmed, "HTF Zone Ahead", shape.diamond, location.abovebar, color.new(color.yellow, 0), size=size.tiny)
 alertcondition(nearHTFzone, "HTF Zone Ahead", "Ox Alpha: price approaching HTF reaction zone — tighten stop / take partial")
 
