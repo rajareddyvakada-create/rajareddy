@@ -1,0 +1,419 @@
+//@version=5
+// ════════════════════════════════════════════════════════════════════════════
+//  OX ALPHA UT PRO
+//  How it works, in order:
+//   1. UT Bot gives the direction (runs on the "UT Timeframe", default 30m).
+//   2. Every time UT flips, the script waits (up to "Wait for filters" bars)
+//      until all filters you switched ON agree, then prints ONE BUY / SELL.
+//        • Structure  : price has broken the Swing Length (24) high / low
+//        • CVD        : buyers (or sellers) are in control of volume
+//        • POC side   : price is above (buy) / below (sell) the session POC
+//        • Slow UT    : a slower UT Bot agrees on trend
+//        • POI        : price is at an FVG / order block / liquidity sweep
+//      If the filters never agree, the flip is marked with a grey "×".
+//   3. On each signal, a trade map is drawn: Entry, SL, TP1/TP2/TP3
+//      (targets = next key levels: PDH/PDL, PWH/PWL, PSH/PSL, POC, VAH/VAL).
+// ════════════════════════════════════════════════════════════════════════════
+indicator("Ox Alpha UT Pro — UT Bot + CVD + POC + Key Levels", shorttitle="Ox Alpha UT Pro", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ══════════════════ INPUTS ══════════════════
+G_UT  = "① UT Bot Engine"
+G_FLT = "② Signal Filters (each one ON / OFF)"
+G_VP  = "③ Volume Profile (daily session)"
+G_LVL = "④ Key Levels"
+G_TP  = "⑤ Trade Map (Entry / SL / TP)"
+G_VIS = "⑥ Display"
+
+utTf       = input.timeframe("30", "UT Timeframe", group=G_UT, tooltip="Timeframe the UT Bot runs on. Higher-timeframe values are read from the last CLOSED bar, so they do not repaint. If this is equal to or lower than the chart, UT runs on the chart itself.")
+utKey      = input.float(1.0, "Key Value (sensitivity)", minval=0.1, step=0.1, group=G_UT, tooltip="Lower = more flips, higher = fewer.")
+utAtr      = input.int(10, "ATR Period", minval=1, group=G_UT)
+utHA       = input.bool(false, "Use Heikin Ashi close", group=G_UT)
+utLive     = input.bool(false, "Use LIVE higher-TF direction (repaints)", group=G_UT, tooltip="ON = earlier signals from the still-forming UT bar, but they can disappear. OFF = confirmed only.")
+showUtStop = input.bool(true, "Show UT trailing stop line", group=G_UT)
+
+useStruct  = input.bool(true, "Structure filter", inline="st", group=G_FLT)
+swingLen   = input.int(24, "Swing Length", minval=2, inline="st", group=G_FLT, tooltip="Bullish structure = close broke above the highest high of the last N bars; bearish = broke below the lowest low. Buys need bullish, sells need bearish.")
+useCvd     = input.bool(true, "CVD filter", inline="cvd", group=G_FLT)
+cvdLen     = input.int(21, "Smoothing", minval=2, inline="cvd", group=G_FLT, tooltip="Buy only when Cumulative Volume Delta is above its EMA (buyers in control), sell only when below. This removes most choppy flips.")
+cvdIntra   = input.bool(true, "CVD from intrabar volume", inline="cvd2", group=G_FLT, tooltip="ON = delta built from lower-timeframe candles (more accurate). OFF or not available = estimated from where each candle closed inside its range.")
+cvdLtf     = input.timeframe("1", "Intrabar TF", inline="cvd2", group=G_FLT)
+usePocF    = input.bool(true, "POC side filter", group=G_FLT, tooltip="Buy only above the session POC, sell only below it.")
+useUt2     = input.bool(false, "Slow UT trend filter", inline="ut2", group=G_FLT)
+ut2Key     = input.float(3.0, "Key", minval=0.1, step=0.1, inline="ut2", group=G_FLT)
+ut2Atr     = input.int(30, "ATR", minval=1, inline="ut2", group=G_FLT)
+usePoi     = input.bool(false, "POI filter (FVG / Order Block / Sweep)", group=G_FLT, tooltip="Buy only when price is at a bullish FVG, bullish order block or swept a recent low (mirror for sells).")
+poiLen     = input.int(3, "POI sweep lookback", minval=1, group=G_FLT)
+waitBars   = input.int(20, "Wait for filters (bars)", minval=0, group=G_FLT, tooltip="After a UT flip, the signal prints on the first chart bar where all ON filters agree, within this many bars. 0 = only on the flip bar.")
+showBlock  = input.bool(true, "Mark filtered-out flips (grey ×)", group=G_FLT)
+
+showPoc    = input.bool(true, "Show POC", inline="vp", group=G_VP)
+showVA     = input.bool(true, "Show VAH / VAL", inline="vp", group=G_VP)
+vpBinMult  = input.float(0.5, "Price bucket size (× ATR)", minval=0.05, step=0.05, group=G_VP)
+vpPct      = input.int(70, "Value area %", minval=10, maxval=95, group=G_VP)
+
+showPD     = input.bool(true, "PDH / PDL — previous day high / low", group=G_LVL)
+showPW     = input.bool(true, "PWH / PWL — previous week high / low", group=G_LVL)
+showPS     = input.bool(true, "PSH / PSL — previous session high / low", group=G_LVL)
+psSess     = input.session("0915-1530", "Session", inline="ps", group=G_LVL)
+psTz       = input.string("Asia/Kolkata", "Timezone", inline="ps", group=G_LVL, tooltip="Session used for PSH / PSL. Examples: NSE 0915-1530 Asia/Kolkata, New York 0930-1600 America/New_York, London 0800-1630 Europe/London.")
+showLvlTag = input.bool(true, "Show level price tags", group=G_LVL)
+
+showTP     = input.bool(true, "Show trade map on signals", group=G_TP)
+slMode     = input.string("UT Stop", "Stop loss at", options=["UT Stop", "ATR"], group=G_TP)
+slAtrMult  = input.float(1.5, "ATR multiple (ATR stop)", minval=0.1, step=0.1, group=G_TP)
+tpLevels   = input.bool(true, "Targets at next key levels", group=G_TP, tooltip="ON = TP1/2/3 at the next key levels in the trade direction (missing ones fall back to R-multiples). OFF = 1R / 2R / 3R.")
+tpBars     = input.int(20, "Trade map length (bars)", minval=5, group=G_TP)
+
+showSig    = input.bool(true, "Show BUY / SELL labels", group=G_VIS)
+showStruct = input.bool(false, "Show structure change (CHoCH) marks", group=G_VIS)
+showDash   = input.bool(true, "Show dashboard", group=G_VIS)
+dashPosIn  = input.string("Top Right", "Dashboard position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=G_VIS)
+
+atrC = ta.atr(14)
+
+// ══════════════════ 1. UT BOT ENGINE ══════════════════
+f_ut(_src, _kv, _ap) =>
+    _nLoss = _kv * ta.atr(_ap)
+    var float _stop = na
+    _prev = nz(_stop[1])
+    _stop := _src > _prev and _src[1] > _prev ? math.max(_prev, _src - _nLoss) : _src < _prev and _src[1] < _prev ? math.min(_prev, _src + _nLoss) : _src > _prev ? _src - _nLoss : _src + _nLoss
+    var int _pos = 0
+    _pos := _src[1] < _prev and _src > _prev ? 1 : _src[1] > _prev and _src < _prev ? -1 : nz(_pos[1])
+    [_stop, _pos]
+
+// Previous (closed) bar values, used for non-repainting higher-TF requests
+f_utPrev(_src, _kv, _ap) =>
+    [_s, _p] = f_ut(_src, _kv, _ap)
+    [_s[1], _p[1]]
+
+utSrc  = utHA ? ohlc4 : close
+useHtf = timeframe.in_seconds(utTf) > timeframe.in_seconds(timeframe.period)
+
+[cStop, cPos]   = f_ut(utSrc, utKey, utAtr)
+[hStop, hPos]   = request.security(syminfo.tickerid, utTf, f_utPrev(utSrc, utKey, utAtr), lookahead=barmerge.lookahead_on)
+[lStop, lPos]   = request.security(syminfo.tickerid, utTf, f_ut(utSrc, utKey, utAtr), lookahead=barmerge.lookahead_off)
+[c2Stop, c2Pos] = f_ut(utSrc, ut2Key, ut2Atr)
+[h2Stop, h2Pos] = request.security(syminfo.tickerid, utTf, f_utPrev(utSrc, ut2Key, ut2Atr), lookahead=barmerge.lookahead_on)
+
+utStop = not useHtf ? cStop : utLive ? lStop : hStop
+utDir  = not useHtf ? cPos  : utLive ? lPos  : hPos
+ut2Dir = useHtf ? h2Pos : c2Pos
+
+utFlipUp = utDir == 1  and nz(utDir[1]) != 1
+utFlipDn = utDir == -1 and nz(utDir[1]) != -1
+
+// ══════════════════ 2a. STRUCTURE (Swing Length) ══════════════════
+swingHi = ta.highest(high, swingLen)[1]
+swingLo = ta.lowest(low, swingLen)[1]
+var int structDir = 0
+chochUp = close > swingHi and structDir == -1
+chochDn = close < swingLo and structDir == 1
+if close > swingHi
+    structDir := 1
+else if close < swingLo
+    structDir := -1
+
+// ══════════════════ 2b. CVD (Cumulative Volume Delta) ══════════════════
+ltfReq = timeframe.in_seconds(cvdLtf) < timeframe.in_seconds(timeframe.period) ? cvdLtf : timeframe.period
+[ltfO, ltfC, ltfV] = request.security_lower_tf(syminfo.tickerid, ltfReq, [open, close, volume])
+float intraDelta = 0.0
+nIntra = array.size(ltfV)
+if nIntra > 0
+    for i = 0 to nIntra - 1
+        _o = array.get(ltfO, i)
+        _c = array.get(ltfC, i)
+        _v = nz(array.get(ltfV, i))
+        intraDelta += _c > _o ? _v : _c < _o ? -_v : 0.0
+barRange   = high - low
+estDelta   = barRange > 0 ? nz(volume) * ((close - low) - (high - close)) / barRange : 0.0
+barDelta   = cvdIntra and nIntra > 0 ? intraDelta : estDelta
+var float cvd = 0.0
+cvd += barDelta
+cvdEma  = ta.ema(cvd, cvdLen)
+cvdBull = cvd > cvdEma
+cvdBear = cvd < cvdEma
+
+// ══════════════════ 2c. SESSION VOLUME PROFILE (POC / VAH / VAL) ══════════════════
+// Buckets are anchored at the day's open with a fixed size for the whole day.
+newDay = timeframe.change("D")
+var map<int, float> vpVol = map.new<int, float>()
+var float vpAnchor = na
+var float vpBin    = na
+var int   vpMinK   = na
+var int   vpMaxK   = na
+var int   vpPocK   = na
+var float vpTot    = 0.0
+if newDay or na(vpAnchor)
+    map.clear(vpVol)
+    vpAnchor := open
+    vpBin    := math.max(nz(atrC, high - low) * vpBinMult, syminfo.mintick)
+    vpMinK   := na
+    vpMaxK   := na
+    vpPocK   := na
+    vpTot    := 0.0
+
+f_vol(_k) =>
+    map.contains(vpVol, _k) ? map.get(vpVol, _k) : 0.0
+
+vpK    = math.floor((close - vpAnchor) / vpBin)
+vpKVol = f_vol(vpK) + nz(volume)
+map.put(vpVol, vpK, vpKVol)
+vpTot  += nz(volume)
+vpMinK := na(vpMinK) ? vpK : math.min(vpMinK, vpK)
+vpMaxK := na(vpMaxK) ? vpK : math.max(vpMaxK, vpK)
+float pocVol = -1.0
+if not na(vpPocK)
+    pocVol := f_vol(vpPocK)
+if vpKVol > pocVol
+    vpPocK := vpK
+
+loK = vpPocK
+hiK = vpPocK
+vaAcc = f_vol(vpPocK)
+while vaAcc < vpTot * vpPct / 100 and (loK > vpMinK or hiK < vpMaxK)
+    loV = loK > vpMinK ? f_vol(loK - 1) : -1.0
+    hiV = hiK < vpMaxK ? f_vol(hiK + 1) : -1.0
+    if hiV >= loV
+        hiK += 1
+        vaAcc += hiV
+    else
+        loK -= 1
+        vaAcc += loV
+
+poc = vpAnchor + (vpPocK + 0.5) * vpBin
+vah = vpAnchor + (hiK + 1) * vpBin
+val = vpAnchor + loK * vpBin
+
+// ══════════════════ 2d. POI (FVG / Order Block / Sweep) ══════════════════
+var float fvgBullLo = na
+var float fvgBullHi = na
+var float fvgBearLo = na
+var float fvgBearHi = na
+if low > high[2]
+    fvgBullLo := high[2]
+    fvgBullHi := low
+if high < low[2]
+    fvgBearLo := high
+    fvgBearHi := low[2]
+if not na(fvgBullLo) and close < fvgBullLo
+    fvgBullLo := na
+    fvgBullHi := na
+if not na(fvgBearHi) and close > fvgBearHi
+    fvgBearLo := na
+    fvgBearHi := na
+
+var float obBullLo = na
+var float obBullHi = na
+var float obBearLo = na
+var float obBearHi = na
+volSma = ta.sma(volume, 20)
+if close < open and volume > volSma * 1.5
+    obBearLo := low
+    obBearHi := high
+if close > open and volume > volSma * 1.5
+    obBullLo := low
+    obBullHi := high
+if not na(obBearHi) and close > obBearHi
+    obBearLo := na
+    obBearHi := na
+if not na(obBullLo) and close < obBullLo
+    obBullLo := na
+    obBullHi := na
+
+sweepRefL = ta.lowest(low, poiLen)[2]
+sweepRefH = ta.highest(high, poiLen)[2]
+sweepLow  = low < sweepRefL and close > sweepRefL
+sweepHigh = high > sweepRefH and close < sweepRefH
+
+atBullPOI = (not na(fvgBullLo) and low <= fvgBullHi and low >= fvgBullLo - atrC) or (not na(obBullLo) and low <= obBullHi + atrC and low >= obBullLo - atrC) or sweepLow
+atBearPOI = (not na(fvgBearLo) and high >= fvgBearLo and high <= fvgBearHi + atrC) or (not na(obBearLo) and high >= obBearLo - atrC and high <= obBearHi + atrC) or sweepHigh
+
+// ══════════════════ 3. KEY LEVELS ══════════════════
+[pdh, pdl] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+[pwh, pwl] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+
+inPs    = not na(time(timeframe.period, psSess, psTz))
+psStart = inPs and not inPs[1]
+var float curSH = na
+var float curSL = na
+var float psh   = na
+var float psl   = na
+if psStart
+    psh   := curSH
+    psl   := curSL
+    curSH := high
+    curSL := low
+else if inPs
+    curSH := math.max(nz(curSH, high), high)
+    curSL := math.min(nz(curSL, low), low)
+
+// ══════════════════ 4. FILTERS + SIGNALS ══════════════════
+okStructB = not useStruct or structDir == 1
+okStructS = not useStruct or structDir == -1
+okCvdB    = not useCvd or cvdBull
+okCvdS    = not useCvd or cvdBear
+okPocB    = not usePocF or na(poc) or close > poc
+okPocS    = not usePocF or na(poc) or close < poc
+okUt2B    = not useUt2 or nz(ut2Dir) == 1
+okUt2S    = not useUt2 or nz(ut2Dir) == -1
+okPoiB    = not usePoi or atBullPOI
+okPoiS    = not usePoi or atBearPOI
+passBuy   = okStructB and okCvdB and okPocB and okUt2B and okPoiB
+passSell  = okStructS and okCvdS and okPocS and okUt2S and okPoiS
+
+// One signal per UT leg: wait after each flip until the filters agree
+var int  legDir  = 0
+var int  legBar  = na
+var bool legDone = true
+legOver = not legDone and (utFlipUp or utFlipDn or bar_index - legBar > waitBars)
+if legOver and showBlock
+    label.new(legBar, close, "×", yloc=legDir == 1 ? yloc.belowbar : yloc.abovebar, style=label.style_none, textcolor=color.gray, size=size.normal, tooltip="UT flip filtered out — the ON filters did not agree in time")
+if legOver
+    legDone := true
+if utFlipUp or utFlipDn
+    legDir  := utFlipUp ? 1 : -1
+    legBar  := bar_index
+    legDone := false
+
+inLeg   = not legDone and bar_index - legBar <= waitBars
+buySig  = inLeg and legDir == 1 and utDir == 1 and passBuy
+sellSig = inLeg and legDir == -1 and utDir == -1 and passSell
+if buySig or sellSig
+    legDone := true
+
+// ══════════════════ 5. TRADE MAP (Entry / SL / TP) ══════════════════
+f_targets(_isLong, _entry, _risk) =>
+    _all = array.from(pdh, pdl, pwh, pwl, psh, psl, poc, vah, val)
+    _cand = array.new_float()
+    if tpLevels
+        for _v in _all
+            if not na(_v) and (_isLong ? _v > _entry + atrC * 0.2 : _v < _entry - atrC * 0.2)
+                array.push(_cand, _v)
+        array.sort(_cand, _isLong ? order.ascending : order.descending)
+    _tps = array.new_float()
+    for _v in _cand
+        if array.size(_tps) < 3 and (array.size(_tps) == 0 or math.abs(_v - array.get(_tps, array.size(_tps) - 1)) > atrC * 0.2)
+            array.push(_tps, _v)
+    _step = _isLong ? _risk : -_risk
+    while array.size(_tps) < 3
+        _last = array.size(_tps) == 0 ? _entry : array.get(_tps, array.size(_tps) - 1)
+        array.push(_tps, _last + _step)
+    [array.get(_tps, 0), array.get(_tps, 1), array.get(_tps, 2)]
+
+var array<line>  mapLines  = array.new<line>()
+var array<label> mapLabels = array.new<label>()
+
+f_mapLevel(_y, _txt, _col, _style) =>
+    array.push(mapLines, line.new(bar_index, _y, bar_index + tpBars, _y, color=_col, style=_style, width=1))
+    array.push(mapLabels, label.new(bar_index + tpBars, _y, _txt + "  " + str.tostring(_y, format.mintick), style=label.style_label_left, color=color.new(_col, 80), textcolor=_col, size=size.small))
+
+if showTP and (buySig or sellSig)
+    for _l in mapLines
+        line.delete(_l)
+    for _b in mapLabels
+        label.delete(_b)
+    array.clear(mapLines)
+    array.clear(mapLabels)
+    isLong = buySig
+    entry  = close
+    slUt   = not na(utStop) and (isLong ? utStop < entry : utStop > entry) ? utStop : na
+    slAtr  = isLong ? entry - atrC * slAtrMult : entry + atrC * slAtrMult
+    sl     = slMode == "UT Stop" and not na(slUt) ? slUt : slAtr
+    risk   = math.max(math.abs(entry - sl), syminfo.mintick)
+    [tp1, tp2, tp3] = f_targets(isLong, entry, risk)
+    f_mapLevel(entry, "ENTRY", color.gray, line.style_solid)
+    f_mapLevel(sl, "SL", color.red, line.style_solid)
+    f_mapLevel(tp1, "TP1 " + str.tostring(math.abs(tp1 - entry) / risk, "#.#") + "R", color.lime, line.style_dashed)
+    f_mapLevel(tp2, "TP2 " + str.tostring(math.abs(tp2 - entry) / risk, "#.#") + "R", color.green, line.style_dashed)
+    f_mapLevel(tp3, "TP3 " + str.tostring(math.abs(tp3 - entry) / risk, "#.#") + "R", color.teal, line.style_dashed)
+
+// ══════════════════ PLOTS ══════════════════
+f_brk(_x) => _x != _x[1] ? na : _x
+
+plot(showUtStop ? utStop : na, "UT Trailing Stop", color=utDir == 1 ? color.new(color.green, 0) : color.new(color.red, 0), linewidth=2, style=plot.style_linebr)
+plot(showPoc and not newDay ? poc : na, "POC", color=color.new(color.yellow, 0), linewidth=2, style=plot.style_linebr)
+plot(showVA and not newDay ? vah : na, "VAH", color=color.new(color.orange, 40), style=plot.style_linebr)
+plot(showVA and not newDay ? val : na, "VAL", color=color.new(color.orange, 40), style=plot.style_linebr)
+plot(showPD ? f_brk(pdh) : na, "PDH", color=color.new(color.blue, 0), style=plot.style_linebr)
+plot(showPD ? f_brk(pdl) : na, "PDL", color=color.new(color.blue, 0), style=plot.style_linebr)
+plot(showPW ? f_brk(pwh) : na, "PWH", color=color.new(color.purple, 0), linewidth=2, style=plot.style_linebr)
+plot(showPW ? f_brk(pwl) : na, "PWL", color=color.new(color.purple, 0), linewidth=2, style=plot.style_linebr)
+plot(showPS ? f_brk(psh) : na, "PSH", color=color.new(color.fuchsia, 30), style=plot.style_linebr)
+plot(showPS ? f_brk(psl) : na, "PSL", color=color.new(color.fuchsia, 30), style=plot.style_linebr)
+
+plotshape(showSig and buySig,  "BUY",  shape.labelup,   location.belowbar, color.new(color.green, 0), text="BUY",  textcolor=color.white, size=size.small)
+plotshape(showSig and sellSig, "SELL", shape.labeldown, location.abovebar, color.new(color.red, 0),   text="SELL", textcolor=color.white, size=size.small)
+plotshape(showStruct and chochUp, "CHoCH Up", shape.triangleup,   location.belowbar, color.new(color.lime, 30),   size=size.tiny, text="CHoCH")
+plotshape(showStruct and chochDn, "CHoCH Dn", shape.triangledown, location.abovebar, color.new(color.maroon, 30), size=size.tiny, text="CHoCH")
+
+// Level price tags at the right edge
+f_tag(_lbl, _show, _y, _txt, _col) =>
+    label _l = _lbl
+    if _show and showLvlTag and not na(_y)
+        _t = _txt + " " + str.tostring(_y, format.mintick)
+        if na(_l)
+            _l := label.new(bar_index + 2, _y, _t, style=label.style_label_left, color=color.new(_col, 85), textcolor=_col, size=size.small)
+        else
+            label.set_xy(_l, bar_index + 2, _y)
+            label.set_text(_l, _t)
+    else if not na(_l)
+        label.delete(_l)
+        _l := na
+    _l
+
+var label tgPDH = na
+var label tgPDL = na
+var label tgPWH = na
+var label tgPWL = na
+var label tgPSH = na
+var label tgPSL = na
+var label tgPOC = na
+if barstate.islast
+    tgPDH := f_tag(tgPDH, showPD, pdh, "PDH", color.blue)
+    tgPDL := f_tag(tgPDL, showPD, pdl, "PDL", color.blue)
+    tgPWH := f_tag(tgPWH, showPW, pwh, "PWH", color.purple)
+    tgPWL := f_tag(tgPWL, showPW, pwl, "PWL", color.purple)
+    tgPSH := f_tag(tgPSH, showPS, psh, "PSH", color.fuchsia)
+    tgPSL := f_tag(tgPSL, showPS, psl, "PSL", color.fuchsia)
+    tgPOC := f_tag(tgPOC, showPoc, poc, "POC", color.yellow)
+
+// ══════════════════ DASHBOARD ══════════════════
+f_dirTxt(_d) => _d == 1 ? "BULL" : _d == -1 ? "BEAR" : "—"
+f_dirCol(_d) => _d == 1 ? color.green : _d == -1 ? color.red : color.gray
+f_onTxt(_on, _d) => _on ? f_dirTxt(_d) : "OFF"
+f_onCol(_on, _d) => _on ? f_dirCol(_d) : color.gray
+
+dashPos = dashPosIn == "Top Left" ? position.top_left : dashPosIn == "Bottom Right" ? position.bottom_right : dashPosIn == "Bottom Left" ? position.bottom_left : position.top_right
+var table dash = table.new(dashPos, 2, 9, bgcolor=color.new(color.black, 20), border_width=1, border_color=color.new(color.gray, 50))
+if showDash and barstate.islast
+    cvdD = cvdBull ? 1 : cvdBear ? -1 : 0
+    pocD = na(poc) ? 0 : close > poc ? 1 : close < poc ? -1 : 0
+    poiD = atBullPOI ? 1 : atBearPOI ? -1 : 0
+    table.cell(dash, 0, 0, "OX ALPHA UT PRO", text_color=color.aqua, text_size=size.small)
+    table.cell(dash, 1, 0, "UT " + (useHtf ? utTf : timeframe.period), text_color=color.gray, text_size=size.small)
+    table.cell(dash, 0, 1, "UT Bot", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 1, f_dirTxt(utDir), text_color=f_dirCol(utDir), text_size=size.small)
+    table.cell(dash, 0, 2, "Structure (" + str.tostring(swingLen) + ")", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 2, f_onTxt(useStruct, structDir), text_color=f_onCol(useStruct, structDir), text_size=size.small)
+    table.cell(dash, 0, 3, "CVD", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 3, f_onTxt(useCvd, cvdD), text_color=f_onCol(useCvd, cvdD), text_size=size.small)
+    table.cell(dash, 0, 4, "POC side", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 4, f_onTxt(usePocF, pocD), text_color=f_onCol(usePocF, pocD), text_size=size.small)
+    table.cell(dash, 0, 5, "Slow UT", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 5, f_onTxt(useUt2, ut2Dir), text_color=f_onCol(useUt2, ut2Dir), text_size=size.small)
+    table.cell(dash, 0, 6, "POI", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 6, f_onTxt(usePoi, poiD), text_color=f_onCol(usePoi, poiD), text_size=size.small)
+    table.cell(dash, 0, 7, "Buy filters", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 7, passBuy ? "PASS ✔" : "WAIT ✘", text_color=passBuy ? color.green : color.gray, text_size=size.small)
+    table.cell(dash, 0, 8, "Sell filters", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 8, passSell ? "PASS ✔" : "WAIT ✘", text_color=passSell ? color.red : color.gray, text_size=size.small)
+else if not showDash
+    table.clear(dash, 0, 0, 1, 8)
+
+// ══════════════════ ALERTS ══════════════════
+// Tip: create alerts with "Once Per Bar Close" so signals are final.
+alertcondition(buySig,   "BUY signal",       "Ox Alpha UT Pro: BUY {{ticker}} @ {{close}}")
+alertcondition(sellSig,  "SELL signal",      "Ox Alpha UT Pro: SELL {{ticker}} @ {{close}}")
+alertcondition(utFlipUp, "UT flip up (raw)", "Ox Alpha UT Pro: UT flipped bullish {{ticker}} @ {{close}}")
+alertcondition(utFlipDn, "UT flip down (raw)", "Ox Alpha UT Pro: UT flipped bearish {{ticker}} @ {{close}}")
+alertcondition(ta.cross(close, pdh) or ta.cross(close, pdl) or ta.cross(close, pwh) or ta.cross(close, pwl) or ta.cross(close, psh) or ta.cross(close, psl), "Key level cross", "Ox Alpha UT Pro: {{ticker}} crossed a key level (PDH/PDL/PWH/PWL/PSH/PSL) @ {{close}}")
