@@ -1,75 +1,93 @@
 //@version=5
 // ════════════════════════════════════════════════════════════════════════════
-//  OX ALPHA UT PRO
+//  OX ALPHA UT PRO — UT Bot + SMC Order Blocks + Premium / Discount
 //  How it works, in order:
-//   1. UT Bot gives the direction (runs on the "UT Timeframe", default 30m).
-//   2. Every time UT flips, the script waits (up to "Wait for filters" bars)
-//      until all filters you switched ON agree, then prints ONE BUY / SELL.
-//        • Structure  : price has broken the Swing Length (24) high / low
-//        • CVD        : buyers (or sellers) are in control of volume
-//        • POC side   : price is above (buy) / below (sell) the session POC
-//        • Slow UT    : a slower UT Bot agrees on trend
-//        • POI        : price is at an FVG / order block / liquidity sweep
-//      If the filters never agree, the flip is marked with a grey "×".
-//   3. On each signal, a trade map is drawn: Entry, SL, TP1/TP2/TP3
-//      (targets = next key levels: PDH/PDL, PWH/PWL, PSH/PSL, POC, VAH/VAL).
+//   1. Swings are found with "Swing Length" (24). A close beyond the last
+//      swing high / low is a BOS (same trend) or CHoCH (trend change).
+//   2. On every break, the order block is the candle that started the move
+//      (lowest candle for a bullish break, highest for a bearish break).
+//      It stays on the chart until price closes through it (mitigated).
+//   3. Premium / Discount is drawn like LuxAlgo SMC: top 5% = Premium,
+//      middle band = Equilibrium, bottom 5% = Discount of the current range.
+//   4. A BUY prints only when price taps a bullish order block while the
+//      UT Bot is bullish and every filter you switched ON agrees
+//      (default: price in Discount, structure bullish, CVD bullish).
+//      SELL is the mirror (bearish order block, Premium, bearish).
+//   5. On each signal a trade map is drawn: Entry, SL (beyond the order
+//      block), TP1/TP2/TP3 at the next key levels.
 // ════════════════════════════════════════════════════════════════════════════
-indicator("Ox Alpha UT Pro — UT Bot + CVD + POC + Key Levels", shorttitle="Ox Alpha UT Pro", overlay=true, max_lines_count=500, max_labels_count=500)
+indicator("Ox Alpha UT Pro — UT Bot + SMC Order Blocks + Key Levels", shorttitle="Ox Alpha UT Pro", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500, max_bars_back=1000)
 
 // ══════════════════ INPUTS ══════════════════
-G_UT  = "① UT Bot Engine"
-G_FLT = "② Signal Filters (each one ON / OFF)"
-G_VP  = "③ Volume Profile (daily session)"
-G_LVL = "④ Key Levels"
-G_TP  = "⑤ Trade Map (Entry / SL / TP)"
-G_VIS = "⑥ Display"
+G_SIG = "① Signals"
+G_UT  = "② UT Bot Engine"
+G_SMC = "③ Smart Money Concepts (Order Blocks / Premium-Discount)"
+G_FLT = "④ Signal Filters (each one ON / OFF)"
+G_VP  = "⑤ Volume Profile (daily session)"
+G_LVL = "⑥ Key Levels"
+G_TP  = "⑦ Trade Map (Entry / SL / TP)"
+G_VIS = "⑧ Display"
+
+sigMode    = input.string("Order Block tap", "Signal mode", options=["Order Block tap", "UT flip"], group=G_SIG, tooltip="Order Block tap = signals ONLY when price taps an order block in the UT direction. UT flip = the older mode, a signal after each UT flip.")
+showSig    = input.bool(true, "Show BUY / SELL labels", group=G_SIG)
 
 utTf       = input.timeframe("30", "UT Timeframe", group=G_UT, tooltip="Timeframe the UT Bot runs on. Higher-timeframe values are read from the last CLOSED bar, so they do not repaint. If this is equal to or lower than the chart, UT runs on the chart itself.")
 utKey      = input.float(1.0, "Key Value (sensitivity)", minval=0.1, step=0.1, group=G_UT, tooltip="Lower = more flips, higher = fewer.")
 utAtr      = input.int(10, "ATR Period", minval=1, group=G_UT)
 utHA       = input.bool(false, "Use Heikin Ashi close", group=G_UT)
 utLive     = input.bool(false, "Use LIVE higher-TF direction (repaints)", group=G_UT, tooltip="ON = earlier signals from the still-forming UT bar, but they can disappear. OFF = confirmed only.")
-showUtStop = input.bool(true, "Show UT trailing stop line", group=G_UT)
+showUtStop = input.bool(false, "Show UT trailing stop line", group=G_UT)
 
-useStruct  = input.bool(true, "Structure filter", inline="st", group=G_FLT)
-swingLen   = input.int(24, "Swing Length", minval=2, inline="st", group=G_FLT, tooltip="Bullish structure = close broke above the highest high of the last N bars; bearish = broke below the lowest low. Buys need bullish, sells need bearish.")
+swingLen   = input.int(24, "Swing Length", minval=5, group=G_SMC, tooltip="Bars on each side needed to confirm a swing high / low. Used for BOS / CHoCH, order blocks and the Premium / Discount range.")
+showOB     = input.bool(true, "Show order blocks", group=G_SMC)
+obCount    = input.int(3, "Order blocks kept (each side)", minval=1, maxval=10, group=G_SMC)
+obMitig    = input.string("Close", "Order block removed when", options=["Close", "Wick"], group=G_SMC, tooltip="Close = removed when a candle CLOSES through it. Wick = removed when a wick goes through it (stricter, like LuxAlgo default).")
+showPDz    = input.bool(true, "Show Premium / Equilibrium / Discount zones", group=G_SMC)
+showBos    = input.bool(false, "Show BOS / CHoCH lines", group=G_SMC)
+
+usePD      = input.bool(true, "Premium / Discount filter", group=G_FLT, tooltip="Buy only below Equilibrium (Discount half), sell only above it (Premium half).")
+useStruct  = input.bool(true, "Structure filter", group=G_FLT, tooltip="Buy only when the last break was bullish (BOS / CHoCH up), sell only when it was bearish.")
 useCvd     = input.bool(true, "CVD filter", inline="cvd", group=G_FLT)
-cvdLen     = input.int(21, "Smoothing", minval=2, inline="cvd", group=G_FLT, tooltip="Buy only when Cumulative Volume Delta is above its EMA (buyers in control), sell only when below. This removes most choppy flips.")
+cvdLen     = input.int(21, "Smoothing", minval=2, inline="cvd", group=G_FLT, tooltip="Buy only when Cumulative Volume Delta is above its EMA (buyers in control), sell only when below.")
 cvdIntra   = input.bool(true, "CVD from intrabar volume", inline="cvd2", group=G_FLT, tooltip="ON = delta built from lower-timeframe candles (more accurate). OFF or not available = estimated from where each candle closed inside its range.")
 cvdLtf     = input.timeframe("1", "Intrabar TF", inline="cvd2", group=G_FLT)
-usePocF    = input.bool(true, "POC side filter", group=G_FLT, tooltip="Buy only above the session POC, sell only below it.")
+usePocF    = input.bool(false, "POC side filter", group=G_FLT, tooltip="Buy only above the session POC, sell only below it.")
 useUt2     = input.bool(false, "Slow UT trend filter", inline="ut2", group=G_FLT)
 ut2Key     = input.float(3.0, "Key", minval=0.1, step=0.1, inline="ut2", group=G_FLT)
 ut2Atr     = input.int(30, "ATR", minval=1, inline="ut2", group=G_FLT)
-usePoi     = input.bool(false, "POI filter (FVG / Order Block / Sweep)", group=G_FLT, tooltip="Buy only when price is at a bullish FVG, bullish order block or swept a recent low (mirror for sells).")
-poiLen     = input.int(3, "POI sweep lookback", minval=1, group=G_FLT)
-waitBars   = input.int(20, "Wait for filters (bars)", minval=0, group=G_FLT, tooltip="After a UT flip, the signal prints on the first chart bar where all ON filters agree, within this many bars. 0 = only on the flip bar.")
-showBlock  = input.bool(true, "Mark filtered-out flips (grey ×)", group=G_FLT)
+waitBars   = input.int(20, "UT flip mode: wait for filters (bars)", minval=0, group=G_FLT, tooltip="Only used in UT flip mode. After a flip, the signal prints on the first bar where all ON filters agree, within this many bars.")
+showBlock  = input.bool(false, "UT flip mode: mark filtered-out flips (grey ×)", group=G_FLT)
 
-showPoc    = input.bool(true, "Show POC", inline="vp", group=G_VP)
-showVA     = input.bool(true, "Show VAH / VAL", inline="vp", group=G_VP)
+showPoc    = input.bool(false, "Show POC line", inline="vp", group=G_VP)
+showVA     = input.bool(false, "Show VAH / VAL lines", inline="vp", group=G_VP)
 vpBinMult  = input.float(0.5, "Price bucket size (× ATR)", minval=0.05, step=0.05, group=G_VP)
 vpPct      = input.int(70, "Value area %", minval=10, maxval=95, group=G_VP)
 
-showPD     = input.bool(true, "PDH / PDL — previous day high / low", group=G_LVL)
-showPW     = input.bool(true, "PWH / PWL — previous week high / low", group=G_LVL)
-showPS     = input.bool(true, "PSH / PSL — previous session high / low", group=G_LVL)
+showPDHL   = input.bool(true, "PDH / PDL — previous day high / low", group=G_LVL)
+showPWHL   = input.bool(true, "PWH / PWL — previous week high / low", group=G_LVL)
+showPSHL   = input.bool(true, "PSH / PSL — previous session high / low", group=G_LVL)
 psSess     = input.session("0915-1530", "Session", inline="ps", group=G_LVL)
 psTz       = input.string("Asia/Kolkata", "Timezone", inline="ps", group=G_LVL, tooltip="Session used for PSH / PSL. Examples: NSE 0915-1530 Asia/Kolkata, New York 0930-1600 America/New_York, London 0800-1630 Europe/London.")
 showLvlTag = input.bool(true, "Show level price tags", group=G_LVL)
 
 showTP     = input.bool(true, "Show trade map on signals", group=G_TP)
-slMode     = input.string("UT Stop", "Stop loss at", options=["UT Stop", "ATR"], group=G_TP)
+slMode     = input.string("Order Block", "Stop loss at", options=["Order Block", "UT Stop", "ATR"], group=G_TP, tooltip="Order Block = just beyond the tapped order block (UT flip mode falls back to UT Stop).")
 slAtrMult  = input.float(1.5, "ATR multiple (ATR stop)", minval=0.1, step=0.1, group=G_TP)
-tpLevels   = input.bool(true, "Targets at next key levels", group=G_TP, tooltip="ON = TP1/2/3 at the next key levels in the trade direction (missing ones fall back to R-multiples). OFF = 1R / 2R / 3R.")
+tpLevels   = input.bool(true, "Targets at next key levels", group=G_TP, tooltip="ON = TP1/2/3 at the next key levels in the trade direction (PDH/PDL, PWH/PWL, PSH/PSL, POC/VAH/VAL, Equilibrium, range high/low). Missing ones fall back to R-multiples. OFF = 1R / 2R / 3R.")
 tpBars     = input.int(20, "Trade map length (bars)", minval=5, group=G_TP)
 
-showSig    = input.bool(true, "Show BUY / SELL labels", group=G_VIS)
-showStruct = input.bool(false, "Show structure change (CHoCH) marks", group=G_VIS)
 showDash   = input.bool(true, "Show dashboard", group=G_VIS)
 dashPosIn  = input.string("Top Right", "Dashboard position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=G_VIS)
 
-atrC = ta.atr(14)
+obMode = sigMode == "Order Block tap"
+atrC   = ta.atr(14)
+
+// LuxAlgo-style colours
+C_BULL_OB = #3179f5
+C_BEAR_OB = #f77c80
+C_PREM    = #F23645
+C_EQ      = #878b94
+C_DISC    = #089981
 
 // ══════════════════ 1. UT BOT ENGINE ══════════════════
 f_ut(_src, _kv, _ap) =>
@@ -102,18 +120,181 @@ ut2Dir = useHtf ? h2Pos : c2Pos
 utFlipUp = utDir == 1  and nz(utDir[1]) != 1
 utFlipDn = utDir == -1 and nz(utDir[1]) != -1
 
-// ══════════════════ 2a. STRUCTURE (Swing Length) ══════════════════
-swingHi = ta.highest(high, swingLen)[1]
-swingLo = ta.lowest(low, swingLen)[1]
-var int structDir = 0
-chochUp = close > swingHi and structDir == -1
-chochDn = close < swingLo and structDir == 1
-if close > swingHi
-    structDir := 1
-else if close < swingLo
-    structDir := -1
+// ══════════════════ 2. SMC: SWINGS, BOS / CHoCH, ORDER BLOCKS ══════════════════
+// Very large candles (≥ 2 × ATR200) have high / low swapped, as in LuxAlgo,
+// so a single spike candle is not picked as the order block.
+atr200 = ta.atr(200)
+hiVol  = not na(atr200) and (high - low) >= 2 * atr200
+pHigh  = hiVol ? low : high
+pLow   = hiVol ? high : low
 
-// ══════════════════ 2b. CVD (Cumulative Volume Delta) ══════════════════
+// Swing detection (LuxAlgo "leg" method)
+var int leg = 0
+legHiRef = ta.highest(high, swingLen)
+legLoRef = ta.lowest(low, swingLen)
+if high[swingLen] > legHiRef
+    leg := 0
+else if low[swingLen] < legLoRef
+    leg := 1
+legChg       = leg - nz(leg[1])
+newSwingLow  = legChg == 1
+newSwingHigh = legChg == -1
+
+var float shLevel   = na
+var int   shBar     = na
+var bool  shCrossed = true
+var float slLevel   = na
+var int   slBar     = na
+var bool  slCrossed = true
+var float trailTop    = na
+var int   trailTopBar = na
+var float trailBot    = na
+var int   trailBotBar = na
+
+if newSwingHigh
+    shLevel     := high[swingLen]
+    shBar       := bar_index - swingLen
+    shCrossed   := false
+    trailTop    := high[swingLen]
+    trailTopBar := bar_index - swingLen
+if newSwingLow
+    slLevel     := low[swingLen]
+    slBar       := bar_index - swingLen
+    slCrossed   := false
+    trailBot    := low[swingLen]
+    trailBotBar := bar_index - swingLen
+if na(trailTop) or high > trailTop
+    trailTop    := high
+    trailTopBar := bar_index
+if na(trailBot) or low < trailBot
+    trailBot    := low
+    trailBotBar := bar_index
+
+equil    = (trailTop + trailBot) / 2
+premLine = 0.95 * trailTop + 0.05 * trailBot
+discLine = 0.95 * trailBot + 0.05 * trailTop
+
+// Order block storage (newest first)
+var array<float> bullTop  = array.new_float()
+var array<float> bullBot  = array.new_float()
+var array<bool>  bullUsed = array.new_bool()
+var array<box>   bullBox  = array.new_box()
+var array<float> bearTop  = array.new_float()
+var array<float> bearBot  = array.new_float()
+var array<bool>  bearUsed = array.new_bool()
+var array<box>   bearBox  = array.new_box()
+
+f_addOB(_tops, _bots, _used, _boxes, _a, _b, _bar, _bull) =>
+    _t = math.max(_a, _b)
+    _btm = math.min(_a, _b)
+    _col = _bull ? C_BULL_OB : C_BEAR_OB
+    array.unshift(_tops, _t)
+    array.unshift(_bots, _btm)
+    array.unshift(_used, false)
+    array.unshift(_boxes, showOB ? box.new(_bar, _t, bar_index, _btm, border_color=color.new(_col, 40), bgcolor=color.new(_col, 80), extend=extend.right) : na)
+    while array.size(_tops) > obCount
+        array.pop(_tops)
+        array.pop(_bots)
+        array.pop(_used)
+        box.delete(array.pop(_boxes))
+
+// Index of the newest unused order block this candle taps, or -1
+f_tap(_tops, _bots, _used, _bull) =>
+    int _idx = -1
+    _n = array.size(_tops)
+    if _n > 0
+        for _i = 0 to _n - 1
+            if _idx == -1 and not array.get(_used, _i)
+                _t = array.get(_tops, _i)
+                _b = array.get(_bots, _i)
+                _hit = _bull ? (low <= _t and close >= _b) : (high >= _b and close <= _t)
+                if _hit
+                    _idx := _i
+    _idx
+
+f_markUsed(_tops, _bots, _used, _t, _b) =>
+    _n = array.size(_tops)
+    if _n > 0
+        for _i = 0 to _n - 1
+            if array.get(_tops, _i) == _t and array.get(_bots, _i) == _b
+                array.set(_used, _i, true)
+
+f_mitigate(_tops, _bots, _used, _boxes, _bull) =>
+    _n = array.size(_tops)
+    if _n > 0
+        for _i = _n - 1 to 0
+            _t = array.get(_tops, _i)
+            _b = array.get(_bots, _i)
+            _gone = _bull ? (obMitig == "Close" ? close < _b : low < _b) : (obMitig == "Close" ? close > _t : high > _t)
+            if _gone
+                array.remove(_tops, _i)
+                array.remove(_bots, _i)
+                array.remove(_used, _i)
+                box.delete(array.remove(_boxes, _i))
+
+// a) taps on existing order blocks (checked before this bar can remove them)
+bullTapIdx = f_tap(bullTop, bullBot, bullUsed, true)
+bearTapIdx = f_tap(bearTop, bearBot, bearUsed, false)
+// remember the tapped block by price: later steps on this bar can shift array positions
+float bullTapTop = na
+float bullTapBot = na
+float bearTapTop = na
+float bearTapBot = na
+if bullTapIdx >= 0
+    bullTapTop := array.get(bullTop, bullTapIdx)
+    bullTapBot := array.get(bullBot, bullTapIdx)
+if bearTapIdx >= 0
+    bearTapTop := array.get(bearTop, bearTapIdx)
+    bearTapBot := array.get(bearBot, bearTapIdx)
+
+// b) mitigation
+f_mitigate(bullTop, bullBot, bullUsed, bullBox, true)
+f_mitigate(bearTop, bearBot, bearUsed, bearBox, false)
+
+// c) structure breaks create new order blocks
+var int structDir = 0
+bullBreak = not shCrossed and not na(shLevel) and close > shLevel
+bearBreak = not slCrossed and not na(slLevel) and close < slLevel
+
+if bullBreak
+    shCrossed := true
+    if showBos
+        _choch = structDir == -1
+        line.new(shBar, shLevel, bar_index, shLevel, color=C_DISC, style=_choch ? line.style_dashed : line.style_solid)
+        label.new(math.round((shBar + bar_index) / 2), shLevel, _choch ? "CHoCH" : "BOS", style=label.style_label_down, color=color.new(color.black, 100), textcolor=C_DISC, size=size.tiny)
+    structDir := 1
+    // order block = candle with the lowest low between the swing high and now
+    obN = math.min(bar_index - shBar, 999)
+    float obBest = na
+    int obOff = na
+    if obN >= 1
+        for i = 1 to obN
+            if na(obBest) or pLow[i] < obBest
+                obBest := pLow[i]
+                obOff  := i
+    if not na(obOff)
+        f_addOB(bullTop, bullBot, bullUsed, bullBox, pHigh[obOff], pLow[obOff], bar_index - obOff, true)
+
+if bearBreak
+    slCrossed := true
+    if showBos
+        _choch = structDir == 1
+        line.new(slBar, slLevel, bar_index, slLevel, color=C_PREM, style=_choch ? line.style_dashed : line.style_solid)
+        label.new(math.round((slBar + bar_index) / 2), slLevel, _choch ? "CHoCH" : "BOS", style=label.style_label_up, color=color.new(color.black, 100), textcolor=C_PREM, size=size.tiny)
+    structDir := -1
+    // order block = candle with the highest high between the swing low and now
+    obN = math.min(bar_index - slBar, 999)
+    float obBest = na
+    int obOff = na
+    if obN >= 1
+        for i = 1 to obN
+            if na(obBest) or pHigh[i] > obBest
+                obBest := pHigh[i]
+                obOff  := i
+    if not na(obOff)
+        f_addOB(bearTop, bearBot, bearUsed, bearBox, pHigh[obOff], pLow[obOff], bar_index - obOff, false)
+
+// ══════════════════ 3. CVD (Cumulative Volume Delta) ══════════════════
 ltfReq = timeframe.in_seconds(cvdLtf) < timeframe.in_seconds(timeframe.period) ? cvdLtf : timeframe.period
 [ltfO, ltfC, ltfV] = request.security_lower_tf(syminfo.tickerid, ltfReq, [open, close, volume])
 float intraDelta = 0.0
@@ -124,16 +305,16 @@ if nIntra > 0
         _c = array.get(ltfC, i)
         _v = nz(array.get(ltfV, i))
         intraDelta += _c > _o ? _v : _c < _o ? -_v : 0.0
-barRange   = high - low
-estDelta   = barRange > 0 ? nz(volume) * ((close - low) - (high - close)) / barRange : 0.0
-barDelta   = cvdIntra and nIntra > 0 ? intraDelta : estDelta
+barRange = high - low
+estDelta = barRange > 0 ? nz(volume) * ((close - low) - (high - close)) / barRange : 0.0
+barDelta = cvdIntra and nIntra > 0 ? intraDelta : estDelta
 var float cvd = 0.0
 cvd += barDelta
 cvdEma  = ta.ema(cvd, cvdLen)
 cvdBull = cvd > cvdEma
 cvdBear = cvd < cvdEma
 
-// ══════════════════ 2c. SESSION VOLUME PROFILE (POC / VAH / VAL) ══════════════════
+// ══════════════════ 4. SESSION VOLUME PROFILE (POC / VAH / VAL) ══════════════════
 // Buckets are anchored at the day's open with a fixed size for the whole day.
 newDay = timeframe.change("D")
 var map<int, float> vpVol = map.new<int, float>()
@@ -184,51 +365,7 @@ poc = vpAnchor + (vpPocK + 0.5) * vpBin
 vah = vpAnchor + (hiK + 1) * vpBin
 val = vpAnchor + loK * vpBin
 
-// ══════════════════ 2d. POI (FVG / Order Block / Sweep) ══════════════════
-var float fvgBullLo = na
-var float fvgBullHi = na
-var float fvgBearLo = na
-var float fvgBearHi = na
-if low > high[2]
-    fvgBullLo := high[2]
-    fvgBullHi := low
-if high < low[2]
-    fvgBearLo := high
-    fvgBearHi := low[2]
-if not na(fvgBullLo) and close < fvgBullLo
-    fvgBullLo := na
-    fvgBullHi := na
-if not na(fvgBearHi) and close > fvgBearHi
-    fvgBearLo := na
-    fvgBearHi := na
-
-var float obBullLo = na
-var float obBullHi = na
-var float obBearLo = na
-var float obBearHi = na
-volSma = ta.sma(volume, 20)
-if close < open and volume > volSma * 1.5
-    obBearLo := low
-    obBearHi := high
-if close > open and volume > volSma * 1.5
-    obBullLo := low
-    obBullHi := high
-if not na(obBearHi) and close > obBearHi
-    obBearLo := na
-    obBearHi := na
-if not na(obBullLo) and close < obBullLo
-    obBullLo := na
-    obBullHi := na
-
-sweepRefL = ta.lowest(low, poiLen)[2]
-sweepRefH = ta.highest(high, poiLen)[2]
-sweepLow  = low < sweepRefL and close > sweepRefL
-sweepHigh = high > sweepRefH and close < sweepRefH
-
-atBullPOI = (not na(fvgBullLo) and low <= fvgBullHi and low >= fvgBullLo - atrC) or (not na(obBullLo) and low <= obBullHi + atrC and low >= obBullLo - atrC) or sweepLow
-atBearPOI = (not na(fvgBearLo) and high >= fvgBearLo and high <= fvgBearHi + atrC) or (not na(obBearLo) and high >= obBearLo - atrC and high <= obBearHi + atrC) or sweepHigh
-
-// ══════════════════ 3. KEY LEVELS ══════════════════
+// ══════════════════ 5. KEY LEVELS ══════════════════
 [pdh, pdl] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_on)
 [pwh, pwl] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead=barmerge.lookahead_on)
 
@@ -247,7 +384,9 @@ else if inPs
     curSH := math.max(nz(curSH, high), high)
     curSL := math.min(nz(curSL, low), low)
 
-// ══════════════════ 4. FILTERS + SIGNALS ══════════════════
+// ══════════════════ 6. FILTERS + SIGNALS ══════════════════
+okPdB     = not usePD or na(equil) or close < equil
+okPdS     = not usePD or na(equil) or close > equil
 okStructB = not useStruct or structDir == 1
 okStructS = not useStruct or structDir == -1
 okCvdB    = not useCvd or cvdBull
@@ -256,34 +395,42 @@ okPocB    = not usePocF or na(poc) or close > poc
 okPocS    = not usePocF or na(poc) or close < poc
 okUt2B    = not useUt2 or nz(ut2Dir) == 1
 okUt2S    = not useUt2 or nz(ut2Dir) == -1
-okPoiB    = not usePoi or atBullPOI
-okPoiS    = not usePoi or atBearPOI
-passBuy   = okStructB and okCvdB and okPocB and okUt2B and okPoiB
-passSell  = okStructS and okCvdS and okPocS and okUt2S and okPoiS
+passBuy   = okPdB and okStructB and okCvdB and okPocB and okUt2B
+passSell  = okPdS and okStructS and okCvdS and okPocS and okUt2S
 
-// One signal per UT leg: wait after each flip until the filters agree
+// --- Order Block tap mode: one signal per order block ---
+obBuy  = obMode and not na(bullTapBot) and utDir == 1 and passBuy
+obSell = obMode and not na(bearTapTop) and utDir == -1 and passSell
+if obBuy
+    f_markUsed(bullTop, bullBot, bullUsed, bullTapTop, bullTapBot)
+if obSell
+    f_markUsed(bearTop, bearBot, bearUsed, bearTapTop, bearTapBot)
+
+// --- UT flip mode: wait after each flip until the filters agree ---
 var int  legDir  = 0
 var int  legBar  = na
 var bool legDone = true
-legOver = not legDone and (utFlipUp or utFlipDn or bar_index - legBar > waitBars)
+legOver = not obMode and not legDone and (utFlipUp or utFlipDn or bar_index - legBar > waitBars)
 if legOver and showBlock
     label.new(legBar, close, "×", yloc=legDir == 1 ? yloc.belowbar : yloc.abovebar, style=label.style_none, textcolor=color.gray, size=size.normal, tooltip="UT flip filtered out — the ON filters did not agree in time")
 if legOver
     legDone := true
-if utFlipUp or utFlipDn
+if not obMode and (utFlipUp or utFlipDn)
     legDir  := utFlipUp ? 1 : -1
     legBar  := bar_index
     legDone := false
-
-inLeg   = not legDone and bar_index - legBar <= waitBars
-buySig  = inLeg and legDir == 1 and utDir == 1 and passBuy
-sellSig = inLeg and legDir == -1 and utDir == -1 and passSell
-if buySig or sellSig
+inLeg   = not obMode and not legDone and bar_index - legBar <= waitBars
+flipBuy  = inLeg and legDir == 1 and utDir == 1 and passBuy
+flipSell = inLeg and legDir == -1 and utDir == -1 and passSell
+if flipBuy or flipSell
     legDone := true
 
-// ══════════════════ 5. TRADE MAP (Entry / SL / TP) ══════════════════
+buySig  = obBuy or flipBuy
+sellSig = obSell or flipSell
+
+// ══════════════════ 7. TRADE MAP (Entry / SL / TP) ══════════════════
 f_targets(_isLong, _entry, _risk) =>
-    _all = array.from(pdh, pdl, pwh, pwl, psh, psl, poc, vah, val)
+    _all = array.from(pdh, pdl, pwh, pwl, psh, psl, poc, vah, val, equil, trailTop, trailBot)
     _cand = array.new_float()
     if tpLevels
         for _v in _all
@@ -322,9 +469,11 @@ if showTP and (buySig or sellSig)
     array.clear(mapLabels)
     isLong = buySig
     entry  = close
+    obEdge = isLong ? bullTapBot : bearTapTop
+    slOb   = obBuy or obSell ? (isLong ? obEdge - atrC * 0.1 : obEdge + atrC * 0.1) : na
     slUt   = not na(utStop) and (isLong ? utStop < entry : utStop > entry) ? utStop : na
     slAtr  = isLong ? entry - atrC * slAtrMult : entry + atrC * slAtrMult
-    sl     = slMode == "UT Stop" and not na(slUt) ? slUt : slAtr
+    sl     = slMode == "Order Block" and not na(slOb) ? slOb : slMode != "ATR" and not na(slUt) ? slUt : slAtr
     risk   = math.max(math.abs(entry - sl), syminfo.mintick)
     [tp1, tp2, tp3] = f_targets(isLong, entry, risk)
     f_mapLevel(entry, "ENTRY", color.gray, line.style_solid)
@@ -340,17 +489,30 @@ plot(showUtStop ? utStop : na, "UT Trailing Stop", color=utDir == 1 ? color.new(
 plot(showPoc and not newDay ? poc : na, "POC", color=color.new(color.yellow, 0), linewidth=2, style=plot.style_linebr)
 plot(showVA and not newDay ? vah : na, "VAH", color=color.new(color.orange, 40), style=plot.style_linebr)
 plot(showVA and not newDay ? val : na, "VAL", color=color.new(color.orange, 40), style=plot.style_linebr)
-plot(showPD ? f_brk(pdh) : na, "PDH", color=color.new(color.blue, 0), style=plot.style_linebr)
-plot(showPD ? f_brk(pdl) : na, "PDL", color=color.new(color.blue, 0), style=plot.style_linebr)
-plot(showPW ? f_brk(pwh) : na, "PWH", color=color.new(color.purple, 0), linewidth=2, style=plot.style_linebr)
-plot(showPW ? f_brk(pwl) : na, "PWL", color=color.new(color.purple, 0), linewidth=2, style=plot.style_linebr)
-plot(showPS ? f_brk(psh) : na, "PSH", color=color.new(color.fuchsia, 30), style=plot.style_linebr)
-plot(showPS ? f_brk(psl) : na, "PSL", color=color.new(color.fuchsia, 30), style=plot.style_linebr)
+plot(showPDHL ? f_brk(pdh) : na, "PDH", color=color.new(color.blue, 0), style=plot.style_linebr)
+plot(showPDHL ? f_brk(pdl) : na, "PDL", color=color.new(color.blue, 0), style=plot.style_linebr)
+plot(showPWHL ? f_brk(pwh) : na, "PWH", color=color.new(color.purple, 0), linewidth=2, style=plot.style_linebr)
+plot(showPWHL ? f_brk(pwl) : na, "PWL", color=color.new(color.purple, 0), linewidth=2, style=plot.style_linebr)
+plot(showPSHL ? f_brk(psh) : na, "PSH", color=color.new(color.fuchsia, 30), style=plot.style_linebr)
+plot(showPSHL ? f_brk(psl) : na, "PSL", color=color.new(color.fuchsia, 30), style=plot.style_linebr)
 
 plotshape(showSig and buySig,  "BUY",  shape.labelup,   location.belowbar, color.new(color.green, 0), text="BUY",  textcolor=color.white, size=size.small)
 plotshape(showSig and sellSig, "SELL", shape.labeldown, location.abovebar, color.new(color.red, 0),   text="SELL", textcolor=color.white, size=size.small)
-plotshape(showStruct and chochUp, "CHoCH Up", shape.triangleup,   location.belowbar, color.new(color.lime, 30),   size=size.tiny, text="CHoCH")
-plotshape(showStruct and chochDn, "CHoCH Dn", shape.triangledown, location.abovebar, color.new(color.maroon, 30), size=size.tiny, text="CHoCH")
+
+// Premium / Equilibrium / Discount zones (redrawn on the last bar)
+var box zPrem = na
+var box zEq   = na
+var box zDisc = na
+if barstate.islast
+    box.delete(zPrem)
+    box.delete(zEq)
+    box.delete(zDisc)
+    if showPDz and not na(trailTop) and not na(trailBot)
+        zLeft  = math.max(math.max(trailTopBar, trailBotBar), bar_index - 4999)
+        zRight = bar_index + 10
+        zPrem := box.new(zLeft, trailTop, zRight, premLine, border_color=color.new(C_PREM, 100), bgcolor=color.new(C_PREM, 80), text="Premium", text_color=C_PREM, text_size=size.small, text_halign=text.align_right, text_valign=text.align_top)
+        zEq   := box.new(zLeft, 0.525 * trailTop + 0.475 * trailBot, zRight, 0.525 * trailBot + 0.475 * trailTop, border_color=color.new(C_EQ, 100), bgcolor=color.new(C_EQ, 80), text="Equilibrium", text_color=C_EQ, text_size=size.small, text_halign=text.align_right, text_valign=text.align_center)
+        zDisc := box.new(zLeft, discLine, zRight, trailBot, border_color=color.new(C_DISC, 100), bgcolor=color.new(C_DISC, 80), text="Discount", text_color=C_DISC, text_size=size.small, text_halign=text.align_right, text_valign=text.align_bottom)
 
 // Level price tags at the right edge
 f_tag(_lbl, _show, _y, _txt, _col) =>
@@ -375,12 +537,12 @@ var label tgPSH = na
 var label tgPSL = na
 var label tgPOC = na
 if barstate.islast
-    tgPDH := f_tag(tgPDH, showPD, pdh, "PDH", color.blue)
-    tgPDL := f_tag(tgPDL, showPD, pdl, "PDL", color.blue)
-    tgPWH := f_tag(tgPWH, showPW, pwh, "PWH", color.purple)
-    tgPWL := f_tag(tgPWL, showPW, pwl, "PWL", color.purple)
-    tgPSH := f_tag(tgPSH, showPS, psh, "PSH", color.fuchsia)
-    tgPSL := f_tag(tgPSL, showPS, psl, "PSL", color.fuchsia)
+    tgPDH := f_tag(tgPDH, showPDHL, pdh, "PDH", color.blue)
+    tgPDL := f_tag(tgPDL, showPDHL, pdl, "PDL", color.blue)
+    tgPWH := f_tag(tgPWH, showPWHL, pwh, "PWH", color.purple)
+    tgPWL := f_tag(tgPWL, showPWHL, pwl, "PWL", color.purple)
+    tgPSH := f_tag(tgPSH, showPSHL, psh, "PSH", color.fuchsia)
+    tgPSL := f_tag(tgPSL, showPSHL, psl, "PSL", color.fuchsia)
     tgPOC := f_tag(tgPOC, showPoc, poc, "POC", color.yellow)
 
 // ══════════════════ DASHBOARD ══════════════════
@@ -390,36 +552,41 @@ f_onTxt(_on, _d) => _on ? f_dirTxt(_d) : "OFF"
 f_onCol(_on, _d) => _on ? f_dirCol(_d) : color.gray
 
 dashPos = dashPosIn == "Top Left" ? position.top_left : dashPosIn == "Bottom Right" ? position.bottom_right : dashPosIn == "Bottom Left" ? position.bottom_left : position.top_right
-var table dash = table.new(dashPos, 2, 9, bgcolor=color.new(color.black, 20), border_width=1, border_color=color.new(color.gray, 50))
+var table dash = table.new(dashPos, 2, 10, bgcolor=color.new(color.black, 20), border_width=1, border_color=color.new(color.gray, 50))
 if showDash and barstate.islast
-    cvdD = cvdBull ? 1 : cvdBear ? -1 : 0
-    pocD = na(poc) ? 0 : close > poc ? 1 : close < poc ? -1 : 0
-    poiD = atBullPOI ? 1 : atBearPOI ? -1 : 0
+    cvdD   = cvdBull ? 1 : cvdBear ? -1 : 0
+    pocD   = na(poc) ? 0 : close > poc ? 1 : close < poc ? -1 : 0
+    zoneTx = na(equil) ? "—" : close >= premLine ? "PREMIUM" : close <= discLine ? "DISCOUNT" : close > equil ? "Premium half" : "Discount half"
+    zoneCl = na(equil) ? color.gray : close > equil ? C_PREM : C_DISC
     table.cell(dash, 0, 0, "OX ALPHA UT PRO", text_color=color.aqua, text_size=size.small)
     table.cell(dash, 1, 0, "UT " + (useHtf ? utTf : timeframe.period), text_color=color.gray, text_size=size.small)
-    table.cell(dash, 0, 1, "UT Bot", text_color=color.gray, text_size=size.small)
-    table.cell(dash, 1, 1, f_dirTxt(utDir), text_color=f_dirCol(utDir), text_size=size.small)
-    table.cell(dash, 0, 2, "Structure (" + str.tostring(swingLen) + ")", text_color=color.gray, text_size=size.small)
-    table.cell(dash, 1, 2, f_onTxt(useStruct, structDir), text_color=f_onCol(useStruct, structDir), text_size=size.small)
-    table.cell(dash, 0, 3, "CVD", text_color=color.gray, text_size=size.small)
-    table.cell(dash, 1, 3, f_onTxt(useCvd, cvdD), text_color=f_onCol(useCvd, cvdD), text_size=size.small)
-    table.cell(dash, 0, 4, "POC side", text_color=color.gray, text_size=size.small)
-    table.cell(dash, 1, 4, f_onTxt(usePocF, pocD), text_color=f_onCol(usePocF, pocD), text_size=size.small)
-    table.cell(dash, 0, 5, "Slow UT", text_color=color.gray, text_size=size.small)
-    table.cell(dash, 1, 5, f_onTxt(useUt2, ut2Dir), text_color=f_onCol(useUt2, ut2Dir), text_size=size.small)
-    table.cell(dash, 0, 6, "POI", text_color=color.gray, text_size=size.small)
-    table.cell(dash, 1, 6, f_onTxt(usePoi, poiD), text_color=f_onCol(usePoi, poiD), text_size=size.small)
-    table.cell(dash, 0, 7, "Buy filters", text_color=color.gray, text_size=size.small)
-    table.cell(dash, 1, 7, passBuy ? "PASS ✔" : "WAIT ✘", text_color=passBuy ? color.green : color.gray, text_size=size.small)
-    table.cell(dash, 0, 8, "Sell filters", text_color=color.gray, text_size=size.small)
-    table.cell(dash, 1, 8, passSell ? "PASS ✔" : "WAIT ✘", text_color=passSell ? color.red : color.gray, text_size=size.small)
+    table.cell(dash, 0, 1, "Mode", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 1, obMode ? "OB tap" : "UT flip", text_color=color.aqua, text_size=size.small)
+    table.cell(dash, 0, 2, "UT Bot", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 2, f_dirTxt(utDir), text_color=f_dirCol(utDir), text_size=size.small)
+    table.cell(dash, 0, 3, "Structure (" + str.tostring(swingLen) + ")", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 3, f_onTxt(useStruct, structDir), text_color=f_onCol(useStruct, structDir), text_size=size.small)
+    table.cell(dash, 0, 4, "Zone", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 4, usePD ? zoneTx : "OFF", text_color=usePD ? zoneCl : color.gray, text_size=size.small)
+    table.cell(dash, 0, 5, "CVD", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 5, f_onTxt(useCvd, cvdD), text_color=f_onCol(useCvd, cvdD), text_size=size.small)
+    table.cell(dash, 0, 6, "POC side", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 6, f_onTxt(usePocF, pocD), text_color=f_onCol(usePocF, pocD), text_size=size.small)
+    table.cell(dash, 0, 7, "Slow UT", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 7, f_onTxt(useUt2, ut2Dir), text_color=f_onCol(useUt2, ut2Dir), text_size=size.small)
+    table.cell(dash, 0, 8, "Buy filters", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 8, passBuy ? "PASS ✔" : "WAIT ✘", text_color=passBuy ? color.green : color.gray, text_size=size.small)
+    table.cell(dash, 0, 9, "Sell filters", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 9, passSell ? "PASS ✔" : "WAIT ✘", text_color=passSell ? color.red : color.gray, text_size=size.small)
 else if not showDash
-    table.clear(dash, 0, 0, 1, 8)
+    table.clear(dash, 0, 0, 1, 9)
 
 // ══════════════════ ALERTS ══════════════════
 // Tip: create alerts with "Once Per Bar Close" so signals are final.
-alertcondition(buySig,   "BUY signal",       "Ox Alpha UT Pro: BUY {{ticker}} @ {{close}}")
-alertcondition(sellSig,  "SELL signal",      "Ox Alpha UT Pro: SELL {{ticker}} @ {{close}}")
-alertcondition(utFlipUp, "UT flip up (raw)", "Ox Alpha UT Pro: UT flipped bullish {{ticker}} @ {{close}}")
-alertcondition(utFlipDn, "UT flip down (raw)", "Ox Alpha UT Pro: UT flipped bearish {{ticker}} @ {{close}}")
+alertcondition(buySig,    "BUY signal",          "Ox Alpha UT Pro: BUY {{ticker}} @ {{close}}")
+alertcondition(sellSig,   "SELL signal",         "Ox Alpha UT Pro: SELL {{ticker}} @ {{close}}")
+alertcondition(bullBreak, "Bullish BOS / CHoCH", "Ox Alpha UT Pro: bullish structure break {{ticker}} @ {{close}}")
+alertcondition(bearBreak, "Bearish BOS / CHoCH", "Ox Alpha UT Pro: bearish structure break {{ticker}} @ {{close}}")
+alertcondition(utFlipUp,  "UT flip up (raw)",    "Ox Alpha UT Pro: UT flipped bullish {{ticker}} @ {{close}}")
+alertcondition(utFlipDn,  "UT flip down (raw)",  "Ox Alpha UT Pro: UT flipped bearish {{ticker}} @ {{close}}")
 alertcondition(ta.cross(close, pdh) or ta.cross(close, pdl) or ta.cross(close, pwh) or ta.cross(close, pwl) or ta.cross(close, psh) or ta.cross(close, psl), "Key level cross", "Ox Alpha UT Pro: {{ticker}} crossed a key level (PDH/PDL/PWH/PWL/PSH/PSL) @ {{close}}")
