@@ -23,16 +23,16 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Install required SDK packages
+        run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
       - name: Create local.properties
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-      - name: Make gradlew executable
+      - name: Generate Gradle wrapper
         run: |
           if [ ! -f gradlew ]; then
             gradle wrapper --gradle-version 8.2
