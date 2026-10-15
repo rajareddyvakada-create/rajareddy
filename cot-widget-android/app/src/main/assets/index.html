@@ -189,6 +189,7 @@ button { font: inherit; color: inherit; }
 .tabbtn[aria-current="page"]::before { content: ""; position: absolute; top: 0; left: 30%; right: 30%; height: 3px; border-radius: 0 0 3px 3px; background: var(--grad); }
 .tabbtn .badge-n { position: absolute; top: 6px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bear); color: #fff; font-size: 0.66rem; line-height: 18px; text-align: center; }
 html:not([data-app]) .tab-charts { display: none; }
+html.chart-full .tabbar { display: none; }
 
 /* Alerts view */
 .alerts { height: 100%; max-width: 560px; margin: 0 auto; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
@@ -888,6 +889,7 @@ function renderAlerts() {
 var currentTab = "markets", chartsFrame = null, scannerFrame = null, newsFrame = null, goldCot = null;
 function openTab(name, chart) {
   if ((name === "charts" || name === "scanner" || name === "news") && !IS_APP) name = "markets";
+  if (chartFull && name !== "charts" && chartsFrame) chartsFrame.contentWindow.postMessage({ type: "exitFull" }, "*");
   currentTab = name;
   ["markets", "charts", "scanner", "news", "alerts", "brokers"].forEach(function(t) {
     document.getElementById("view" + t.charAt(0).toUpperCase() + t.slice(1)).hidden = t !== name;
@@ -917,6 +919,13 @@ function openTab(name, chart) {
   if (name === "markets") goTo(currentIdx, true);
 }
 window.appOpenTab = function(name) { openTab(name); };
+
+var chartFull = false;
+function setChartFull(on) {
+  chartFull = on;
+  document.documentElement.classList.toggle("chart-full", on);
+  if (Bridge && Bridge.setLandscape) Bridge.setLandscape(on);
+}
 
 /* News tab: loaded early in the app so breaking-news alerts work from any tab. */
 function ensureNewsFrame() {
@@ -997,6 +1006,15 @@ window.appBack = function() {
     }
     if (d.type === "newsReminders" && Bridge && Bridge.scheduleNewsReminders) Bridge.scheduleNewsReminders(JSON.stringify(d.list || []));
     if (d.type === "newsReady") sendGoldCot();
+    // Charts tab: landscape full screen, and AI-agent actions
+    if (d.type === "chartFull") setChartFull(!!d.on);
+    if (d.type === "openTab" && /^(markets|scanner|news|alerts|brokers|charts)$/.test(d.tab || "")) openTab(d.tab);
+    if (d.type === "openMt5" && Bridge && Bridge.openMt5) Bridge.openMt5();
+    if (d.type === "agentTrade" && d.title) {
+      if (Bridge && Bridge.notifySignal) Bridge.notifySignal(String(d.title), String(d.body || ""));
+      toastTarget = "charts";
+      showToast(d.title);
+    }
     if (d.type === "openUrl" && /^https:\/\//i.test(d.url || "")) window.location.href = d.url;
   });
   // Brokers tab

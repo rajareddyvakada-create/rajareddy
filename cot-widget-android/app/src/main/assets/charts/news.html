@@ -332,7 +332,8 @@ const IMPACT_RULES = [
     resolve:h => /\b(trade|price|bidding|talent|culture|bidding) war\b/i.test(h) ? null : { dir:+7 } },
   { id:'deescalation', label:'Ceasefire / de-escalation', weight:5, duration:'days', movePct:0.5,
     re:/\b(ceasefire|cease-fire|peace (deal|talks|agreement|plan)|truce|de-?escalat\w*|hostages? released)\b/i,
-    resolve:() => ({ dir:-5 }) },
+    // "done with the truce", "ceasefire collapses" is escalation, not calm
+    resolve:h => /\b(done|ends?|ended|collaps\w*|breaks?|broke(n)?|violat\w*|over|scrap\w*|rejects?|hits|strikes?|attacks?)\b/i.test(h) ? { dir:+6, label:'Truce breaking down' } : { dir:-5 } },
   { id:'sanctions', label:'Sanctions / trade tension', weight:5, duration:'weeks', movePct:0.5,
     re:/\b(sanctions?|tariffs?|trade war|export (ban|controls?)|embargo)\b/i,
     resolve:h => /\b(lift(s|ed|ing)?|eas(e|es|ed|ing)|pause[sd]?|deal|truce|exempt\w*|relief|waivers?|roll(s|ed)? back)\b/i.test(h) ? { dir:-3, label:'Trade tension easing' } : { dir:+5 } },
@@ -953,6 +954,7 @@ function shockFromCard(c){ const e = ImpactEngine.expected(c); return { kind:'ne
 function render(){
   const V = VerdictEngine.verdict();
   State.lastVerdict = V;
+  lsSet('news.verdict', { score:V.score, bias:V.bias, strat:V.strat, at:now() });   // read by the Charts AI agent
   $('stripBias').textContent = V.bias;
   $('stripBias').className = tone(V.score >= 15 ? 1 : V.score <= -15 ? -1 : 0) + '-t';
   $('stripAction').textContent = V.strat;

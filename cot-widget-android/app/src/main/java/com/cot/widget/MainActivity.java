@@ -3,6 +3,7 @@ package com.cot.widget;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
@@ -159,6 +160,22 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
                             Uri.parse("https://play.google.com/store/apps/details?id=net.metaquotes.metatrader5")));
                 }
             } catch (Exception ignored) {
+            }
+        });
+    }
+
+    @Override
+    public void setLandscape(boolean on) {
+        runOnUiThread(() -> {
+            setRequestedOrientation(on ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+            WindowInsetsControllerCompat bars =
+                    WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+            if (on) {
+                bars.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                bars.hide(WindowInsetsCompat.Type.systemBars());
+            } else {
+                bars.show(WindowInsetsCompat.Type.systemBars());
             }
         });
     }

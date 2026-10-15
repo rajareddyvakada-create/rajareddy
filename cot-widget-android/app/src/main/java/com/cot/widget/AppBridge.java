@@ -13,6 +13,8 @@ final class AppBridge {
         void requestNotificationPermission();
 
         void openMt5();
+
+        void setLandscape(boolean on);
     }
 
     private final Context ctx;
@@ -106,5 +108,11 @@ final class AppBridge {
     @JavascriptInterface
     public void scheduleNewsReminders(String json) {
         NewsReminderWorker.schedule(ctx, json);
+    }
+
+    /** Charts tab full screen: landscape with the system bars hidden, or back to normal. */
+    @JavascriptInterface
+    public void setLandscape(boolean on) {
+        host.setLandscape(on);
     }
 }

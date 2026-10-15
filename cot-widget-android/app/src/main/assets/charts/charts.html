@@ -51,7 +51,12 @@ svg{width:22px;height:22px;fill:currentColor;display:block}
 svg.stroke{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .c-up{color:var(--up)} .c-down{color:var(--down)}
 
-.top{display:flex;align-items:center;gap:8px;padding:10px 16px 8px}
+.top{display:flex;align-items:center;gap:6px;padding:8px 10px 6px}
+.top button{min-height:38px;border-radius:12px}
+.top .icon-sm{width:38px}
+.tog[aria-pressed="true"]{background:var(--grad);color:var(--brass-ink);border-color:transparent}
+.tog.ai{font-weight:800;font-size:.8rem;letter-spacing:.02em}
+body.no-replay .replay-only{display:none !important}
 .market{flex:1;min-width:0;display:flex;align-items:center;gap:8px;justify-content:flex-start;text-align:left;padding:0 12px}
 .market .src{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;font-size:1rem}
 .market svg{width:18px;height:18px;flex:none;color:var(--muted)}
@@ -77,22 +82,52 @@ svg.stroke{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;str
 .live{pointer-events:auto;min-height:0;padding:1px 9px;border-radius:999px;font-size:.72rem;font-weight:700;background:transparent;border:1px solid currentColor}
 .live.on{color:var(--up)} .live.off{color:var(--muted)} .live.replay{color:var(--brass)}
 
-.deck{padding:8px 16px 10px;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.deck{padding:6px 10px 8px;display:grid;grid-template-columns:minmax(0,1fr);gap:6px}
 .scrub{-webkit-appearance:none;appearance:none;width:100%;height:26px;margin:0;background:transparent;--p:0%}
 .scrub::-webkit-slider-runnable-track{height:8px;border-radius:4px;background:linear-gradient(to right,var(--brass) 0 var(--p),transparent var(--p)),repeating-linear-gradient(135deg,var(--line) 0 4px,transparent 4px 8px)}
 .scrub::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:26px;margin-top:-9px;border-radius:4px;background:var(--brass);border:2px solid var(--bg)}
 .scrub::-moz-range-track{height:8px;border-radius:4px;background:linear-gradient(to right,var(--brass) 0 var(--p),transparent var(--p)),repeating-linear-gradient(135deg,var(--line) 0 4px,transparent 4px 8px)}
 .scrub::-moz-range-thumb{width:12px;height:26px;border-radius:4px;background:var(--brass);border:2px solid var(--bg)}
-.tfs{display:flex;gap:4px;padding:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
-.tfs button{flex:1;min-width:0;min-height:32px;padding:0 2px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-size:.85rem}
+.tfs{display:flex;gap:3px;padding:3px;background:var(--surface);border:1px solid var(--line);border-radius:11px}
+.tfs button{flex:1;min-width:0;min-height:28px;padding:0 2px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-size:.8rem}
 .tfs button[aria-pressed="true"]{background:var(--text);color:var(--bg)}
-.transport{display:flex;gap:8px;align-items:center}
+.transport{display:flex;gap:6px;align-items:center}
+.transport button{min-height:38px}
+.transport .play{min-height:40px}
 .pick-btn{flex:1;min-width:0;white-space:nowrap;padding:0 8px}
 .pick-btn[aria-pressed="true"]{border-color:var(--brass);color:var(--brass)}
 .icon{width:50px;padding:0;display:grid;place-items:center}
 .play{width:62px;min-height:48px;padding:0;display:grid;place-items:center;background:var(--grad);color:var(--brass-ink);border-color:transparent}
 .speed{width:56px;padding:0}
-.trade{display:flex;gap:8px;align-items:stretch}
+.trade{display:flex;gap:6px;align-items:stretch}
+.trade button{min-height:40px}
+.agent-bar{display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 10px;text-align:left;border-radius:12px;border-color:color-mix(in srgb,var(--brass) 45%,var(--line))}
+.ag-dot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--muted)}
+.ag-dot.up{background:var(--up);box-shadow:0 0 0 4px color-mix(in srgb,var(--up) 22%,transparent)} .ag-dot.down{background:var(--down);box-shadow:0 0 0 4px color-mix(in srgb,var(--down) 22%,transparent)}
+.ag-txt{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.2}
+.ag-txt b{font-size:.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag-txt small{font-size:.74rem;color:var(--muted);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag-open{font-size:1.3rem;color:var(--muted)}
+.ag-card{border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.ag-card .big{font-size:1.15rem;font-weight:800}
+.ag-meter{height:8px;border-radius:4px;background:linear-gradient(90deg,var(--down),var(--muted),var(--up));position:relative}
+.ag-meter i{position:absolute;top:-4px;width:4px;height:16px;border-radius:2px;background:var(--text);transform:translateX(-2px)}
+.ag-kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:.85rem}
+.ag-kv dt{color:var(--muted)} .ag-kv dd{margin:0;font-weight:600;font-family:'JetBrains Mono',ui-monospace,monospace}
+.ag-row{display:flex;gap:8px}
+.ag-row button{flex:1;min-height:40px;border-color:transparent;color:var(--on-color)}
+.ag-section{margin:14px 0 6px;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ag-guides{margin:0;padding-left:18px;font-size:.88rem;display:flex;flex-direction:column;gap:4px}
+.ag-chips{display:flex;flex-wrap:wrap;gap:6px}
+.ag-chips button{min-height:32px;padding:0 10px;border-radius:999px;font-size:.8rem}
+.ag-log{display:flex;flex-direction:column;gap:6px;margin-top:8px;max-height:240px;overflow:auto}
+.ag-log .m{padding:7px 10px;border-radius:12px;font-size:.86rem;white-space:pre-wrap;max-width:92%}
+.ag-log .m.me{align-self:flex-end;background:var(--grad);color:var(--brass-ink)}
+.ag-log .m.ai{align-self:flex-start;background:var(--bg);border:1px solid var(--line)}
+.ag-log .m.sys{align-self:center;color:var(--muted);font-size:.78rem}
+.ag-form{display:flex;gap:6px;margin-top:8px}
+.ag-form input{flex:1;min-width:0;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text)}
+.ag-form button{width:auto;padding:0 14px}
 .orders{flex:1;display:flex;gap:8px;min-width:0}
 .orders button{flex:1;border-color:transparent;color:var(--on-color);font-size:1rem}
 .sell{background:var(--down)} .buy{background:var(--up)}
@@ -136,7 +171,9 @@ legend{font-weight:700;font-size:1rem;padding:0;margin-bottom:4px}
 .ind-body{margin-top:6px;border-top:1px solid var(--line);padding-top:4px}
 .coming{border-style:dashed;color:var(--muted);font-size:.85rem}
 .ind-sub{margin:12px 0 2px;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-.ind-panel{position:absolute;left:8px;bottom:30px;z-index:3;pointer-events:none;max-width:calc(100% - 80px);padding:5px 8px;border-radius:8px;background:color-mix(in srgb,var(--surface) 88%,transparent);border:1px solid var(--line);font-size:.72rem;line-height:1.35}
+.ind-panel{position:absolute;left:8px;bottom:30px;z-index:3;cursor:pointer;max-width:calc(100% - 80px);padding:4px 8px;border-radius:8px;background:color-mix(in srgb,var(--surface) 82%,transparent);border:1px solid var(--line);font-size:.68rem;line-height:1.3}
+.ind-panel.mini .prow:not(:first-child){display:none}
+.ind-panel.mini::after{content:"▸ tap for more";color:var(--muted);font-size:.62rem}
 .prow{display:flex;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prow b{min-width:26px;color:var(--muted);font-weight:600}
 .prow.up span{color:var(--up)} .prow.down span{color:var(--down)} .prow.flat span{color:var(--text)}
@@ -151,6 +188,18 @@ legend{font-weight:700;font-size:1rem;padding:0;margin-bottom:4px}
 .src-opt input{margin:3px 0 0;width:18px;height:18px;accent-color:var(--brass)}
 .src-opt small{grid-column:2;color:var(--muted);font-size:.82rem}
 .src-fields{margin:8px 0 12px}
+/* Landscape / full screen: chart on the left at full height, controls in a narrow column on the right. */
+@media (orientation:landscape) and (max-height:560px){
+  body{display:grid;grid-template-columns:minmax(0,1fr) 236px;grid-template-rows:auto auto minmax(0,1fr)}
+  .top{grid-column:2;grid-row:1;flex-wrap:wrap;padding:6px 8px 4px}
+  .top .market{flex:1 0 100%}
+  .notice{grid-column:2;grid-row:2;margin:0 8px 4px}
+  .chart-wrap{grid-column:1;grid-row:1/4;margin:6px 0 6px 6px}
+  .deck{grid-column:2;grid-row:3;overflow:auto;align-content:start;padding:4px 8px 8px}
+  .tfs{flex-wrap:wrap} .tfs button{flex:0 0 calc(25% - 3px)}
+  .transport .pick-btn{font-size:.78rem}
+  .transport .icon{width:40px} .transport .play{width:46px} .speed{width:44px}
+}
 @media (max-height:640px){ .tfs button{min-height:28px} .play{min-height:44px} button{min-height:40px} .deck{gap:6px} }
 @media (prefers-reduced-motion: reduce){ .switch input,.switch input::after{transition:none} }
 </style>
@@ -161,6 +210,9 @@ legend{font-weight:700;font-size:1rem;padding:0;margin-bottom:4px}
     <span class="src" id="src">Loading…</span>
     <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
   </button>
+  <button type="button" class="icon-sm tog" id="replayBtn" aria-pressed="false" aria-label="Replay mode"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M10 9v6l5-3z"/></svg></button>
+  <button type="button" class="icon-sm tog ai" id="aiBtn" aria-pressed="false" aria-label="AI agent">AI</button>
+  <button type="button" class="icon-sm tog" id="rotateBtn" aria-pressed="false" aria-label="Landscape full screen"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 3h4M13 21h4"/></svg></button>
   <button type="button" class="icon-sm" id="settingsBtn" aria-label="Indicators and settings"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></button>
   <input type="file" id="file" accept=".csv,.txt,text/csv,text/plain" hidden>
 </header>
@@ -177,15 +229,20 @@ legend{font-weight:700;font-size:1rem;padding:0;margin-bottom:4px}
 </div>
 
 <section class="deck">
-  <input class="scrub" id="scrub" type="range" min="1" max="2" value="1" aria-label="Replay position">
+  <input class="scrub replay-only" id="scrub" type="range" min="1" max="2" value="1" aria-label="Replay position">
   <div class="tfs" id="tfs" role="group" aria-label="Timeframe"></div>
-  <div class="transport">
+  <div class="transport replay-only">
     <button type="button" class="pick-btn" id="pick" aria-pressed="false">Pick start</button>
     <button type="button" class="icon" id="back" aria-label="Back one candle"><svg viewBox="0 0 24 24"><path d="M5 5h2.5v14H5zM19 5v14L9 12z"/></svg></button>
     <button type="button" class="play" id="play" aria-label="Play"></button>
     <button type="button" class="icon" id="next" aria-label="Next candle"><svg viewBox="0 0 24 24"><path d="M16.5 5H19v14h-2.5zM5 5v14l10-7z"/></svg></button>
     <button type="button" class="speed" id="speed" aria-label="Playback speed">4×</button>
   </div>
+  <button type="button" class="agent-bar" id="agentBar" hidden>
+    <span class="ag-dot" id="agDot"></span>
+    <span class="ag-txt"><b id="agHead">AI agent</b><small id="agSub">Reading the chart…</small></span>
+    <span class="ag-open" aria-hidden="true">›</span>
+  </button>
   <div class="trade">
     <div class="orders" id="orders">
       <button type="button" class="sell" id="sell">Sell</button>
@@ -216,6 +273,34 @@ legend{font-weight:700;font-size:1rem;padding:0;margin-bottom:4px}
     </fieldset>
     <p class="form-err" id="setErr" hidden></p>
     <button type="button" class="primary" id="saveSettings">Save trade settings</button>
+  </div>
+</dialog>
+
+<dialog id="agentDlg" aria-labelledby="agTitle">
+  <div class="sheet-head"><h2 id="agTitle">AI agent</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
+  <div class="sheet-body">
+    <div class="ag-card" id="agCard"></div>
+    <div class="ag-section">Live guide</div>
+    <ul class="ag-guides" id="agGuides"></ul>
+    <div class="ag-section">Ask or command</div>
+    <div class="ag-chips" id="agChips">
+      <button type="button" data-cmd="What's the trade right now?">Trade now?</button>
+      <button type="button" data-cmd="Market sentiment">Sentiment</button>
+      <button type="button" data-cmd="Latest news for gold">News</button>
+      <button type="button" data-cmd="buy">Buy</button>
+      <button type="button" data-cmd="sell">Sell</button>
+      <button type="button" data-cmd="close">Close</button>
+    </div>
+    <div class="ag-log" id="agLog" aria-live="polite"></div>
+    <form class="ag-form" id="agForm"><input type="text" id="agInput" placeholder="e.g. switch to 15m, buy with SL 4170" autocomplete="off"><button type="submit" class="primary" id="agSend">Send</button></form>
+    <fieldset style="margin-top:14px">
+      <legend>Agent settings</legend>
+      <label class="field"><span>Auto-trade agent setups (practice account)</span><span class="switch"><input type="checkbox" role="switch" id="agAuto"></span></label>
+      <label class="field"><span>Minimum confidence for auto-trade</span><input type="number" id="agMinConf" min="50" max="95" step="5" inputmode="numeric"></label>
+      <label class="field"><span>Claude API key (optional)</span><input type="password" id="agKey" autocomplete="off" spellcheck="false" placeholder="sk-ant-…"></label>
+      <label class="field"><span>Claude model</span><select id="agModel"><option value="claude-opus-5-5">Claude Opus 5.5 (smartest)</option><option value="claude-sonnet-5-5">Claude Sonnet 5.5 (faster)</option><option value="claude-haiku-5-5">Claude Haiku 5.5 (fastest)</option></select></label>
+      <p class="hint">Without a key, the built-in agent still analyses the chart, news and COT, gives live guides and follows commands. With a key from console.anthropic.com, Claude answers free-form questions and drives the app through the same tools. The key stays on this phone. Orders go to the practice account here; XM and Octa don't let other apps send real orders, so the agent copies the order to your clipboard and opens MT5 for you to confirm.</p>
+    </fieldset>
   </div>
 </dialog>
 
@@ -269,5 +354,6 @@ legend{font-weight:700;font-size:1rem;padding:0;margin-bottom:4px}
 <script src="data.js"></script>
 <script src="indicators.js"></script>
 <script src="replay.js"></script>
+<script src="agent.js"></script>
 </body>
 </html>

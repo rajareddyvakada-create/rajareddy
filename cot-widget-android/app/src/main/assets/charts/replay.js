@@ -96,7 +96,7 @@
   }
   // A BUY / SELL on the newest closed candle while watching live data goes out at once
   // (toast in the app and a phone notification). Older signals and replay never notify.
-  let sigSeen='', sigArmed=false;
+  let sigSeen='', sigArmed=false, lastPanel=[];
   function announceSignal(candles){
     if(!candles.length) return;
     const lastT=candles[candles.length-1].time, live=isOnline && idx===bars.length && !picking;
@@ -109,9 +109,13 @@
     const msg={type:'signal', side, name:srcName, tf:tfLabel(tf), price:price.toFixed(precision)};
     try{ window.parent.postMessage(msg,'*'); }catch(e){}
   }
+  // Tap the panel to shrink it to one line (more chart), tap again to expand.
+  let panelMini=!!loadJSON('panel-mini',false);
+  $('indPanel').addEventListener('click',()=>{ panelMini=!panelMini; saveJSON('panel-mini',panelMini); $('indPanel').classList.toggle('mini',panelMini); });
   function renderPanel(rows){
     const el=$('indPanel'); if(!el) return;
     el.hidden=!rows.length;
+    el.classList.toggle('mini',panelMini);
     el.innerHTML='';
     for(const r of rows){
       const d=document.createElement('div'); d.className='prow '+(r.tone||'flat');
@@ -143,7 +147,9 @@
     for(const id in lineSeries) if(!seen[id]){ chart.removeSeries(lineSeries[id]); delete lineSeries[id]; }
     indMarkers=markers;
     renderPanel(panel);
+    lastPanel=panel;
     announceSignal(candles);
+    try{ window.dispatchEvent(new CustomEvent('chart:candle')); }catch(e){}
     return true;
   }
 
@@ -306,13 +312,18 @@
     ];
   }
   function clearPosLines(){ for(const l of posLines) series.removePriceLine(l); posLines=[]; }
-  function openPos(side){
-    if(pos || picking || idx<1) return;
-    const b=bars[idx-1], dir=side==='long'?1:-1, d=cfg.sl;
-    pos={file:srcName,side,entryIdx:idx-1,entryTime:b.time,entry:b.close,
-         sl:b.close-dir*d,tp:b.close+dir*d*cfg.rr,slDist:d,risk:cfg.risk,
+  // o (optional, from the AI agent): {sl, tp} as prices; otherwise the settings' distance and reward:risk.
+  function openPos(side,o){
+    if(pos || picking || idx<1) return false;
+    const b=bars[idx-1], dir=side==='long'?1:-1;
+    let d=cfg.sl;
+    if(o && isFinite(o.sl) && (b.close-o.sl)*dir>0) d=Math.abs(b.close-o.sl);
+    const tp=o && isFinite(o.tp) && (o.tp-b.close)*dir>0 ? o.tp : b.close+dir*d*cfg.rr;
+    pos={file:srcName,side,entryIdx:idx-1,entryTime:b.time,entry:b.close,by:o&&o.by||'',
+         sl:b.close-dir*d,tp,slDist:d,risk:cfg.risk,
          lots:cfg.contract>0?cfg.risk/(d*cfg.contract):0,trail:!!cfg.trail,stage:0,ext:b.close,doneK:-1};
     drawPosLines(); updateMarkers(); refresh(); saveBook();
+    return true;
   }
   function checkTrade(b){
     if(!pos || b.time<=pos.entryTime) return;
@@ -460,7 +471,7 @@
     tf=same && opts.includes(st.tf) ? st.tf : (opts.includes(300)?300:opts[0]);
     if(same && SPEEDS[st.speedIdx]) speedIdx=st.speedIdx;
     $('speed').textContent=SPEEDS[speedIdx]+'×';
-    if(isOnline) idx=bars.length; // online data opens live; use Pick start or the slider to replay
+    if(isOnline || !replayOn) idx=bars.length; // online data opens live; turn Replay on to step through history
     else idx=same && st.idx>=1 && st.idx<=bars.length ? st.idx : Math.max(1,Math.floor(bars.length*0.6));
     let droppedPos=false;
     if(savedPos && savedPos.file===name){
@@ -650,6 +661,7 @@
   // The Markets tab opens a chart here through postMessage.
   window.addEventListener('message',async e=>{
     const d=e.data||{};
+    if(d.type==='exitFull'){ if(document.body.classList.contains('wide')) $('rotateBtn').click(); return; }
     if(d.type!=='openMarket' || !d.ticker) return;
     const cur=loadJSON('bar-replay-source',{});
     if(cur.type==='yahoo' && cur.symbol===d.ticker) return;
@@ -743,7 +755,7 @@
     updateMarkers(); renderStats(); renderTrades();
   });
   for(const d of document.querySelectorAll('dialog')) d.addEventListener('click',e=>{ if(e.target===d) d.close(); });
-  window.appBack=()=>{ const d=document.querySelector('dialog[open]'); if(d){ d.close(); return true; } if(picking){ endPick(true); return true; } return false; };
+  window.appBack=()=>{ const d=document.querySelector('dialog[open]'); if(d){ d.close(); return true; } if(picking){ endPick(true); return true; } if(document.body.classList.contains('wide')){ $('rotateBtn').click(); return true; } return false; };
   for(const b of document.querySelectorAll('[data-close]')) b.addEventListener('click',()=>b.closest('dialog').close());
 
   document.addEventListener('keydown',e=>{
@@ -758,6 +770,45 @@
     else if(k==='s' && !pos) openPos('short');
     else if(k==='c' && pos) $('closePos').click();
   });
+
+  /* ---------- layout toggles: replay controls, landscape ---------- */
+  let replayOn=!!loadJSON('replay-on',false);
+  function setReplay(on){
+    replayOn=!!on; saveJSON('replay-on',replayOn);
+    document.body.classList.toggle('no-replay',!replayOn);
+    $('replayBtn').setAttribute('aria-pressed',String(replayOn));
+    if(!replayOn){
+      setPlaying(false);
+      if(picking) endPick(true);
+      if(bars.length && idx<bars.length){ jumpTo(bars.length); showRecent(); save(); }
+    }
+  }
+  $('replayBtn').addEventListener('click',()=>setReplay(!replayOn));
+  let wide=false;
+  function setWide(on){
+    wide=!!on;
+    document.body.classList.toggle('wide',wide);
+    $('rotateBtn').setAttribute('aria-pressed',String(wide));
+    try{ window.parent.postMessage({type:'chartFull',on:wide},'*'); }catch(e){}
+  }
+  $('rotateBtn').addEventListener('click',()=>setWide(!wide));
+  setReplay(replayOn);
+
+  // Used by the AI agent (agent.js)
+  window.ChartAPI={
+    state(){
+      const n=closedCount();
+      return { name:srcName, tf, tfLabel:tfLabel(tf), tfs:tfOptions().map(tfLabel), precision, online:isOnline, live:idx===bars.length,
+        candles:agg.slice(0,n), forming:agg[n]||null, price:idx>0?bars[idx-1].close:null, time:idx>0?bars[idx-1].time:null,
+        markers:indMarkers.slice(), panel:lastPanel.slice(), pos:pos?{...pos}:null, cfg:{...cfg},
+        trades:fileTrades().slice(-50) };
+    },
+    buy:o=>openPos('long',o), sell:o=>openPos('short',o),
+    close(){ if(pos && idx>0){ closePos(bars[idx-1].close,'Closed',bars[idx-1].time); refresh(); return true; } return false; },
+    setTf(label){ const s=tfOptions().find(x=>tfLabel(x).toLowerCase()===String(label).toLowerCase()); if(!s) return false; setTf(s); return true; },
+    async openMarket(ticker,name){ await loadSource({type:'yahoo',symbol:ticker,label:name||ticker,res:(loadJSON('bar-replay-source',{}).res)||'1m'}); return true; },
+    setReplay, setWide, isReplay:()=>replayOn, flash,
+  };
 
   /* ---------- start ---------- */
   (async()=>{
