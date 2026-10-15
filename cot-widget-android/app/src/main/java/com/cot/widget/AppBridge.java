@@ -1,0 +1,85 @@
+package com.cot.widget;
+
+import android.content.Context;
+import android.webkit.JavascriptInterface;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+/** Exposed to the app's own pages as window.AppBridge. Only local asset pages are ever loaded. */
+final class AppBridge {
+
+    interface Host {
+        void requestNotificationPermission();
+    }
+
+    private final Context ctx;
+    private final Host host;
+
+    AppBridge(Context ctx, Host host) {
+        this.ctx = ctx.getApplicationContext();
+        this.host = host;
+    }
+
+    @JavascriptInterface
+    public String reportVerdicts(String json) {
+        try {
+            return AlertCenter.process(ctx, new JSONObject(json)).toString();
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    @JavascriptInterface
+    public String getAlerts() {
+        return AlertCenter.prefs(ctx).getString("log", "[]");
+    }
+
+    @JavascriptInterface
+    public void clearAlerts() {
+        AlertCenter.prefs(ctx).edit().putString("log", "[]").apply();
+    }
+
+    @JavascriptInterface
+    public String getPrefs() {
+        try {
+            return new JSONObject()
+                    .put("notify", AlertCenter.notifyOn(ctx))
+                    .put("background", AlertCenter.backgroundOn(ctx))
+                    .put("muted", AlertCenter.muted(ctx))
+                    .put("permission", AlertCenter.canPost(ctx))
+                    .toString();
+        } catch (Exception e) {
+            return "{}";
+        }
+    }
+
+    @JavascriptInterface
+    public void setPref(String key, String value) {
+        switch (key) {
+            case "notify":
+            case "background":
+                AlertCenter.prefs(ctx).edit().putBoolean(key, Boolean.parseBoolean(value)).apply();
+                if ("background".equals(key)) VerdictWorker.sync(ctx);
+                break;
+            case "muted":
+                try {
+                    AlertCenter.prefs(ctx).edit().putString("muted", new JSONArray(value).toString()).apply();
+                } catch (Exception ignored) {
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    @JavascriptInterface
+    public boolean notificationsAllowed() {
+        return AlertCenter.canPost(ctx);
+    }
+
+    @JavascriptInterface
+    public void requestNotificationPermission() {
+        host.requestNotificationPermission();
+    }
+}

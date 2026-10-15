@@ -1,10 +1,12 @@
 package com.cot.widget;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
@@ -16,17 +18,21 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements AppBridge.Host {
 
     private static final String APP_URL = "file:///android_asset/index.html";
+    private static final int REQ_NOTIFY = 7;
     private WebView webView;
+    private String pendingTab;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -75,6 +81,7 @@ public class MainActivity extends AppCompatActivity {
         s.setTextZoom(100);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
 
+        webView.addJavascriptInterface(new AppBridge(this, this), "AppBridge");
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         webView.setVerticalScrollBarEnabled(false);
         webView.setHorizontalScrollBarEnabled(false);
@@ -89,6 +96,14 @@ public class MainActivity extends AppCompatActivity {
                 } catch (Exception ignored) {
                 }
                 return true;
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (pendingTab != null && url != null && url.endsWith("index.html")) {
+                    openTab(pendingTab);
+                    pendingTab = null;
+                }
             }
 
             @Override
@@ -111,8 +126,47 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        pendingTab = getIntent().getStringExtra("openTab");
+        AlertCenter.ensureChannel(this);
+        VerdictWorker.sync(this);
+
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
             webView.loadUrl(APP_URL);
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        String tab = intent.getStringExtra("openTab");
+        if (tab != null) openTab(tab);
+    }
+
+    private void openTab(String tab) {
+        if (webView == null || !tab.matches("[a-z]+")) return;
+        webView.evaluateJavascript("window.appOpenTab && window.appOpenTab('" + tab + "')", null);
+    }
+
+    @Override
+    public void requestNotificationPermission() {
+        runOnUiThread(() -> {
+            if (Build.VERSION.SDK_INT >= 33 && !AlertCenter.canPost(this)) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFY);
+            } else {
+                reportPermission();
+            }
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_NOTIFY) reportPermission();
+    }
+
+    private void reportPermission() {
+        if (webView != null) {
+            webView.evaluateJavascript("window.onNotifPermission && window.onNotifPermission(" + AlertCenter.canPost(this) + ")", null);
         }
     }
 
