@@ -207,6 +207,17 @@ html:not([data-app]) .tab-charts { display: none; }
 .toast span { flex: 1; min-width: 0; }
 .toast button { border: 0; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 600; padding: 8px 12px; cursor: pointer; }
 
+/* Outside the app (web viewers that size the frame to the page), use a normal flowing page. */
+html:not([data-app]), html:not([data-app]) body { height: auto; }
+html:not([data-app]) body { overflow: visible; min-height: 100%; }
+html:not([data-app]) .shell { height: auto; }
+html:not([data-app]) .views, html:not([data-app]) .view { position: static; }
+html:not([data-app]) .app { height: auto; padding-bottom: 12px; }
+html:not([data-app]) .slider { flex: none; align-items: stretch; }
+html:not([data-app]) .card { height: auto; overflow: visible; }
+html:not([data-app]) .alerts { height: auto; overflow: visible; }
+html:not([data-app]) .tabbar { position: sticky; bottom: 0; z-index: 10; margin-top: auto; }
+
 @media (max-height: 880px) { .spark { height: 48px; } .card { gap: 11px; padding: 14px; } .price { font-size: 1.8rem; } .metric { padding: 8px; } .reasons li { font-size: 0.8rem; } .app { gap: 8px; padding-block: 8px; } }
 @media (max-width: 360px) { .metric { padding: 8px; } .metric-val { font-size: 0.82rem; } .pill { display: none; } }
 @media (prefers-reduced-motion: reduce) { .slider { scroll-behavior: auto; } .icon-btn:disabled svg { animation: none; } .dots button { transition: none; } }
