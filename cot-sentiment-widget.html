@@ -111,46 +111,55 @@ body {
 </div>
 <div class="status-bar">
   <span class="status-pill pill-loading" id="statusPill">Loading...</span>
-  <span class="status-pill pill-source">CFTC Disaggregated</span>
+  <span class="status-pill pill-source">CFTC COT</span>
   <button class="btn-refresh" id="btnRefresh" onclick="loadLiveData()" disabled>Refresh</button>
 </div>
 <div class="error-banner" id="errorBanner"></div>
 <div class="grid" id="dashboard"></div>
 <div class="footer">
-  Data: CFTC Commitments of Traders (Disaggregated Futures) + Yahoo Finance<br>
-  Scoring: Premium/Discount 35 pts &middot; Asset Managers 30 pts &middot; Leveraged Funds 20 pts &middot; Open Interest 15 pts
+  Data: CFTC COT (Disaggregated Futures + TFF) + Yahoo Finance<br>
+  Scoring: Premium/Discount 35 pts &middot; Asset Managers/Managed Money 30 pts &middot; Lev Funds/Swap Dealers 20 pts &middot; Open Interest 15 pts
 </div>
 
 <script>
 const MARKETS = [
-  { name: "Gold",      cftcCode: "088691", ticker: "GC=F",    icon: "Au", iconBg: "#d4a017", decimals: 2 },
-  { name: "Silver",    cftcCode: "084691", ticker: "SI=F",    icon: "Ag", iconBg: "#9ca3af", decimals: 3 },
-  { name: "Crude Oil", cftcCode: "067651", ticker: "CL=F",    icon: "CL", iconBg: "#4a3728", decimals: 2 },
-  { name: "S&P 500",   cftcCode: "13874A", ticker: "ES=F",    icon: "ES", iconBg: "#2563eb", decimals: 2 },
-  { name: "Nasdaq",    cftcCode: "209747", ticker: "NQ=F",    icon: "NQ", iconBg: "#7c3aed", decimals: 2 },
-  { name: "Copper",    cftcCode: "085691", ticker: "HG=F",    icon: "Cu", iconBg: "#b45309", decimals: 4 },
-  { name: "Nat Gas",   cftcCode: "023651", ticker: "NG=F",    icon: "NG", iconBg: "#0891b2", decimals: 3 },
-  { name: "Bitcoin",   cftcCode: "133741", ticker: "BTC-USD", icon: "BT", iconBg: "#ea580c", decimals: 2 }
+  { name: "Gold",      cftcCode: "088691", ticker: "GC=F",    icon: "Au", iconBg: "#d4a017", decimals: 2, type: "commodity" },
+  { name: "Silver",    cftcCode: "084691", ticker: "SI=F",    icon: "Ag", iconBg: "#9ca3af", decimals: 3, type: "commodity" },
+  { name: "Crude Oil", cftcCode: "067651", ticker: "CL=F",    icon: "CL", iconBg: "#4a3728", decimals: 2, type: "commodity" },
+  { name: "S&P 500",   cftcCode: "13874A", ticker: "ES=F",    icon: "ES", iconBg: "#2563eb", decimals: 2, type: "financial" },
+  { name: "Nasdaq",    cftcCode: "209747", ticker: "NQ=F",    icon: "NQ", iconBg: "#7c3aed", decimals: 2, type: "financial" },
+  { name: "Copper",    cftcCode: "085691", ticker: "HG=F",    icon: "Cu", iconBg: "#b45309", decimals: 4, type: "commodity" },
+  { name: "Nat Gas",   cftcCode: "023651", ticker: "NG=F",    icon: "NG", iconBg: "#0891b2", decimals: 3, type: "commodity" },
+  { name: "Bitcoin",   cftcCode: "133741", ticker: "BTC-USD", icon: "BT", iconBg: "#ea580c", decimals: 2, type: "financial" }
 ];
 
-const CFTC_URL = "https://publicreporting.cftc.gov/resource/6dca-aqww.json";
-const YAHOO_URL = "https://query1.finance.yahoo.com/v8/finance/chart/";
+const CFTC_DISAGG_URL = "https://publicreporting.cftc.gov/resource/72hh-3qpy.json";
+const CFTC_TFF_URL = "https://publicreporting.cftc.gov/resource/gpe5-46if.json";
+const YAHOO_URL = "https://query2.finance.yahoo.com/v8/finance/chart/";
 
-async function fetchCOT(code) {
-  const params = new URLSearchParams({
-    "$select": "report_date_as_yyyy_mm_dd,asset_mgr_positions_long_all,asset_mgr_positions_short_all,lev_money_positions_long_all,lev_money_positions_short_all,open_interest_all",
+async function fetchCOT(code, type) {
+  var isCommodity = type === "commodity";
+  var baseUrl = isCommodity ? CFTC_DISAGG_URL : CFTC_TFF_URL;
+  var longField = isCommodity ? "m_money_positions_long_all" : "asset_mgr_positions_long";
+  var shortField = isCommodity ? "m_money_positions_short_all" : "asset_mgr_positions_short";
+  var levLongField = isCommodity ? "swap_positions_long_all" : "lev_money_positions_long";
+  var levShortField = isCommodity ? "swap__positions_short_all" : "lev_money_positions_short";
+  var selectFields = "report_date_as_yyyy_mm_dd," + longField + "," + shortField + "," + levLongField + "," + levShortField + ",open_interest_all";
+  var params = new URLSearchParams({
+    "$select": selectFields,
     "$where": "cftc_contract_market_code='" + code + "'",
     "$order": "report_date_as_yyyy_mm_dd DESC",
     "$limit": "12"
   });
-  const r = await fetch(CFTC_URL + "?" + params, { signal: AbortSignal.timeout(20000) });
+  var r = await fetch(baseUrl + "?" + params, { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error("CFTC " + r.status);
-  const data = await r.json();
+  var data = await r.json();
+  if (data.error) throw new Error("CFTC API: " + (data.message || "unknown error"));
   return data.map(function(row) {
     return {
       date: row.report_date_as_yyyy_mm_dd,
-      asset_mgr: (Number(row.asset_mgr_positions_long_all) || 0) - (Number(row.asset_mgr_positions_short_all) || 0),
-      leveraged: (Number(row.lev_money_positions_long_all) || 0) - (Number(row.lev_money_positions_short_all) || 0),
+      asset_mgr: (Number(row[longField]) || 0) - (Number(row[shortField]) || 0),
+      leveraged: (Number(row[levLongField]) || 0) - (Number(row[levShortField]) || 0),
       oi: Number(row.open_interest_all) || 0
     };
   }).reverse();
@@ -158,12 +167,13 @@ async function fetchCOT(code) {
 
 async function fetchPrice(ticker) {
   var url = YAHOO_URL + encodeURIComponent(ticker) + "?interval=1wk&range=2y";
-  const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+  var r = await fetch(url, { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error("Yahoo " + r.status);
-  const data = await r.json();
-  const result = data.chart.result[0];
-  const quotes = result.indicators.quote[0];
-  const rows = [];
+  var data = await r.json();
+  if (!data.chart || !data.chart.result || !data.chart.result[0]) throw new Error("Yahoo: no data");
+  var result = data.chart.result[0];
+  var quotes = result.indicators.quote[0];
+  var rows = [];
   for (var i = 0; i < result.timestamp.length; i++) {
     if (quotes.high[i] != null && quotes.low[i] != null && quotes.close[i] != null) {
       rows.push({ high: quotes.high[i], low: quotes.low[i], close: quotes.close[i] });
@@ -339,7 +349,7 @@ async function loadLiveData() {
   for (var idx = 0; idx < MARKETS.length; idx++) {
     var m = MARKETS[idx];
     try {
-      var cot = await fetchCOT(m.cftcCode);
+      var cot = await fetchCOT(m.cftcCode, m.type);
       var priceData = await fetchPrice(m.ticker);
       if (cot.length < 5) throw new Error("Not enough COT history");
       if (priceData.length < 20) throw new Error("Not enough price history");
