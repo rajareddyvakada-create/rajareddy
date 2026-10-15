@@ -2,8 +2,6 @@ name: Build COT Widget APK
 
 on:
   push:
-    branches: ['**']
-    tags: ['v*']
     paths:
       - 'cot-widget-android/**'
       - 'scripts/update_cot_snapshot.py'
@@ -64,13 +62,18 @@ jobs:
           retention-days: 90
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" COT-Sentiment-Widget.apk \
+          TAG="v$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle)"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" COT-Sentiment-Widget.apk --repo "$GITHUB_REPOSITORY" --clobber
+            exit 0
+          fi
+          gh release create "$TAG" COT-Sentiment-Widget.apk \
             --repo "$GITHUB_REPOSITORY" \
-            --title "COT Sentiment Widget $GITHUB_REF_NAME" \
+            --target "$GITHUB_SHA" \
+            --title "COT Sentiment Widget $TAG" \
             --latest \
             --notes "Android app for the COT Sentiment Widget: weekly CFTC positioning plus 20-week price range, scored into a bullish/bearish verdict for Gold, Silver, Crude Oil, S&P 500, Nasdaq, Copper, Nat Gas and Bitcoin.
 
