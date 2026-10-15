@@ -4,30 +4,30 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Charts</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
 <style>
 /* Same tokens as the Markets tab. --brass is the chart accent (replay position, crosshair, entries). */
 :root{
-  --bg:#eef1f5; --surface:#ffffff; --line:#dde2ea; --grid:#e6eaf0;
-  --text:#141823; --muted:#5f677a;
-  --brass:#2f6bdc; --brass-ink:#ffffff;
-  --up:#11865f; --down:#c73a3a; --on-color:#ffffff;
+  --bg:#f3f5fb; --surface:#ffffff; --line:#dfe4ef; --grid:#e9edf5;
+  --text:#0f172a; --muted:#5b6680;
+  --brass:#6d4aff; --brass-ink:#ffffff; --grad:linear-gradient(135deg,#6d4aff,#0891b2);
+  --up:#0e9f6e; --down:#e11d48; --on-color:#ffffff;
   color-scheme:light;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#0b0e14; --surface:#141924; --line:#262d3d; --grid:#161c28;
-    --text:#e6e9f0; --muted:#8b93a7;
-    --brass:#6b9dff; --brass-ink:#0b0e14;
-    --up:#33d29f; --down:#f27070; --on-color:#0b0e14;
+    --bg:#070b14; --surface:#10172a; --line:#1f2a44; --grid:#111a2e;
+    --text:#e8edf7; --muted:#8a97b3;
+    --brass:#8b6cff; --brass-ink:#ffffff; --grad:linear-gradient(135deg,#8b6cff,#22d3ee);
+    --up:#2ee6a6; --down:#ff5c7a; --on-color:#07110d;
     color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
-  --bg:#0b0e14; --surface:#141924; --line:#262d3d; --grid:#161c28;
-  --text:#e6e9f0; --muted:#8b93a7;
-  --brass:#6b9dff; --brass-ink:#0b0e14;
-  --up:#33d29f; --down:#f27070; --on-color:#0b0e14;
+  --bg:#070b14; --surface:#10172a; --line:#1f2a44; --grid:#111a2e;
+  --text:#e8edf7; --muted:#8a97b3;
+  --brass:#8b6cff; --brass-ink:#ffffff; --grad:linear-gradient(135deg,#8b6cff,#22d3ee);
+  --up:#2ee6a6; --down:#ff5c7a; --on-color:#07110d;
   color-scheme:dark;
 }
 *,*::before,*::after{box-sizing:border-box}
@@ -36,13 +36,13 @@ html,body{height:100%}
 body{
   margin:0;display:flex;flex-direction:column;overflow:hidden;
   background:var(--bg);color:var(--text);
-  font-family:'IBM Plex Sans',system-ui,-apple-system,Roboto,sans-serif;
+  font-family:'Plus Jakarta Sans',system-ui,-apple-system,Roboto,sans-serif;
   font-size:15px;line-height:1.35;font-variant-numeric:tabular-nums;
   -webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;
 }
 button{
   font:inherit;font-weight:600;color:inherit;background:var(--surface);
-  border:1px solid var(--line);border-radius:12px;min-height:44px;padding:0 14px;
+  border:1px solid var(--line);border-radius:14px;min-height:44px;padding:0 14px;
   cursor:pointer;touch-action:manipulation;
 }
 button:disabled{opacity:.35;cursor:default}
@@ -66,11 +66,11 @@ svg.stroke{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;str
 .notice ul{margin:6px 0 2px;padding-left:18px}
 .dismiss{min-height:30px;width:30px;padding:0;border:0;background:transparent;color:var(--muted);font-size:1.2rem}
 
-.chart-wrap{flex:1;min-height:0;position:relative;margin:0 8px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg)}
+.chart-wrap{flex:1;min-height:0;position:relative;margin:0 8px;border:1px solid var(--line);border-radius:20px;overflow:hidden;background:var(--bg)}
 #chart{position:absolute;inset:0}
 .legend{position:absolute;left:8px;top:6px;z-index:3;pointer-events:none;padding:3px 8px;border-radius:8px;background:color-mix(in srgb,var(--bg) 80%,transparent)}
 .rtime{font-weight:700;font-size:.95rem}
-.ohlc{color:var(--muted);font:500 .78rem 'IBM Plex Mono',ui-monospace,monospace;white-space:nowrap}
+.ohlc{color:var(--muted);font:500 .78rem 'JetBrains Mono',ui-monospace,monospace;white-space:nowrap}
 .ohlc b{font-weight:600;color:var(--text)}
 .ohlc b.c-up{color:var(--up)} .ohlc b.c-down{color:var(--down)}
 .rline{display:flex;align-items:center;gap:8px}
@@ -90,7 +90,7 @@ svg.stroke{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;str
 .pick-btn{flex:1;min-width:0;white-space:nowrap;padding:0 8px}
 .pick-btn[aria-pressed="true"]{border-color:var(--brass);color:var(--brass)}
 .icon{width:50px;padding:0;display:grid;place-items:center}
-.play{width:62px;min-height:48px;padding:0;display:grid;place-items:center;background:var(--brass);color:var(--brass-ink);border-color:transparent}
+.play{width:62px;min-height:48px;padding:0;display:grid;place-items:center;background:var(--grad);color:var(--brass-ink);border-color:transparent}
 .speed{width:56px;padding:0}
 .trade{display:flex;gap:8px;align-items:stretch}
 .orders{flex:1;display:flex;gap:8px;min-width:0}
@@ -120,14 +120,14 @@ legend{font-weight:700;font-size:1rem;padding:0;margin-bottom:4px}
 .field input[type=text],.field input[type=password],.field select{width:180px}
 .hint{margin:6px 0 0;color:var(--muted);font-size:.85rem}
 .form-err{color:var(--down);font-weight:600;margin:0 0 10px}
-.primary{width:100%;background:var(--brass);color:var(--brass-ink);border-color:transparent}
+.primary{width:100%;background:var(--grad);color:var(--brass-ink);border-color:transparent}
 .danger{width:100%;margin-top:12px;color:var(--down)}
 
 /* toggle switch built on a checkbox */
 .switch{position:relative;display:inline-block;width:48px;height:28px;flex:0 0 48px}
 .switch input{appearance:none;-webkit-appearance:none;position:absolute;inset:0;margin:0;width:100%;height:100%;border-radius:14px;background:var(--line);cursor:pointer;transition:background .15s}
 .switch input::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s}
-.switch input:checked{background:var(--brass)}
+.switch input:checked{background:var(--grad)}
 .switch input:checked::after{transform:translateX(20px)}
 .ind{border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:10px}
 .ind-head{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer}
@@ -210,7 +210,9 @@ legend{font-weight:700;font-size:1rem;padding:0;margin-bottom:4px}
       <label class="field"><span>Reward to risk (2 = 1:2)</span><input type="number" id="sRr" step="0.1" min="0.1" inputmode="decimal"></label>
       <label class="field"><span>Risk per trade ($)</span><input type="number" id="sRisk" step="1" min="1" inputmode="decimal"></label>
       <label class="field"><span>Contract size (gold = 100)</span><input type="number" id="sContract" step="1" min="1" inputmode="decimal"></label>
-      <p class="hint">Orders fill at the close of the last candle shown. If one candle touches both the stop-loss and the target, it counts as a loss.</p>
+      <label class="field"><span>Auto trailing stop-loss</span><span class="switch"><input type="checkbox" role="switch" id="sTrail"></span></label>
+      <label class="field"><span>Trail mode</span><select id="sTrailMode"><option value="swing">Swing low / high</option><option value="ut">UT trailing stop</option><option value="atr">ATR chandelier</option></select></label>
+      <p class="hint">Orders fill at the close of the last candle shown. If one candle touches both the stop-loss and the target, it counts as a loss. With auto trailing on: break-even at +1R, +0.5R locked at +1.5R, then the stop trails; it exits when a candle closes beyond the stop.</p>
     </fieldset>
     <p class="form-err" id="setErr" hidden></p>
     <button type="button" class="primary" id="saveSettings">Save trade settings</button>

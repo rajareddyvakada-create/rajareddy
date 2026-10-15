@@ -133,6 +133,30 @@ final class AlertCenter {
         }
     }
 
+    static final String SIGNALS = "chart_signals";
+
+    static void notifySignal(Context ctx, String title, String body) {
+        if (!canPost(ctx)) return;
+        ensureChannel(ctx);
+        Intent open = new Intent(ctx, MainActivity.class)
+                .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra("openTab", "charts");
+        PendingIntent pi = PendingIntent.getActivity(ctx, 1, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, SIGNALS)
+                .setSmallIcon(R.drawable.ic_stat_alert)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setContentIntent(pi)
+                .setAutoCancel(true);
+        try {
+            NotificationManagerCompat.from(ctx).notify((int) (System.currentTimeMillis() & 0x7fffffff), b.build());
+        } catch (SecurityException ignored) {
+        }
+    }
+
     static void ensureChannel(Context ctx) {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationManager nm = ctx.getSystemService(NotificationManager.class);
@@ -141,6 +165,12 @@ final class AlertCenter {
                     NotificationManager.IMPORTANCE_DEFAULT);
             ch.setDescription("When a market's sentiment verdict changes");
             nm.createNotificationChannel(ch);
+        }
+        if (nm.getNotificationChannel(SIGNALS) == null) {
+            NotificationChannel sc = new NotificationChannel(SIGNALS, "Chart signals",
+                    NotificationManager.IMPORTANCE_HIGH);
+            sc.setDescription("BUY / SELL signals from the Charts tab, the moment a candle closes");
+            nm.createNotificationChannel(sc);
         }
     }
 }

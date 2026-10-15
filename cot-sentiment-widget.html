@@ -2,44 +2,52 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
 <style>
 /* Layout: full-height phone app shell. App bar, market strip, one swipeable card, pager pinned at the bottom. */
 :root {
-  --bg: #eef1f5; --surface: #ffffff; --surface-2: #f3f5f9; --border: #dde2ea;
-  --fg: #141823; --muted: #5f677a; --accent: #2f6bdc; --accent-dim: rgba(47,107,220,0.10);
-  --bull: #11865f; --bull-dim: rgba(17,134,95,0.11);
-  --bear: #c73a3a; --bear-dim: rgba(199,58,58,0.10);
-  --flat: #9a7006; --flat-dim: rgba(154,112,6,0.12);
-  --shadow: 0 1px 2px rgba(20,24,35,0.06), 0 4px 16px rgba(20,24,35,0.05);
-  --font-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --bg: #f3f5fb; --surface: #ffffff; --surface-2: #eef1f8; --border: #dfe4ef;
+  --fg: #0f172a; --muted: #5b6680; --accent: #6d4aff; --accent-2: #0891b2; --accent-dim: rgba(109,74,255,0.10);
+  --grad: linear-gradient(135deg, #6d4aff 0%, #0891b2 100%);
+  --bull: #0e9f6e; --bull-dim: rgba(14,159,110,0.12);
+  --bear: #e11d48; --bear-dim: rgba(225,29,72,0.10);
+  --flat: #b7791f; --flat-dim: rgba(183,121,31,0.13);
+  --glow-a: rgba(109,74,255,0.10); --glow-b: rgba(8,145,178,0.08);
+  --shadow: 0 1px 2px rgba(15,23,42,0.05), 0 12px 32px rgba(76,61,255,0.08);
+  --font-body: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0b0e14; --surface: #141924; --surface-2: #1b2130; --border: #262d3d;
-    --fg: #e6e9f0; --muted: #8b93a7; --accent: #6b9dff; --accent-dim: rgba(107,157,255,0.14);
-    --bull: #33d29f; --bull-dim: rgba(51,210,159,0.13);
-    --bear: #f27070; --bear-dim: rgba(242,112,112,0.13);
-    --flat: #f0c14b; --flat-dim: rgba(240,193,75,0.13);
-    --shadow: none;
+    --bg: #070b14; --surface: #10172a; --surface-2: #16203a; --border: #1f2a44;
+    --fg: #e8edf7; --muted: #8a97b3; --accent: #8b6cff; --accent-2: #22d3ee; --accent-dim: rgba(139,108,255,0.16);
+    --grad: linear-gradient(135deg, #8b6cff 0%, #22d3ee 100%);
+    --bull: #2ee6a6; --bull-dim: rgba(46,230,166,0.13);
+    --bear: #ff5c7a; --bear-dim: rgba(255,92,122,0.13);
+    --flat: #fbbf24; --flat-dim: rgba(251,191,36,0.13);
+    --glow-a: rgba(139,108,255,0.18); --glow-b: rgba(34,211,238,0.10);
+    --shadow: 0 12px 32px rgba(0,0,0,0.35);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0b0e14; --surface: #141924; --surface-2: #1b2130; --border: #262d3d;
-  --fg: #e6e9f0; --muted: #8b93a7; --accent: #6b9dff; --accent-dim: rgba(107,157,255,0.14);
-  --bull: #33d29f; --bull-dim: rgba(51,210,159,0.13);
-  --bear: #f27070; --bear-dim: rgba(242,112,112,0.13);
-  --flat: #f0c14b; --flat-dim: rgba(240,193,75,0.13);
-  --shadow: none;
+  --bg: #070b14; --surface: #10172a; --surface-2: #16203a; --border: #1f2a44;
+  --fg: #e8edf7; --muted: #8a97b3; --accent: #8b6cff; --accent-2: #22d3ee; --accent-dim: rgba(139,108,255,0.16);
+  --grad: linear-gradient(135deg, #8b6cff 0%, #22d3ee 100%);
+  --bull: #2ee6a6; --bull-dim: rgba(46,230,166,0.13);
+  --bear: #ff5c7a; --bear-dim: rgba(255,92,122,0.13);
+  --flat: #fbbf24; --flat-dim: rgba(251,191,36,0.13);
+  --glow-a: rgba(139,108,255,0.18); --glow-b: rgba(34,211,238,0.10);
+  --shadow: 0 12px 32px rgba(0,0,0,0.35);
   color-scheme: dark;
 }
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
-  margin: 0; overflow: hidden; background: var(--bg); color: var(--fg);
+  margin: 0; overflow: hidden; color: var(--fg);
+  background: radial-gradient(900px 520px at 0% -10%, var(--glow-a), transparent 60%), radial-gradient(700px 480px at 110% 0%, var(--glow-b), transparent 60%), var(--bg);
+  background-attachment: fixed;
   font-family: var(--font-body); font-size: 16px; line-height: 1.4;
   -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%;
 }
@@ -54,8 +62,8 @@ button { font: inherit; color: inherit; }
 /* App bar */
 .appbar { display: flex; align-items: center; gap: 10px; min-height: 44px; }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
-.mark { font: 700 0.8rem var(--font-mono); letter-spacing: 0.04em; color: #fff; background: var(--accent); border-radius: 8px; padding: 7px 8px; }
-.brand-name { font-weight: 700; font-size: 1.05rem; line-height: 1.15; }
+.mark { font: 800 0.8rem var(--font-mono); letter-spacing: 0.04em; color: #fff; background: var(--grad); border-radius: 12px; padding: 8px 9px; box-shadow: 0 6px 18px var(--glow-a); }
+.brand-name { font-weight: 800; font-size: 1.15rem; line-height: 1.15; letter-spacing: -0.01em; }
 .brand-sub { font-size: 0.75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .brand > div { min-width: 0; }
 .pill { font: 600 0.68rem var(--font-body); letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
@@ -63,7 +71,7 @@ button { font: inherit; color: inherit; }
 .pill-saved { background: var(--flat-dim); color: var(--flat); }
 .pill-off { background: var(--bear-dim); color: var(--bear); }
 .pill-loading { background: var(--accent-dim); color: var(--accent); }
-.icon-btn { width: 40px; height: 40px; flex: 0 0 40px; display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; color: var(--fg); }
+.icon-btn { width: 40px; height: 40px; flex: 0 0 40px; display: grid; place-items: center; border-radius: 14px; border: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 80%, transparent); cursor: pointer; color: var(--fg); }
 .icon-btn svg { width: 19px; height: 19px; }
 .icon-btn:disabled svg { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -71,9 +79,9 @@ button { font: inherit; color: inherit; }
 /* Market strip */
 .market-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex: 0 0 auto; padding: 2px 0; }
 .market-tabs::-webkit-scrollbar { display: none; }
-.tab { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 13px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font-weight: 600; font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
+.tab { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 80%, transparent); color: var(--muted); font-weight: 600; font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
 .tab .dot { width: 8px; height: 8px; border-radius: 50%; }
-.tab[aria-selected="true"] { color: var(--fg); border-color: var(--accent); background: var(--accent-dim); }
+.tab[aria-selected="true"] { color: #fff; border-color: transparent; background: var(--grad); box-shadow: 0 6px 16px var(--glow-a); }
 
 /* Notice */
 .notice { display: flex; align-items: flex-start; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--flat); border-radius: 10px; padding: 8px 6px 8px 12px; font-size: 0.8rem; color: var(--muted); line-height: 1.35; flex: 0 0 auto; }
@@ -84,7 +92,7 @@ button { font: inherit; color: inherit; }
 /* Slider */
 .slider { flex: 1 1 auto; min-height: 0; display: flex; gap: 16px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scroll-behavior: smooth; overscroll-behavior-x: contain; scrollbar-width: none; }
 .slider::-webkit-scrollbar { display: none; }
-.card { flex: 0 0 100%; min-width: 0; height: 100%; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-align: center; scroll-snap-stop: always; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow); padding: 16px; display: flex; flex-direction: column; gap: 14px; scrollbar-width: none; }
+.card { flex: 0 0 100%; min-width: 0; height: 100%; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-align: center; scroll-snap-stop: always; background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, var(--accent) 8%) 0%, var(--surface) 38%); border: 1px solid var(--border); border-radius: 24px; box-shadow: var(--shadow); padding: 16px; display: flex; flex-direction: column; gap: 14px; scrollbar-width: none; }
 .card::-webkit-scrollbar { display: none; }
 .empty { flex: 0 0 100%; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 0.9rem; padding: 24px; }
 
@@ -149,7 +157,7 @@ button { font: inherit; color: inherit; }
 .nav-btn:disabled { opacity: 0.35; cursor: default; }
 .dots { display: flex; align-items: center; justify-content: center; gap: 6px; flex: 1; flex-wrap: wrap; }
 .dots button { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 4px; background: var(--border); cursor: pointer; transition: width 0.2s, background 0.2s; }
-.dots button[aria-current="true"] { width: 22px; background: var(--accent); }
+.dots button[aria-current="true"] { width: 22px; background: var(--grad); }
 
 /* Info sheet */
 .sheet-backdrop { position: fixed; inset: 0; background: rgba(8,10,16,0.45); display: flex; align-items: flex-end; justify-content: center; z-index: 20; }
@@ -160,7 +168,7 @@ button { font: inherit; color: inherit; }
 .rules { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .rules td { padding: 8px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
 .rules td:last-child { text-align: right; font-family: var(--font-mono); white-space: nowrap; padding-left: 12px; }
-.sheet .close-sheet { align-self: stretch; height: 46px; border-radius: 12px; border: 0; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+.sheet .close-sheet { align-self: stretch; height: 46px; border-radius: 14px; border: 0; background: var(--grad); color: #fff; font-weight: 600; cursor: pointer; }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chart-link { border: 0; background: none; color: var(--accent); font: 600 0.75rem var(--font-body); padding: 4px 0 4px 8px; cursor: pointer; }
@@ -170,11 +178,13 @@ button { font: inherit; color: inherit; }
 .views { flex: 1 1 auto; min-height: 0; position: relative; }
 .view { position: absolute; inset: 0; }
 .view iframe { width: 100%; height: 100%; border: 0; display: block; background: var(--bg); }
-.tabbar { flex: 0 0 auto; display: flex; justify-content: center; background: var(--surface); border-top: 1px solid var(--border); }
+.tabbar { flex: 0 0 auto; display: flex; justify-content: center; background: color-mix(in srgb, var(--surface) 82%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-top: 1px solid var(--border); }
 .tabbar-inner { display: flex; width: 100%; max-width: 560px; padding-left: max(8px, env(safe-area-inset-left, 0px)); padding-right: max(8px, env(safe-area-inset-right, 0px)); }
 .tabbtn { flex: 1; min-height: 58px; border: 0; background: none; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 0.72rem; font-weight: 600; cursor: pointer; position: relative; }
 .tabbtn svg { width: 22px; height: 22px; }
-.tabbtn[aria-current="page"] { color: var(--accent); }
+.tabbtn[aria-current="page"] { color: var(--fg); }
+.tabbtn[aria-current="page"] svg { color: var(--accent); filter: drop-shadow(0 4px 10px var(--glow-a)); }
+.tabbtn[aria-current="page"]::before { content: ""; position: absolute; top: 0; left: 30%; right: 30%; height: 3px; border-radius: 0 0 3px 3px; background: var(--grad); }
 .tabbtn .badge-n { position: absolute; top: 6px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bear); color: #fff; font-size: 0.66rem; line-height: 18px; text-align: center; }
 html:not([data-app]) .tab-charts { display: none; }
 
@@ -182,7 +192,7 @@ html:not([data-app]) .tab-charts { display: none; }
 .alerts { height: 100%; max-width: 560px; margin: 0 auto; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 14px 20px; }
 .alerts h1 { margin: 0; font-size: 1.3rem; }
-.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 4px 14px; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 4px 14px; box-shadow: var(--shadow); }
 .panel h2 { margin: 10px 0 2px; font-size: 0.72rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--border); font-size: 0.92rem; }
 .row:last-child { border-bottom: 0; }
@@ -190,7 +200,7 @@ html:not([data-app]) .tab-charts { display: none; }
 .switch { position: relative; display: inline-block; width: 48px; height: 28px; flex: 0 0 48px; }
 .switch input { appearance: none; -webkit-appearance: none; position: absolute; inset: 0; margin: 0; width: 100%; height: 100%; border-radius: 14px; background: var(--border); cursor: pointer; transition: background 0.15s; }
 .switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.3); transition: transform 0.15s; }
-.switch input:checked { background: var(--accent); }
+.switch input:checked { background: var(--grad); }
 .switch input:checked::after { transform: translateX(20px); }
 .switch input:disabled { opacity: 0.4; cursor: default; }
 .perm { font-size: 0.82rem; color: var(--bear); padding: 0 0 10px; }
@@ -205,7 +215,7 @@ html:not([data-app]) .tab-charts { display: none; }
 .text-btn { border: 0; background: none; color: var(--bear); font-weight: 600; font-size: 0.85rem; padding: 10px 0; cursor: pointer; align-self: flex-start; }
 .toast { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); z-index: 30; width: min(520px, calc(100% - 24px)); display: flex; align-items: center; gap: 10px; background: var(--fg); color: var(--surface); border-radius: 14px; padding: 10px 10px 10px 14px; box-shadow: 0 6px 24px rgba(0,0,0,0.25); font-size: 0.86rem; }
 .toast span { flex: 1; min-width: 0; }
-.toast button { border: 0; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 600; padding: 8px 12px; cursor: pointer; }
+.toast button { border: 0; border-radius: 10px; background: var(--grad); color: #fff; font-weight: 600; padding: 8px 12px; cursor: pointer; }
 
 /* Outside the app (web viewers that size the frame to the page), use a normal flowing page. */
 html:not([data-app]), html:not([data-app]) body { height: auto; }
@@ -217,6 +227,19 @@ html:not([data-app]) .slider { flex: none; align-items: stretch; }
 html:not([data-app]) .card { height: auto; overflow: visible; }
 html:not([data-app]) .alerts { height: auto; overflow: visible; }
 html:not([data-app]) .tabbar { position: sticky; bottom: 0; z-index: 10; margin-top: auto; }
+
+.brk-note { margin: 0; color: var(--muted); font-size: 0.84rem; line-height: 1.5; }
+.broker { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 14px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 12px; }
+.broker-head { display: flex; align-items: center; gap: 12px; }
+.broker-head b { display: block; font-size: 1.05rem; }
+.broker-head small { color: var(--muted); font-size: 0.8rem; }
+.broker-logo { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 0.9rem; flex: 0 0 42px; }
+.broker-btns { display: flex; gap: 8px; }
+.btn-primary, .btn-ghost { flex: 1; display: grid; place-items: center; height: 44px; border-radius: 14px; font: 700 0.9rem var(--font-body); text-decoration: none; cursor: pointer; }
+.btn-primary { border: 0; color: #fff; background: var(--grad); box-shadow: 0 8px 20px var(--glow-a); }
+.btn-ghost { border: 1px solid var(--border); color: var(--fg); background: transparent; }
+.url-in { width: 55%; font: 500 0.8rem var(--font-mono); padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--fg); }
+.tabbtn { font-size: 0.66rem; }
 
 @media (max-height: 880px) { .spark { height: 48px; } .card { gap: 11px; padding: 14px; } .price { font-size: 1.8rem; } .metric { padding: 8px; } .reasons li { font-size: 0.8rem; } .app { gap: 8px; padding-block: 8px; } }
 @media (max-width: 360px) { .metric { padding: 8px; } .metric-val { font-size: 0.82rem; } .pill { display: none; } }
@@ -251,6 +274,37 @@ html:not([data-app]) .tabbar { position: sticky; bottom: 0; z-index: 10; margin-
 </div>
 </section>
 <section class="view" id="viewCharts" hidden></section>
+<section class="view" id="viewScanner" hidden></section>
+<section class="view" id="viewBrokers" hidden>
+  <div class="alerts">
+    <h1>Brokers</h1>
+    <p class="brk-note">Sign in or open an account on your broker's own website. Your password is typed only on their page; this app never sees or stores it.</p>
+    <div class="broker">
+      <div class="broker-head"><span class="broker-logo" style="background:#d1202f">XM</span><div><b>XM</b><small>Forex, gold and indices · MT4 / MT5</small></div></div>
+      <div class="broker-btns">
+        <a class="btn-primary" id="xmLogin" href="https://www.xm.com/" target="_blank" rel="noopener">Log in</a>
+        <a class="btn-ghost" id="xmJoin" href="https://www.xm.com/" target="_blank" rel="noopener">Create account</a>
+      </div>
+    </div>
+    <div class="broker">
+      <div class="broker-head"><span class="broker-logo" style="background:#2a6df4">Oc</span><div><b>Octa</b><small>Forex, gold and indices · MT4 / MT5</small></div></div>
+      <div class="broker-btns">
+        <a class="btn-primary" id="octaLogin" href="https://www.octafx.com/" target="_blank" rel="noopener">Log in</a>
+        <a class="btn-ghost" id="octaJoin" href="https://www.octafx.com/" target="_blank" rel="noopener">Create account</a>
+      </div>
+    </div>
+    <div class="broker" id="mt5Card">
+      <div class="broker-head"><span class="broker-logo" style="background:#3b4a63">5</span><div><b>MetaTrader 5</b><small>Place the trade with your XM or Octa login</small></div></div>
+      <div class="broker-btns"><button type="button" class="btn-primary" id="openMt5">Open MetaTrader 5</button></div>
+    </div>
+    <div class="panel">
+      <h2>Your own links (optional)</h2>
+      <label class="row"><span>XM login page</span><input class="url-in" id="urlXm" type="url" placeholder="https://..."></label>
+      <label class="row"><span>Octa login page</span><input class="url-in" id="urlOcta" type="url" placeholder="https://..."></label>
+    </div>
+    <p class="brk-note">How a signal reaches a trade: a BUY / SELL notification arrives the moment the candle closes, you tap Open MetaTrader 5, and place the order there. Brokers don't let outside apps place orders for you, so the last tap is yours.</p>
+  </div>
+</section>
 <section class="view" id="viewAlerts" hidden>
   <div class="alerts">
     <h1>Alerts</h1>
@@ -275,7 +329,9 @@ html:not([data-app]) .tabbar { position: sticky; bottom: 0; z-index: 10; margin-
 <nav class="tabbar" aria-label="Sections"><div class="tabbar-inner">
   <button type="button" class="tabbtn" data-tab="markets" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 20V12M12 20V5M19 20v-9"/></svg>Markets</button>
   <button type="button" class="tabbtn tab-charts" data-tab="charts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 4v16M17 4v16"/><rect x="5" y="8" width="4" height="7" rx="1"/><rect x="15" y="6" width="4" height="9" rx="1"/></svg>Charts</button>
+  <button type="button" class="tabbtn tab-charts" data-tab="scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>Scanner</button>
   <button type="button" class="tabbtn" data-tab="alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>Alerts<span class="badge-n" id="alertBadge" hidden></span></button>
+  <button type="button" class="tabbtn" data-tab="brokers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10h18M5 10V20M19 10V20M9 14v3M15 14v3M2 20h20M12 3l9 5H3z"/></svg>Brokers</button>
 </div></nav>
 </div>
 <div class="toast" id="toast" role="status" hidden><span id="toastText"></span><button type="button" id="toastView">View</button></div>
@@ -750,6 +806,7 @@ function reportVerdicts(results) {
   var changes = Alerts.report(map), muted = Alerts.prefs().muted || [];
   var shown = changes.filter(function(c) { return muted.indexOf(c.ticker) < 0; });
   if (shown.length) {
+    toastTarget = "alerts";
     showToast(shown.length === 1 ? shown[0].name + ": " + shown[0].from + " → " + shown[0].to
                                  : shown.length + " verdicts changed: " + shown.map(function(c){ return c.name; }).join(", "));
   }
@@ -758,7 +815,7 @@ function reportVerdicts(results) {
   maybeAskPermission();
 }
 
-var toastTimer = 0;
+var toastTimer = 0, toastTarget = "alerts";
 function showToast(msg) {
   document.getElementById("toastText").textContent = msg;
   document.getElementById("toast").hidden = false;
@@ -822,11 +879,11 @@ function renderAlerts() {
 }
 
 /* ---------- tabs ---------- */
-var currentTab = "markets", chartsFrame = null;
+var currentTab = "markets", chartsFrame = null, scannerFrame = null;
 function openTab(name, chart) {
-  if (name === "charts" && !IS_APP) name = "markets";
+  if ((name === "charts" || name === "scanner") && !IS_APP) name = "markets";
   currentTab = name;
-  ["markets", "charts", "alerts"].forEach(function(t) {
+  ["markets", "charts", "scanner", "alerts", "brokers"].forEach(function(t) {
     document.getElementById("view" + t.charAt(0).toUpperCase() + t.slice(1)).hidden = t !== name;
   });
   document.querySelectorAll(".tabbtn").forEach(function(b) {
@@ -841,6 +898,12 @@ function openTab(name, chart) {
     } else if (chart) {
       chartsFrame.contentWindow.postMessage({ type: "openMarket", ticker: chart.ticker, name: chart.name }, "*");
     }
+  }
+  if (name === "scanner" && !scannerFrame) {
+    scannerFrame = document.createElement("iframe");
+    scannerFrame.title = "Scanner";
+    scannerFrame.src = "charts/scanner.html";
+    document.getElementById("viewScanner").appendChild(scannerFrame);
   }
   if (name === "alerts") { lsSet("cot.alert.seen", Date.now()); renderAlerts(); }
   updateBadge();
@@ -892,7 +955,37 @@ window.appBack = function() {
     var link = e.target.closest(".chart-link");
     if (link) openTab("charts", { ticker: link.dataset.ticker, name: link.dataset.name });
   });
-  document.getElementById("toastView").addEventListener("click", function() { document.getElementById("toast").hidden = true; openTab("alerts"); });
+  document.getElementById("toastView").addEventListener("click", function() { document.getElementById("toast").hidden = true; openTab(toastTarget); });
+  // Messages from the Charts and Scanner tabs
+  window.addEventListener("message", function(e) {
+    var d = e.data || {};
+    if (d.type === "openChart" && d.ticker) openTab("charts", { ticker: d.ticker, name: d.name });
+    if (d.type === "signal" && (d.side === "buy" || d.side === "sell")) {
+      var title = (d.side === "buy" ? "BUY " : "SELL ") + d.name;
+      var body = d.tf + " candle closed at " + d.price + ". Tap to open the chart.";
+      if (Bridge && Bridge.notifySignal) Bridge.notifySignal(title, body);
+      toastTarget = "charts";
+      showToast(title + " · " + d.tf + " @ " + d.price);
+    }
+  });
+  // Brokers tab
+  var urls = lsGet("cot.broker.urls", {});
+  function applyUrls() {
+    if (urls.xm) document.getElementById("xmLogin").href = urls.xm;
+    if (urls.octa) document.getElementById("octaLogin").href = urls.octa;
+  }
+  document.getElementById("urlXm").value = urls.xm || "";
+  document.getElementById("urlOcta").value = urls.octa || "";
+  [["urlXm", "xm"], ["urlOcta", "octa"]].forEach(function(pair) {
+    document.getElementById(pair[0]).addEventListener("change", function() {
+      var v = this.value.trim();
+      if (v && !/^https:\/\//i.test(v)) { this.value = urls[pair[1]] || ""; showToast("Links must start with https://"); return; }
+      urls[pair[1]] = v; lsSet("cot.broker.urls", urls); applyUrls();
+    });
+  });
+  applyUrls();
+  document.getElementById("mt5Card").hidden = !Bridge;
+  document.getElementById("openMt5").addEventListener("click", function() { if (Bridge && Bridge.openMt5) Bridge.openMt5(); });
   document.getElementById("prefNotify").addEventListener("change", function() {
     Alerts.setPref("notify", this.checked);
     if (this.checked && Bridge) Bridge.requestNotificationPermission();

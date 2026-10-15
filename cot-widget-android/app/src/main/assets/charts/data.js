@@ -82,11 +82,11 @@
   /* ---------- Yahoo Finance (futures, indices, crypto; no key) ---------- */
   const YH = ['https://query1.finance.yahoo.com/v8/finance/chart/', 'https://query2.finance.yahoo.com/v8/finance/chart/'];
   const YRES = {
-    '1m':  { interval:'1m',  range:'5d',   sec:60,    poll:20000,  live:'1d' },
-    '5m':  { interval:'5m',  range:'60d',  sec:300,   poll:30000,  live:'1d' },
-    '15m': { interval:'15m', range:'60d',  sec:900,   poll:45000,  live:'5d' },
-    '1h':  { interval:'60m', range:'730d', sec:3600,  poll:60000,  live:'5d' },
-    '1d':  { interval:'1d',  range:'10y',  sec:86400, poll:300000, live:'1mo' }
+    '1m':  { interval:'1m',  range:'5d',   sec:60,    poll:5000,   live:'1d' },
+    '5m':  { interval:'5m',  range:'60d',  sec:300,   poll:8000,   live:'1d' },
+    '15m': { interval:'15m', range:'60d',  sec:900,   poll:12000,  live:'5d' },
+    '1h':  { interval:'60m', range:'730d', sec:3600,  poll:20000,  live:'5d' },
+    '1d':  { interval:'1d',  range:'10y',  sec:86400, poll:60000,  live:'1mo' }
   };
   async function yhGet(symbol, interval, range){
     let msg = '';

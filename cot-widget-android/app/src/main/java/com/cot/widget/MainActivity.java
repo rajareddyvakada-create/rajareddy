@@ -148,6 +148,22 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
     }
 
     @Override
+    public void openMt5() {
+        runOnUiThread(() -> {
+            Intent launch = getPackageManager().getLaunchIntentForPackage("net.metaquotes.metatrader5");
+            try {
+                if (launch != null) {
+                    startActivity(launch);
+                } else {
+                    startActivity(new Intent(Intent.ACTION_VIEW,
+                            Uri.parse("https://play.google.com/store/apps/details?id=net.metaquotes.metatrader5")));
+                }
+            } catch (Exception ignored) {
+            }
+        });
+    }
+
+    @Override
     public void requestNotificationPermission() {
         runOnUiThread(() -> {
             if (Build.VERSION.SDK_INT >= 33 && !AlertCenter.canPost(this)) {

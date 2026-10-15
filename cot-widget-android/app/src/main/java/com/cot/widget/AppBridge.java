@@ -11,6 +11,8 @@ final class AppBridge {
 
     interface Host {
         void requestNotificationPermission();
+
+        void openMt5();
     }
 
     private final Context ctx;
@@ -81,5 +83,17 @@ final class AppBridge {
     @JavascriptInterface
     public void requestNotificationPermission() {
         host.requestNotificationPermission();
+    }
+
+    /** Posts a chart BUY / SELL signal as a high-priority notification right away. */
+    @JavascriptInterface
+    public void notifySignal(String title, String body) {
+        AlertCenter.notifySignal(ctx, title, body);
+    }
+
+    /** Opens MetaTrader 5 (used by XM and Octa accounts), or its Play Store page if it is not installed. */
+    @JavascriptInterface
+    public void openMt5() {
+        host.openMt5();
     }
 }

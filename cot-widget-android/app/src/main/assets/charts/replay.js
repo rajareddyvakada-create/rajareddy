@@ -15,7 +15,7 @@
   const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const MONS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const DEMO_NAME='Demo data';
-  const DEFAULTS={sl:6.5,rr:2,risk:30,contract:100};
+  const DEFAULTS={sl:6.5,rr:2,risk:30,contract:100,trail:true,trailMode:'swing'};
 
   const PFX='chart.';
   const loadJSON=(k,f)=>{ try{ const v=JSON.parse(localStorage.getItem(PFX+k)); return v==null?f:v; }catch(e){ return f; } };
@@ -94,6 +94,21 @@
     for(const f of ind.inputs) s[f.key]=f.def;
     return Object.assign(s,indCfg[ind.id]||{});
   }
+  // A BUY / SELL on the newest closed candle while watching live data goes out at once
+  // (toast in the app and a phone notification). Older signals and replay never notify.
+  let sigSeen='', sigArmed=false;
+  function announceSignal(candles){
+    if(!candles.length) return;
+    const lastT=candles[candles.length-1].time, live=isOnline && idx===bars.length && !picking;
+    const s=indMarkers.filter(m=>m.time===lastT && (m.side==='buy'||m.side==='sell'));
+    const key=srcName+'|'+tf+'|'+lastT;
+    if(!live || !sigArmed){ sigArmed=live; sigSeen=key; return; }
+    if(!s.length || key===sigSeen) return;
+    sigSeen=key;
+    const side=s[s.length-1].side, price=candles[candles.length-1].close;
+    const msg={type:'signal', side, name:srcName, tf:tfLabel(tf), price:price.toFixed(precision)};
+    try{ window.parent.postMessage(msg,'*'); }catch(e){}
+  }
   function renderPanel(rows){
     const el=$('indPanel'); if(!el) return;
     el.hidden=!rows.length;
@@ -128,6 +143,7 @@
     for(const id in lineSeries) if(!seen[id]){ chart.removeSeries(lineSeries[id]); delete lineSeries[id]; }
     indMarkers=markers;
     renderPanel(panel);
+    announceSignal(candles);
     return true;
   }
 
@@ -155,6 +171,7 @@
   /* ---------- replay engine ---------- */
   function rebuild(){
     agg=aggregate(idx); series.setData(agg.map(b=>({time:b.time,open:b.open,high:b.high,low:b.low,close:b.close})));
+    if(pos) pos.doneK=-1; // candle indexes change with the timeframe
     computeIndicators(true); updateMarkers(); refresh();
   }
   function showRecent(){ const n=agg.length; if(n) chart.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+6}); }
@@ -167,7 +184,33 @@
     idx++;
     checkTrade(b);
   }
-  function afterReveal(){ if(computeIndicators()) updateMarkers(); refresh(); }
+  function afterReveal(){ trailPractice(); if(computeIndicators()) updateMarkers(); refresh(); }
+  // Auto trailing stop for practice trades, on closed candles of the viewed timeframe:
+  // break-even at +1R, +0.5R locked at +1.5R, then trail (swing pivot / UT stop / ATR chandelier); exit on a close beyond the stop.
+  function trailPractice(){
+    if(!pos || !pos.trail) return;
+    const n=closedCount(), dir=pos.side==='long'?1:-1, R=pos.slDist, eb=bucket(pos.entryTime);
+    const T=window.ChartIndicatorTools, atr=T.rmaATR(agg.slice(0,n),14);
+    let moved=false;
+    for(let k=Math.max(pos.doneK+1,0);k<n && pos;k++){
+      const x=agg[k];
+      if(x.time<=eb){ pos.doneK=k; continue; }
+      if(dir===1 ? x.close<pos.sl : x.close>pos.sl){ closePos(x.close, pos.stage>=2?'Trailing stop':pos.stage===1?'Break-even':'Stop-loss', x.time+tf-1); moved=false; break; }
+      pos.ext=dir===1?Math.max(pos.ext,x.high):Math.min(pos.ext,x.low);
+      const fav=(pos.ext-pos.entry)*dir, a=atr[k]||R;
+      if(pos.stage<1 && fav>=R){ pos.sl=dir===1?Math.max(pos.sl,pos.entry+0.1*a):Math.min(pos.sl,pos.entry-0.1*a); pos.stage=1; moved=true; }
+      if(pos.stage<2 && fav>=1.5*R){ pos.sl=dir===1?Math.max(pos.sl,pos.entry+0.5*R):Math.min(pos.sl,pos.entry-0.5*R); pos.stage=2; moved=true; }
+      if(pos.stage>=2){
+        let cand=NaN;
+        if(cfg.trailMode==='atr') cand=pos.ext-dir*2.5*a;
+        else if(cfg.trailMode==='ut'){ const u=T.utBot(agg.slice(0,k+1),1,10,false); if(u.pos[k]===dir) cand=u.stop[k]; }
+        else { const L=5, p=k-L; if(p>=L){ let ok=true; for(let q=p-L;q<=p+L;q++){ if(q!==p && (dir===1?agg[q].low<agg[p].low:agg[q].high>agg[p].high)){ ok=false; break; } } if(ok) cand=(dir===1?agg[p].low:agg[p].high)-dir*0.2*a; } }
+        if(!isNaN(cand)){ const ns=dir===1?Math.max(pos.sl,cand):Math.min(pos.sl,cand); if(ns!==pos.sl){ pos.sl=ns; moved=true; } }
+      }
+      pos.doneK=k;
+    }
+    if(pos && moved){ drawPosLines(); saveBook(); }
+  }
 
   /* ---------- live data ---------- */
   function syncLastCandle(){
@@ -192,7 +235,7 @@
       if(live){ idx=bars.length; syncLastCandle(); checkTick(b); }
     }
     if(!changed) return;
-    if(live && computeIndicators()) updateMarkers();
+    if(live){ trailPractice(); if(computeIndicators()) updateMarkers(); }
     refresh();
   }
   function stopLive(){ session++; if(stopStream){ stopStream(); stopStream=null; } liveState='off'; }
@@ -268,11 +311,15 @@
     const b=bars[idx-1], dir=side==='long'?1:-1, d=cfg.sl;
     pos={file:srcName,side,entryIdx:idx-1,entryTime:b.time,entry:b.close,
          sl:b.close-dir*d,tp:b.close+dir*d*cfg.rr,slDist:d,risk:cfg.risk,
-         lots:cfg.contract>0?cfg.risk/(d*cfg.contract):0};
+         lots:cfg.contract>0?cfg.risk/(d*cfg.contract):0,trail:!!cfg.trail,stage:0,ext:b.close,doneK:-1};
     drawPosLines(); updateMarkers(); refresh(); saveBook();
   }
   function checkTrade(b){
     if(!pos || b.time<=pos.entryTime) return;
+    if(pos.trail){
+      if(pos.side==='long' ? b.high>=pos.tp : b.low<=pos.tp) closePos(pos.side==='long' ? (b.open>pos.tp?b.open:pos.tp) : (b.open<pos.tp?b.open:pos.tp),'Target',b.time);
+      return;
+    }
     if(pos.side==='long'){
       if(b.low<=pos.sl) closePos(b.open<pos.sl?b.open:pos.sl,'Stop-loss',b.time);
       else if(b.high>=pos.tp) closePos(b.open>pos.tp?b.open:pos.tp,'Target',b.time);
@@ -358,7 +405,7 @@
     }
     if(pos && idx>0){
       const cur=bars[idx-1].close, dir=pos.side==='long'?1:-1, r=(cur-pos.entry)*dir/pos.slDist, pnl=r*pos.risk;
-      $('posText').textContent=`${pos.side==='long'?'Long':'Short'} ${pos.lots.toFixed(2)} @ ${px(pos.entry)}`;
+      $('posText').textContent=`${pos.side==='long'?'Long':'Short'} ${pos.lots.toFixed(2)} @ ${px(pos.entry)} · SL ${px(pos.sl)}${pos.trail?(pos.stage>=2?' trailing':pos.stage===1?' BE':''):''}`;
       const el=$('posPnl');
       el.textContent=`${money(pnl)} (${sgn(r,2)}R)`;
       el.className=pnl>=0?'c-up':'c-down';
@@ -668,10 +715,12 @@
     computeIndicators(true); updateMarkers();
   }
   const fields={sSl:'sl',sRr:'rr',sRisk:'risk',sContract:'contract'};
+  const boolFields={sTrail:'trail'};
   $('settingsBtn').addEventListener('click',()=>{
     setPlaying(false);
     renderIndicators();
     for(const id in fields) $(id).value=cfg[fields[id]];
+    $('sTrail').checked=!!cfg.trail; $('sTrailMode').value=cfg.trailMode||'swing';
     $('setErr').hidden=true;
     $('settings').showModal();
   });
@@ -681,6 +730,7 @@
     if(Object.keys(fields).some(id=>!(v[fields[id]]>0))){
       $('setErr').textContent='Every number must be above zero.'; $('setErr').hidden=false; return;
     }
+    v.trail=$('sTrail').checked; v.trailMode=$('sTrailMode').value;
     cfg=v; saveJSON('bar-replay-settings',cfg);
     $('settings').close();
   });
