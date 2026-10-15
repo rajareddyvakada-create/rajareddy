@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'cot-widget-android/**'
+      - 'scripts/update_cot_snapshot.py'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
@@ -16,6 +17,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Refresh embedded COT data snapshot
+        working-directory: .
+        continue-on-error: true
+        run: python3 scripts/update_cot_snapshot.py
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
