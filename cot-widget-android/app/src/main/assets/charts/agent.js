@@ -26,7 +26,7 @@
   const post = m => { try { window.parent.postMessage(m, '*'); } catch(e){} };
   if(!API()) return;
 
-  const prefs = Object.assign({ on:false, auto:false, minConf:70, key:'', model:'claude-opus-5-5' }, load('prefs', {}));
+  const prefs = Object.assign({ on:false, auto:false, minConf:70, tpR:1.5, key:'', model:'claude-opus-5-5' }, load('prefs', {}));
   const savePrefs = () => save('prefs', prefs);
   const MARKETS = [
     ['GC=F','Gold',/\b(gold|xau|xauusd)\b/i], ['SI=F','Silver',/\b(silver|xag)\b/i], ['CL=F','Crude Oil',/\b(oil|crude|wti)\b/i],
@@ -104,7 +104,7 @@
       if(!(d >= 0.6 * atr)) d = 0.6 * atr;
       if(d > 3 * atr) d = 3 * atr;
       sl = price - dir * d;
-      setup = { side, entry:price, sl:+sl.toFixed(dp), tp1:+(price + dir * d * 1.5).toFixed(dp), tp2:+(price + dir * d * 3).toFixed(dp), risk:d };
+      setup = { side, entry:price, sl:+sl.toFixed(dp), tp1:+(price + dir * d * prefs.tpR).toFixed(dp), tp2:+(price + dir * d * 3).toFixed(dp), risk:d };
     }
     // Live guide lines
     if(sig && sigAgo === 0) guides.unshift('Fresh ' + sig.side.toUpperCase() + ' signal on the candle that just closed.');
@@ -140,7 +140,7 @@
     let h = '<div class="big ' + cls + '">' + (A.side === 'long' ? '▲ LONG' : A.side === 'short' ? '▼ SHORT' : '◆ NO TRADE') + (A.side ? ' · ' + A.conf + '% confidence' : '') + '</div>' +
       '<div class="ag-meter"><i style="left:' + (50 + A.total / 2) + '%"></i></div>' +
       '<dl class="ag-kv"><dt>Market</dt><dd>' + esc(A.st.name) + ' · ' + A.st.tfLabel + ' · ' + fmt(A.price) + '</dd><dt>Score</dt><dd>' + (A.total > 0 ? '+' : '') + A.total + ' (chart ' + (A.tech > 0 ? '+' : '') + A.tech + (A.news ? ', news ' + (A.news.score > 0 ? '+' : '') + A.news.score : '') + (A.cot ? ', COT ' + (A.cot.score > 0 ? '+' : '') + A.cot.score : '') + ')</dd>';
-    if(s) h += '<dt>Entry</dt><dd>' + fmt(s.entry) + ' (market)</dd><dt>Stop</dt><dd>' + fmt(s.sl) + '</dd><dt>Target 1</dt><dd>' + fmt(s.tp1) + ' (1.5R)</dd><dt>Target 2</dt><dd>' + fmt(s.tp2) + ' (3R)</dd>';
+    if(s) h += '<dt>Entry</dt><dd>' + fmt(s.entry) + ' (market)</dd><dt>Stop</dt><dd>' + fmt(s.sl) + '</dd><dt>Target 1</dt><dd>' + fmt(s.tp1) + ' (' + prefs.tpR + 'R)</dd><dt>Target 2</dt><dd>' + fmt(s.tp2) + ' (3R)</dd>';
     h += '</dl>';
     if(A.st.pos) h += '<div class="ag-row"><button type="button" class="sell" data-act="close" style="background:var(--text);color:var(--bg)">Close position</button></div>';
     else if(s) h += '<div class="ag-row"><button type="button" class="' + (s.side === 'long' ? 'buy' : 'sell') + '" data-act="place">' + (s.side === 'long' ? 'Buy' : 'Sell') + ' (practice)</button><button type="button" data-act="real" style="background:var(--surface);color:var(--text);border-color:var(--line)">Real order in MT5</button></div>';
@@ -341,9 +341,10 @@
     if(b.dataset.act === 'close') say(Actions.close(), 'ai');
     render(); renderCard();
   });
-  $('agAuto').checked = prefs.auto; $('agMinConf').value = prefs.minConf; $('agKey').value = prefs.key; $('agModel').value = prefs.model;
+  $('agAuto').checked = prefs.auto; $('agMinConf').value = prefs.minConf; $('agTpR').value = prefs.tpR; $('agKey').value = prefs.key; $('agModel').value = prefs.model;
   $('agAuto').addEventListener('change', function(){ prefs.auto = this.checked; savePrefs(); render(); });
   $('agMinConf').addEventListener('change', function(){ prefs.minConf = clamp(+this.value || 70, 50, 95); this.value = prefs.minConf; savePrefs(); });
+  $('agTpR').addEventListener('change', function(){ prefs.tpR = clamp(+this.value || 1.5, 0.5, 10); this.value = prefs.tpR; savePrefs(); render(); });
   $('agKey').addEventListener('change', function(){ prefs.key = this.value.trim(); savePrefs(); convo = []; });
   $('agModel').addEventListener('change', function(){ prefs.model = this.value; savePrefs(); convo = []; });
 

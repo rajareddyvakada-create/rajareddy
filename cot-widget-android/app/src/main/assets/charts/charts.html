@@ -299,6 +299,7 @@ legend{font-weight:700;font-size:1rem;padding:0;margin-bottom:4px}
       <legend>Agent settings</legend>
       <label class="field"><span>Auto-trade agent setups (practice account)</span><span class="switch"><input type="checkbox" role="switch" id="agAuto"></span></label>
       <label class="field"><span>Minimum confidence for auto-trade</span><input type="number" id="agMinConf" min="50" max="95" step="5" inputmode="numeric"></label>
+      <label class="field"><span>Agent take-profit (R, 1.5 = 1.5× the risk)</span><input type="number" id="agTpR" min="0.5" max="10" step="0.5" inputmode="decimal"></label>
       <label class="field"><span>Claude API key (optional)</span><input type="password" id="agKey" autocomplete="off" spellcheck="false" placeholder="sk-ant-…"></label>
       <label class="field"><span>Claude model</span><select id="agModel"><option value="claude-opus-5-5">Claude Opus 5.5 (smartest)</option><option value="claude-sonnet-5-5">Claude Sonnet 5.5 (faster)</option><option value="claude-haiku-5-5">Claude Haiku 5.5 (fastest)</option></select></label>
       <p class="hint">Without a key, the built-in agent still analyses the chart, news and COT, gives live guides and follows commands. With a key from console.anthropic.com, Claude answers free-form questions and drives the app through the same tools. The key stays on this phone. Orders go to the practice account here; XM and Octa don't let other apps send real orders, so the agent copies the order to your clipboard and opens MT5 for you to confirm.</p>
