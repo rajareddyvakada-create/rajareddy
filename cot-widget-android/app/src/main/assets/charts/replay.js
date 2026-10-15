@@ -97,6 +97,15 @@
   // A BUY / SELL on the newest closed candle while watching live data goes out at once
   // (toast in the app and a phone notification). Older signals and replay never notify.
   let sigSeen='', sigArmed=false, lastPanel=[];
+  // Indicator lines (UT stop, POC, levels...) can be hidden; BUY / SELL markers stay.
+  let linesOn=loadJSON('lines-on',true);
+  function setLines(on){
+    linesOn=!!on; saveJSON('lines-on',linesOn);
+    $('linesBtn').setAttribute('aria-pressed',String(linesOn));
+    for(const id in lineSeries) lineSeries[id].applyOptions({visible:linesOn});
+  }
+  $('linesBtn').addEventListener('click',()=>setLines(!linesOn));
+  $('linesBtn').setAttribute('aria-pressed',String(linesOn));
   function announceSignal(candles){
     if(!candles.length) return;
     const lastT=candles[candles.length-1].time, live=isOnline && idx===bars.length && !picking;
@@ -140,7 +149,7 @@
         seen[ln.id]=1;
         let ser=lineSeries[ln.id];
         if(!ser) ser=lineSeries[ln.id]=chart.addLineSeries({lineWidth:ln.width||2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
-        ser.applyOptions({color:ln.color||pal.brass,priceFormat:{type:'price',precision,minMove:Math.pow(10,-precision)}});
+        ser.applyOptions({visible:linesOn,color:ln.color||pal.brass,priceFormat:{type:'price',precision,minMove:Math.pow(10,-precision)}});
         ser.setData(ln.data);
       }
     }
