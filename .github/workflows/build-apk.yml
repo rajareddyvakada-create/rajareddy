@@ -4,7 +4,8 @@ on:
   push:
     paths:
       - 'cot-widget-android/**'
-      - 'scripts/update_cot_snapshot.py'
+      - 'scripts/**'
+      - 'cot-sentiment-widget.html'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
@@ -25,6 +26,10 @@ jobs:
         working-directory: .
         continue-on-error: true
         run: python3 scripts/update_cot_snapshot.py
+
+      - name: Build app page
+        working-directory: .
+        run: python3 scripts/build_android_asset.py
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

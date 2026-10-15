@@ -10,10 +10,7 @@ import urllib.parse
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-TARGETS = [
-    ROOT / "cot-sentiment-widget.html",
-    ROOT / "cot-widget-android/app/src/main/assets/cot-sentiment-widget.html",
-]
+TARGETS = [ROOT / "cot-sentiment-widget.html"]
 
 MARKETS = [
     ("Gold", "088691", "GC=F", "commodity"),
@@ -101,7 +98,7 @@ def fetch_price(ticker):
 
 
 def main():
-    snap = {"fetchedAt": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"), "markets": {}}
+    snap = {"fetchedAt": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "markets": {}}
     for name, code, ticker, kind in MARKETS:
         try:
             cot = fetch_cot(code, kind)
@@ -115,7 +112,7 @@ def main():
     if not snap["markets"]:
         sys.exit("No market data fetched; snapshot left unchanged.")
 
-    block = "/*SNAPSHOT_START*/const SNAPSHOT = " + json.dumps(snap, separators=(",", ":")) + ";/*SNAPSHOT_END*/"
+    block = "/*SNAPSHOT_START*/var SNAPSHOT = " + json.dumps(snap, separators=(",", ":")) + ";/*SNAPSHOT_END*/"
     pattern = re.compile(r"/\*SNAPSHOT_START\*/.*?/\*SNAPSHOT_END\*/", re.S)
     for path in TARGETS:
         if not path.exists():
