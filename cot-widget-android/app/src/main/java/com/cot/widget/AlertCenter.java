@@ -157,6 +157,32 @@ final class AlertCenter {
         }
     }
 
+    static final String NEWS = "news_alerts";
+
+    /** Breaking gold news and pre-event reminders; tapping opens the News tab. */
+    static void notifyNews(Context ctx, String title, String body, int id) {
+        if (!canPost(ctx)) return;
+        ensureChannel(ctx);
+        Intent open = new Intent(ctx, MainActivity.class)
+                .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra("openTab", "news");
+        PendingIntent pi = PendingIntent.getActivity(ctx, 2, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, NEWS)
+                .setSmallIcon(R.drawable.ic_stat_alert)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+                .setContentIntent(pi)
+                .setAutoCancel(true);
+        try {
+            NotificationManagerCompat.from(ctx).notify(id, b.build());
+        } catch (SecurityException ignored) {
+        }
+    }
+
     static void ensureChannel(Context ctx) {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationManager nm = ctx.getSystemService(NotificationManager.class);
@@ -171,6 +197,12 @@ final class AlertCenter {
                     NotificationManager.IMPORTANCE_HIGH);
             sc.setDescription("BUY / SELL signals from the Charts tab, the moment a candle closes");
             nm.createNotificationChannel(sc);
+        }
+        if (nm.getNotificationChannel(NEWS) == null) {
+            NotificationChannel nc = new NotificationChannel(NEWS, "Gold news",
+                    NotificationManager.IMPORTANCE_HIGH);
+            nc.setDescription("High-impact gold headlines and reminders before big economic releases");
+            nm.createNotificationChannel(nc);
         }
     }
 }

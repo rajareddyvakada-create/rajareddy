@@ -96,4 +96,15 @@ final class AppBridge {
     public void openMt5() {
         host.openMt5();
     }
+
+    @JavascriptInterface
+    public void notifyNews(String title, String body) {
+        AlertCenter.notifyNews(ctx, title, body, (int) (System.currentTimeMillis() & 0x7fffffff));
+    }
+
+    /** @param json [{id, at (epoch ms), title, body}] — replaces all pending reminders */
+    @JavascriptInterface
+    public void scheduleNewsReminders(String json) {
+        NewsReminderWorker.schedule(ctx, json);
+    }
 }

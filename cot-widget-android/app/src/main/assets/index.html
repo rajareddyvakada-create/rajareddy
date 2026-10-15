@@ -277,6 +277,7 @@ html:not([data-app]) .tabbar { position: sticky; bottom: 0; z-index: 10; margin-
 </section>
 <section class="view" id="viewCharts" hidden></section>
 <section class="view" id="viewScanner" hidden></section>
+<section class="view" id="viewNews" hidden></section>
 <section class="view" id="viewBrokers" hidden>
   <div class="alerts">
     <h1>Brokers</h1>
@@ -332,6 +333,7 @@ html:not([data-app]) .tabbar { position: sticky; bottom: 0; z-index: 10; margin-
   <button type="button" class="tabbtn" data-tab="markets" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 20V12M12 20V5M19 20v-9"/></svg>Markets</button>
   <button type="button" class="tabbtn tab-charts" data-tab="charts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 4v16M17 4v16"/><rect x="5" y="8" width="4" height="7" rx="1"/><rect x="15" y="6" width="4" height="9" rx="1"/></svg>Charts</button>
   <button type="button" class="tabbtn tab-charts" data-tab="scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>Scanner</button>
+  <button type="button" class="tabbtn tab-charts" data-tab="news"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h13v14H6a2 2 0 0 1-2-2z"/><path d="M17 9h3v8a2 2 0 0 1-2 2"/><path d="M8 9h5M8 13h5M8 16h3"/></svg>News<span class="badge-n" id="newsLive" hidden>!</span></button>
   <button type="button" class="tabbtn" data-tab="alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>Alerts<span class="badge-n" id="alertBadge" hidden></span></button>
   <button type="button" class="tabbtn" data-tab="brokers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10h18M5 10V20M19 10V20M9 14v3M15 14v3M2 20h20M12 3l9 5H3z"/></svg>Brokers</button>
 </div></nav>
@@ -753,6 +755,8 @@ async function loadData() {
     renderAll(sortByScore(results));
     lastLoadAt = Date.now();
     reportVerdicts(results);
+    var g = results.filter(function(d) { return d.ticker === "GC=F"; })[0];
+    if (g) { goldCot = { score: g.score, verdict: g.verdict, cotDate: g.cotDate }; sendGoldCot(); }
   }
   btn.disabled = false;
   loading = false;
@@ -881,11 +885,11 @@ function renderAlerts() {
 }
 
 /* ---------- tabs ---------- */
-var currentTab = "markets", chartsFrame = null, scannerFrame = null;
+var currentTab = "markets", chartsFrame = null, scannerFrame = null, newsFrame = null, goldCot = null;
 function openTab(name, chart) {
-  if ((name === "charts" || name === "scanner") && !IS_APP) name = "markets";
+  if ((name === "charts" || name === "scanner" || name === "news") && !IS_APP) name = "markets";
   currentTab = name;
-  ["markets", "charts", "scanner", "alerts", "brokers"].forEach(function(t) {
+  ["markets", "charts", "scanner", "news", "alerts", "brokers"].forEach(function(t) {
     document.getElementById("view" + t.charAt(0).toUpperCase() + t.slice(1)).hidden = t !== name;
   });
   document.querySelectorAll(".tabbtn").forEach(function(b) {
@@ -907,16 +911,32 @@ function openTab(name, chart) {
     scannerFrame.src = "charts/scanner.html";
     document.getElementById("viewScanner").appendChild(scannerFrame);
   }
+  if (name === "news") { ensureNewsFrame(); document.getElementById("newsLive").hidden = true; }
   if (name === "alerts") { lsSet("cot.alert.seen", Date.now()); renderAlerts(); }
   updateBadge();
   if (name === "markets") goTo(currentIdx, true);
 }
 window.appOpenTab = function(name) { openTab(name); };
 
+/* News tab: loaded early in the app so breaking-news alerts work from any tab. */
+function ensureNewsFrame() {
+  if (newsFrame || !IS_APP) return;
+  newsFrame = document.createElement("iframe");
+  newsFrame.title = "News";
+  newsFrame.src = "charts/news.html";
+  document.getElementById("viewNews").appendChild(newsFrame);
+}
+function sendGoldCot() {
+  if (newsFrame && goldCot) newsFrame.contentWindow.postMessage({ type: "cot", cot: goldCot }, "*");
+}
+
 window.appBack = function() {
   if (!document.getElementById("sheet").hidden) { closeSheet(); return true; }
   if (currentTab === "charts" && chartsFrame) {
     try { if (chartsFrame.contentWindow.appBack && chartsFrame.contentWindow.appBack()) return true; } catch (e) {}
+  }
+  if (currentTab === "news" && newsFrame) {
+    try { if (newsFrame.contentWindow.appBack && newsFrame.contentWindow.appBack()) return true; } catch (e) {}
   }
   if (currentTab !== "markets") { openTab("markets"); return true; }
   return false;
@@ -969,6 +989,15 @@ window.appBack = function() {
       toastTarget = "charts";
       showToast(title + " · " + d.tf + " @ " + d.price);
     }
+    if (d.type === "news" && d.title) {
+      if (Bridge && Bridge.notifyNews) Bridge.notifyNews(String(d.title), String(d.body || ""));
+      if (currentTab !== "news") document.getElementById("newsLive").hidden = false;
+      toastTarget = "news";
+      showToast(d.title);
+    }
+    if (d.type === "newsReminders" && Bridge && Bridge.scheduleNewsReminders) Bridge.scheduleNewsReminders(JSON.stringify(d.list || []));
+    if (d.type === "newsReady") sendGoldCot();
+    if (d.type === "openUrl" && /^https:\/\//i.test(d.url || "")) window.location.href = d.url;
   });
   // Brokers tab
   var urls = lsGet("cot.broker.urls", {});
@@ -999,6 +1028,7 @@ window.appBack = function() {
   if (SNAPSHOT.fetchedAt) document.getElementById("sheetData").textContent += " Saved data in this build: " + fmtWhen(SNAPSHOT.fetchedAt) + ".";
   renderStored();
   loadData();
+  if (IS_APP) setTimeout(ensureNewsFrame, 3000);
 })();
 </script>
 </html>
