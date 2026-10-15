@@ -10,7 +10,7 @@
   const BIN_REST = ['https://data-api.binance.vision', 'https://api.binance.com'];
   const BIN_WS = ['wss://data-stream.binance.vision/ws/', 'wss://stream.binance.com:9443/ws/'];
   const binSym = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const binBar = k => ({ time:toLocalWall(Math.floor(k[0] / 1000)), open:+k[1], high:+k[2], low:+k[3], close:+k[4] });
+  const binBar = k => ({ time:toLocalWall(Math.floor(k[0] / 1000)), open:+k[1], high:+k[2], low:+k[3], close:+k[4], volume:+k[5] || 0 });
 
   async function binJSON(path){
     let msg = '';
@@ -68,7 +68,7 @@
           const k = JSON.parse(e.data).k;
           if(!k) return;
           lastMs = k.t;
-          onBars([{ time:toLocalWall(Math.floor(k.t / 1000)), open:+k.o, high:+k.h, low:+k.l, close:+k.c }]);
+          onBars([{ time:toLocalWall(Math.floor(k.t / 1000)), open:+k.o, high:+k.h, low:+k.l, close:+k.c, volume:+k.v || 0 }]);
         } catch(err){}
       };
       ws.onerror = () => { try { ws.close(); } catch(e){} };
@@ -110,9 +110,10 @@
       const o = q.open && q.open[i], h = q.high && q.high[i], l = q.low && q.low[i], c = q.close && q.close[i];
       if([o, h, l, c].some(v => v == null || !isFinite(v))) continue;
       const time = sec >= 86400 ? Math.floor((ts[i] + off) / 86400) * 86400 : toLocalWall(ts[i] - (((ts[i] % sec) + sec) % sec));
-      const b = { time, open:o, high:Math.max(h, o, c), low:Math.min(l, o, c), close:c };
+      const v = (q.volume && q.volume[i]) || 0;
+      const b = { time, open:o, high:Math.max(h, o, c), low:Math.min(l, o, c), close:c, volume:v };
       const last = out[out.length - 1];
-      if(last && last.time === time){ last.high = Math.max(last.high, b.high); last.low = Math.min(last.low, b.low); last.close = c; }
+      if(last && last.time === time){ last.high = Math.max(last.high, b.high); last.low = Math.min(last.low, b.low); last.close = c; last.volume += v; }
       else if(!last || time > last.time) out.push(b);
     }
     return out;
@@ -151,7 +152,7 @@
     const [d, t = '0:0:0'] = String(v.datetime).split(' ');
     const [Y, M, D] = d.split('-').map(Number);
     const [h, mi, s] = t.split(':').map(Number);
-    return { time:toLocalWall(Date.UTC(Y, M - 1, D, h || 0, mi || 0, s || 0) / 1000), open:+v.open, high:+v.high, low:+v.low, close:+v.close };
+    return { time:toLocalWall(Date.UTC(Y, M - 1, D, h || 0, mi || 0, s || 0) / 1000), open:+v.open, high:+v.high, low:+v.low, close:+v.close, volume:+v.volume || 0 };
   }
   async function tdGet(params){
     let r;

@@ -51,7 +51,7 @@
 
   function applyTheme(){
     const cs=getComputedStyle(document.documentElement), v=n=>cs.getPropertyValue(n).trim();
-    pal={up:v('--up'),down:v('--down'),brass:v('--brass')};
+    pal={up:v('--up'),down:v('--down'),brass:v('--brass'),muted:v('--muted')};
     chart.applyOptions({
       layout:{ background:{ type:LC.ColorType.Solid, color:v('--bg') }, textColor:v('--muted'), fontFamily:getComputedStyle(document.body).fontFamily },
       grid:{ vertLines:{ color:v('--grid') }, horzLines:{ color:v('--grid') } },
@@ -73,8 +73,8 @@
     const out=[]; let cur=null;
     for(let i=0;i<n;i++){
       const b=bars[i], k=bucket(b.time);
-      if(cur && cur.time===k){ if(b.high>cur.high) cur.high=b.high; if(b.low<cur.low) cur.low=b.low; cur.close=b.close; }
-      else { cur={time:k,open:b.open,high:b.high,low:b.low,close:b.close}; out.push(cur); }
+      if(cur && cur.time===k){ if(b.high>cur.high) cur.high=b.high; if(b.low<cur.low) cur.low=b.low; cur.close=b.close; cur.volume+=b.volume||0; }
+      else { cur={time:k,open:b.open,high:b.high,low:b.low,close:b.close,volume:b.volume||0}; out.push(cur); }
     }
     return out;
   }
@@ -94,18 +94,29 @@
     for(const f of ind.inputs) s[f.key]=f.def;
     return Object.assign(s,indCfg[ind.id]||{});
   }
+  function renderPanel(rows){
+    const el=$('indPanel'); if(!el) return;
+    el.hidden=!rows.length;
+    el.innerHTML='';
+    for(const r of rows){
+      const d=document.createElement('div'); d.className='prow '+(r.tone||'flat');
+      const b=document.createElement('b'); b.textContent=r.label; const s=document.createElement('span'); s.textContent=r.text;
+      d.append(b,s); el.appendChild(d);
+    }
+  }
   // Recalculates from closed candles only; returns true when anything was redrawn.
   function computeIndicators(force){
     const n=closedCount();
     if(!force && n===indN) return false;
     indN=n;
-    const candles=agg.slice(0,n), markers=[], seen={};
+    const candles=agg.slice(0,n), markers=[], seen={}, panel=[], ctx={tf,tick:Math.pow(10,-precision)};
     for(const ind of IND){
       const s=indSettings(ind);
       if(!s.on) continue;
       let out={};
-      try{ out=ind.compute(candles,s,pal)||{}; }catch(e){ console.error(ind.id,e); }
+      try{ out=ind.compute(candles,s,pal,ctx)||{}; }catch(e){ console.error(ind.id,e); }
       for(const mk of out.markers||[]) markers.push(mk);
+      for(const r of out.panel||[]) panel.push(r);
       for(const ln of out.lines||[]){
         seen[ln.id]=1;
         let ser=lineSeries[ln.id];
@@ -116,6 +127,7 @@
     }
     for(const id in lineSeries) if(!seen[id]){ chart.removeSeries(lineSeries[id]); delete lineSeries[id]; }
     indMarkers=markers;
+    renderPanel(panel);
     return true;
   }
 
@@ -124,6 +136,7 @@
     if(!agg.length){ series.setMarkers([]); return; }
     const first=agg[0].time, cur=idx>0 ? bars[idx-1].time : -Infinity, m=[];
     for(const u of indMarkers){
+      if(u.shape){ m.push({time:u.time,position:u.position,color:u.color,shape:u.shape,text:u.text}); continue; }
       m.push(u.side==='buy'
         ? {time:u.time,position:'belowBar',color:pal.up,shape:'arrowUp',text:u.text||'BUY'}
         : {time:u.time,position:'aboveBar',color:pal.down,shape:'arrowDown',text:u.text||'SELL'});
@@ -141,16 +154,16 @@
 
   /* ---------- replay engine ---------- */
   function rebuild(){
-    agg=aggregate(idx); series.setData(agg);
+    agg=aggregate(idx); series.setData(agg.map(b=>({time:b.time,open:b.open,high:b.high,low:b.low,close:b.close})));
     computeIndicators(true); updateMarkers(); refresh();
   }
   function showRecent(){ const n=agg.length; if(n) chart.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+6}); }
   function revealOne(){
     const b=bars[idx], k=bucket(b.time);
     let cur=agg[agg.length-1];
-    if(cur && cur.time===k){ cur.high=Math.max(cur.high,b.high); cur.low=Math.min(cur.low,b.low); cur.close=b.close; }
-    else { cur={time:k,open:b.open,high:b.high,low:b.low,close:b.close}; agg.push(cur); }
-    series.update({...cur});
+    if(cur && cur.time===k){ cur.high=Math.max(cur.high,b.high); cur.low=Math.min(cur.low,b.low); cur.close=b.close; cur.volume+=b.volume||0; }
+    else { cur={time:k,open:b.open,high:b.high,low:b.low,close:b.close,volume:b.volume||0}; agg.push(cur); }
+    series.update({time:cur.time,open:cur.open,high:cur.high,low:cur.low,close:cur.close});
     idx++;
     checkTrade(b);
   }
@@ -161,11 +174,11 @@
     const i=idx-1, k=bucket(bars[i].time);
     let j=i;
     while(j>0 && bucket(bars[j-1].time)===k) j--;
-    const c={time:k,open:bars[j].open,high:-Infinity,low:Infinity,close:bars[i].close};
-    for(let x=j;x<=i;x++){ if(bars[x].high>c.high) c.high=bars[x].high; if(bars[x].low<c.low) c.low=bars[x].low; }
+    const c={time:k,open:bars[j].open,high:-Infinity,low:Infinity,close:bars[i].close,volume:0};
+    for(let x=j;x<=i;x++){ if(bars[x].high>c.high) c.high=bars[x].high; if(bars[x].low<c.low) c.low=bars[x].low; c.volume+=bars[x].volume||0; }
     const n=agg.length;
     if(n && agg[n-1].time===k) agg[n-1]=c; else agg.push(c);
-    series.update({...c});
+    series.update({time:c.time,open:c.open,high:c.high,low:c.low,close:c.close});
   }
   function ingest(list){
     if(!bars.length) return;
@@ -368,7 +381,7 @@
     if(s===tf) return;
     tf=s;
     for(const b of $('tfs').children) b.setAttribute('aria-pressed',String(+b.dataset.s===tf));
-    if(picking) series.setData(aggregate(bars.length));
+    if(picking) series.setData(aggregate(bars.length).map(b=>({time:b.time,open:b.open,high:b.high,low:b.low,close:b.close})));
     else { rebuild(); showRecent(); }
     save();
   }
@@ -494,7 +507,7 @@
     setPlaying(false);
     picking=true;
     $('pick').setAttribute('aria-pressed','true'); $('pick').textContent='Cancel';
-    series.setData(aggregate(bars.length));
+    series.setData(aggregate(bars.length).map(b=>({time:b.time,open:b.open,high:b.high,low:b.low,close:b.close})));
     showNotice('Tap the candle where the replay should start.','pick');
     refresh();
   }
@@ -621,8 +634,15 @@
       const body=document.createElement('div'); body.className='ind-body'; body.hidden=!s.on;
       main.addEventListener('change',()=>{ setInd(ind,'on',main.checked); body.hidden=!main.checked; });
       for(const f of ind.inputs){
+        if(f.type==='heading'){ const h=document.createElement('div'); h.className='ind-sub'; h.textContent=f.label; body.appendChild(h); continue; }
         const row=document.createElement('label'); row.className='field';
-        if(f.type==='bool'){
+        if(f.type==='select'){
+          row.innerHTML=`<span>${f.label}</span><select></select>`;
+          const sel=row.querySelector('select');
+          for(const [v,l] of f.options){ const o=document.createElement('option'); o.value=v; o.textContent=l; sel.appendChild(o); }
+          sel.value=s[f.key];
+          sel.addEventListener('change',()=>setInd(ind,f.key,sel.value));
+        } else if(f.type==='bool'){
           row.innerHTML=`<span>${f.label}</span><span class="switch"><input type="checkbox" role="switch"></span>`;
           const inp=row.querySelector('input'); inp.checked=!!s[f.key];
           inp.addEventListener('change',()=>setInd(ind,f.key,inp.checked));

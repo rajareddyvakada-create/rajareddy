@@ -135,6 +135,11 @@ legend{font-weight:700;font-size:1rem;padding:0;margin-bottom:4px}
 .ind-head small{display:block;color:var(--muted);font-size:.8rem;margin-top:2px}
 .ind-body{margin-top:6px;border-top:1px solid var(--line);padding-top:4px}
 .coming{border-style:dashed;color:var(--muted);font-size:.85rem}
+.ind-sub{margin:12px 0 2px;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ind-panel{position:absolute;left:8px;bottom:30px;z-index:3;pointer-events:none;max-width:calc(100% - 80px);padding:5px 8px;border-radius:8px;background:color-mix(in srgb,var(--surface) 88%,transparent);border:1px solid var(--line);font-size:.72rem;line-height:1.35}
+.prow{display:flex;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow b{min-width:26px;color:var(--muted);font-weight:600}
+.prow.up span{color:var(--up)} .prow.down span{color:var(--down)} .prow.flat span{color:var(--text)}
 
 .tscroll{overflow-x:auto;margin-top:8px}
 .tlist{width:100%;border-collapse:collapse;font-size:.9rem}
@@ -167,6 +172,7 @@ legend{font-weight:700;font-size:1rem;padding:0;margin-bottom:4px}
 
 <div class="chart-wrap">
   <div id="chart" aria-label="Candlestick chart"></div>
+  <div class="ind-panel" id="indPanel" hidden></div>
   <div class="legend"><div class="rline"><span class="rtime" id="rtime">–</span><button type="button" class="live" id="liveBadge" hidden></button></div><div class="ohlc" id="ohlc"></div></div>
 </div>
 
