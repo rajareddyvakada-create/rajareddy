@@ -4,31 +4,34 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Charts</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap">
 <style>
 /* Same tokens as the Markets tab. --brass is the chart accent (replay position, crosshair, entries). */
 :root{
-  --bg:#f3f5fb; --surface:#ffffff; --line:#dfe4ef; --grid:#e9edf5;
-  --text:#0f172a; --muted:#5b6680;
-  --brass:#6d4aff; --brass-ink:#ffffff; --grad:linear-gradient(135deg,#6d4aff,#0891b2);
-  --up:#0e9f6e; --down:#e11d48; --on-color:#ffffff;
+  --bg:#f6f1e7; --surface:#fffcf5; --line:#e3d8c3; --grid:#efe7d6;
+  --text:#1c1912; --muted:#6e6553;
+  --brass:#a5781f; --brass-ink:#1a1408; --grad:linear-gradient(135deg, #e3bf62 0%, #b8862b 55%, #8d6216 100%);
+  --up:#12915c; --down:#cf3a2d; --on-color:#ffffff;
   color-scheme:light;
+  --on-accent:#1a1408;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#070b14; --surface:#10172a; --line:#1f2a44; --grid:#111a2e;
-    --text:#e8edf7; --muted:#8a97b3;
-    --brass:#8b6cff; --brass-ink:#ffffff; --grad:linear-gradient(135deg,#8b6cff,#22d3ee);
-    --up:#2ee6a6; --down:#ff5c7a; --on-color:#07110d;
+    --bg:#0b0a08; --surface:#15130f; --line:#2e2920; --grid:#17150f;
+    --text:#f5efe3; --muted:#a8a08f;
+    --brass:#e0b354; --brass-ink:#1a1408; --grad:linear-gradient(135deg, #f6dc96 0%, #e0b354 45%, #a8741f 100%);
+    --up:#4ade9b; --down:#ff6f61; --on-color:#0b0a08;
     color-scheme:dark;
-  }
+  --on-accent:#1a1408;
+}
 }
 :root[data-theme="dark"]{
-  --bg:#070b14; --surface:#10172a; --line:#1f2a44; --grid:#111a2e;
-  --text:#e8edf7; --muted:#8a97b3;
-  --brass:#8b6cff; --brass-ink:#ffffff; --grad:linear-gradient(135deg,#8b6cff,#22d3ee);
-  --up:#2ee6a6; --down:#ff5c7a; --on-color:#07110d;
+  --bg:#0b0a08; --surface:#15130f; --line:#2e2920; --grid:#17150f;
+  --text:#f5efe3; --muted:#a8a08f;
+  --brass:#e0b354; --brass-ink:#1a1408; --grad:linear-gradient(135deg, #f6dc96 0%, #e0b354 45%, #a8741f 100%);
+  --up:#4ade9b; --down:#ff6f61; --on-color:#0b0a08;
   color-scheme:dark;
+  --on-accent:#1a1408;
 }
 *,*::before,*::after{box-sizing:border-box}
 [hidden]{display:none !important}
@@ -36,7 +39,7 @@ html,body{height:100%}
 body{
   margin:0;display:flex;flex-direction:column;overflow:hidden;
   background:var(--bg);color:var(--text);
-  font-family:'Plus Jakarta Sans',system-ui,-apple-system,Roboto,sans-serif;
+  font-family:'Manrope',system-ui,-apple-system,Roboto,sans-serif;
   font-size:15px;line-height:1.35;font-variant-numeric:tabular-nums;
   -webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;
 }

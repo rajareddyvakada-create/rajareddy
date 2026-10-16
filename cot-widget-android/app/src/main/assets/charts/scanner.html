@@ -4,36 +4,39 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Scanner</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
 /* Scanner: grouped lists of which markets just printed each structure / liquidity event. */
 :root{
-  --bg:#f3f5fb; --surface:#ffffff; --surface-2:#eef1f8; --border:#dfe4ef;
-  --fg:#0f172a; --muted:#5b6680; --accent:#6d4aff; --accent-2:#0891b2;
-  --up:#0e9f6e; --down:#e11d48; --flat:#b7791f;
-  --glow:0 10px 30px rgba(76,61,255,.08);
+  --bg:#f6f1e7; --surface:#fffcf5; --surface-2:#f1eadb; --border:#e3d8c3;
+  --fg:#1c1912; --muted:#6e6553; --accent:#a5781f; --accent-2:#c99a3c;
+  --up:#12915c; --down:#cf3a2d; --flat:#b07a12;
+  --glow:0 12px 30px rgba(120,90,30,.10);
   color-scheme:light;
+  --on-accent:#1a1408; --grad:linear-gradient(135deg, #e3bf62 0%, #b8862b 55%, #8d6216 100%);
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#070b14; --surface:#10172a; --surface-2:#16203a; --border:#1f2a44;
-    --fg:#e8edf7; --muted:#8a97b3; --accent:#8b6cff; --accent-2:#22d3ee;
-    --up:#2ee6a6; --down:#ff5c7a; --flat:#fbbf24;
-    --glow:0 10px 30px rgba(0,0,0,.35);
+    --bg:#0b0a08; --surface:#15130f; --surface-2:#1e1b15; --border:#2e2920;
+    --fg:#f5efe3; --muted:#a8a08f; --accent:#e0b354; --accent-2:#f6dc96;
+    --up:#4ade9b; --down:#ff6f61; --flat:#e9b949;
+    --glow:0 14px 34px rgba(0,0,0,.45);
     color-scheme:dark;
-  }
+  --on-accent:#1a1408; --grad:linear-gradient(135deg, #f6dc96 0%, #e0b354 45%, #a8741f 100%);
+}
 }
 :root[data-theme="dark"]{
-  --bg:#070b14; --surface:#10172a; --surface-2:#16203a; --border:#1f2a44;
-  --fg:#e8edf7; --muted:#8a97b3; --accent:#8b6cff; --accent-2:#22d3ee;
-  --up:#2ee6a6; --down:#ff5c7a; --flat:#fbbf24;
-  --glow:0 10px 30px rgba(0,0,0,.35);
+  --bg:#0b0a08; --surface:#15130f; --surface-2:#1e1b15; --border:#2e2920;
+  --fg:#f5efe3; --muted:#a8a08f; --accent:#e0b354; --accent-2:#f6dc96;
+  --up:#4ade9b; --down:#ff6f61; --flat:#e9b949;
+  --glow:0 14px 34px rgba(0,0,0,.45);
   color-scheme:dark;
+  --on-accent:#1a1408; --grad:linear-gradient(135deg, #f6dc96 0%, #e0b354 45%, #a8741f 100%);
 }
 *,*::before,*::after{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--fg);font-family:'Plus Jakarta Sans',system-ui,-apple-system,Roboto,sans-serif;font-size:15px;line-height:1.4;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'Manrope',system-ui,-apple-system,Roboto,sans-serif;font-size:15px;line-height:1.4;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
 .wrap{height:100%;overflow-y:auto;max-width:560px;margin:0 auto;padding:14px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:12px}
 .head{display:flex;align-items:center;gap:10px}
 .head h1{margin:0;font-size:1.35rem;font-weight:800;letter-spacing:-.01em;flex:1}
@@ -44,7 +47,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:'Plus Jakarta San
 @keyframes spin{to{transform:rotate(360deg)}}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .chip{border:1px solid var(--border);background:var(--surface);color:var(--muted);border-radius:999px;padding:6px 12px;font:600 .78rem inherit;cursor:pointer}
-.chip[aria-pressed="true"]{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--accent),var(--accent-2))}
+.chip[aria-pressed="true"]{color:var(--on-accent);border-color:transparent;background:var(--grad)}
 .group{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--glow);overflow:hidden}
 .group h2{margin:0;padding:12px 14px 8px;font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
 .group h2 .count{font:600 .72rem 'JetBrains Mono',monospace;color:var(--fg);background:var(--surface-2);border-radius:999px;padding:2px 8px;letter-spacing:0}
@@ -78,6 +81,11 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:'Plus Jakarta San
   <div id="groups"></div>
   <p class="note">Only confirmed events count: a BOS needs a candle to close beyond the last swing (daily pivots of 3 bars, weekly and monthly of 2), and a sweep needs price to take the level and a candle to close back inside it. Sessions (PSH/PSL) are Asia 00–07, London 07–13 and New York 13–21 UTC. Tap a market to open its chart.</p>
 </div>
+<script src="../vendor/gsap.min.js"></script>
+<script>
+// Entrance motion shared by the tab pages (skipped with reduced motion or without GSAP)
+window.Motion={stagger(list){ try{ if(!window.gsap || matchMedia('(prefers-reduced-motion: reduce)').matches || !list || !list.length) return; gsap.fromTo(list,{autoAlpha:0,y:12},{autoAlpha:1,y:0,duration:.4,stagger:.04,ease:'power2.out',clearProps:'transform,opacity,visibility'}); }catch(e){} }};
+</script>
 <script>
 (function(){
   'use strict';
@@ -269,6 +277,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:'Plus Jakarta San
     if(ok){ last = { at:Date.now(), events, ok }; try { localStorage.setItem(CACHE, JSON.stringify(last)); } catch(e){} }
     if(failed.length){ $('err').textContent = 'Couldn\'t load ' + failed.join(', ') + '. ' + (ok ? 'Showing the rest.' : 'Check your connection and tap scan again.'); $('err').hidden = false; }
     render();
+    Motion.stagger([...document.querySelectorAll('#groups .group')]);
     $('refresh').disabled = false; busy = false;
   }
 

@@ -4,44 +4,47 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap">
 <style>
 /* Layout: full-height phone app shell. App bar, market strip, one swipeable card, pager pinned at the bottom. */
 :root {
-  --bg: #f3f5fb; --surface: #ffffff; --surface-2: #eef1f8; --border: #dfe4ef;
-  --fg: #0f172a; --muted: #5b6680; --accent: #6d4aff; --accent-2: #0891b2; --accent-dim: rgba(109,74,255,0.10);
-  --grad: linear-gradient(135deg, #6d4aff 0%, #0891b2 100%);
-  --bull: #0e9f6e; --bull-dim: rgba(14,159,110,0.12);
-  --bear: #e11d48; --bear-dim: rgba(225,29,72,0.10);
-  --flat: #b7791f; --flat-dim: rgba(183,121,31,0.13);
-  --glow-a: rgba(109,74,255,0.10); --glow-b: rgba(8,145,178,0.08);
-  --shadow: 0 1px 2px rgba(15,23,42,0.05), 0 12px 32px rgba(76,61,255,0.08);
-  --font-body: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --bg: #f6f1e7; --surface: #fffcf5; --surface-2: #f1eadb; --border: #e3d8c3;
+  --fg: #1c1912; --muted: #6e6553; --accent: #a5781f; --accent-2: #c99a3c; --accent-dim: rgba(165,120,31,0.12);
+  --grad: linear-gradient(135deg, #e3bf62 0%, #b8862b 55%, #8d6216 100%);
+  --bull: #12915c; --bull-dim: rgba(18,145,92,0.12);
+  --bear: #cf3a2d; --bear-dim: rgba(207,58,45,0.10);
+  --flat: #b07a12; --flat-dim: rgba(176,122,18,0.13);
+  --glow-a: rgba(201,154,60,0.16); --glow-b: rgba(165,120,31,0.08);
+  --shadow: 0 1px 2px rgba(40,30,10,0.06), 0 14px 34px rgba(120,90,30,0.10);
+  --font-body: 'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --on-accent:#1a1408;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #070b14; --surface: #10172a; --surface-2: #16203a; --border: #1f2a44;
-    --fg: #e8edf7; --muted: #8a97b3; --accent: #8b6cff; --accent-2: #22d3ee; --accent-dim: rgba(139,108,255,0.16);
-    --grad: linear-gradient(135deg, #8b6cff 0%, #22d3ee 100%);
-    --bull: #2ee6a6; --bull-dim: rgba(46,230,166,0.13);
-    --bear: #ff5c7a; --bear-dim: rgba(255,92,122,0.13);
-    --flat: #fbbf24; --flat-dim: rgba(251,191,36,0.13);
-    --glow-a: rgba(139,108,255,0.18); --glow-b: rgba(34,211,238,0.10);
-    --shadow: 0 12px 32px rgba(0,0,0,0.35);
+    --bg: #0b0a08; --surface: #15130f; --surface-2: #1e1b15; --border: #2e2920;
+    --fg: #f5efe3; --muted: #a8a08f; --accent: #e0b354; --accent-2: #f6dc96; --accent-dim: rgba(224,179,84,0.15);
+    --grad: linear-gradient(135deg, #f6dc96 0%, #e0b354 45%, #a8741f 100%);
+    --bull: #4ade9b; --bull-dim: rgba(74,222,155,0.13);
+    --bear: #ff6f61; --bear-dim: rgba(255,111,97,0.13);
+    --flat: #e9b949; --flat-dim: rgba(233,185,73,0.14);
+    --glow-a: rgba(224,179,84,0.16); --glow-b: rgba(246,220,150,0.06);
+    --shadow: 0 18px 40px rgba(0,0,0,0.45);
     color-scheme: dark;
-  }
+  --on-accent:#1a1408;
+}
 }
 :root[data-theme="dark"] {
-  --bg: #070b14; --surface: #10172a; --surface-2: #16203a; --border: #1f2a44;
-  --fg: #e8edf7; --muted: #8a97b3; --accent: #8b6cff; --accent-2: #22d3ee; --accent-dim: rgba(139,108,255,0.16);
-  --grad: linear-gradient(135deg, #8b6cff 0%, #22d3ee 100%);
-  --bull: #2ee6a6; --bull-dim: rgba(46,230,166,0.13);
-  --bear: #ff5c7a; --bear-dim: rgba(255,92,122,0.13);
-  --flat: #fbbf24; --flat-dim: rgba(251,191,36,0.13);
-  --glow-a: rgba(139,108,255,0.18); --glow-b: rgba(34,211,238,0.10);
-  --shadow: 0 12px 32px rgba(0,0,0,0.35);
+  --bg: #0b0a08; --surface: #15130f; --surface-2: #1e1b15; --border: #2e2920;
+  --fg: #f5efe3; --muted: #a8a08f; --accent: #e0b354; --accent-2: #f6dc96; --accent-dim: rgba(224,179,84,0.15);
+  --grad: linear-gradient(135deg, #f6dc96 0%, #e0b354 45%, #a8741f 100%);
+  --bull: #4ade9b; --bull-dim: rgba(74,222,155,0.13);
+  --bear: #ff6f61; --bear-dim: rgba(255,111,97,0.13);
+  --flat: #e9b949; --flat-dim: rgba(233,185,73,0.14);
+  --glow-a: rgba(224,179,84,0.16); --glow-b: rgba(246,220,150,0.06);
+  --shadow: 0 18px 40px rgba(0,0,0,0.45);
   color-scheme: dark;
+  --on-accent:#1a1408;
 }
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -64,7 +67,7 @@ button { font: inherit; color: inherit; }
 /* App bar */
 .appbar { display: flex; align-items: center; gap: 10px; min-height: 44px; }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
-.mark { font: 800 0.8rem var(--font-mono); letter-spacing: 0.04em; color: #fff; background: var(--grad); border-radius: 12px; padding: 8px 9px; box-shadow: 0 6px 18px var(--glow-a); }
+.mark { font: 800 0.8rem var(--font-mono); letter-spacing: 0.04em; color: var(--on-accent); background: var(--grad); border-radius: 12px; padding: 8px 9px; box-shadow: 0 6px 18px var(--glow-a); }
 .brand-name { font-weight: 800; font-size: 1.15rem; line-height: 1.15; letter-spacing: -0.01em; }
 .brand-sub { font-size: 0.75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .brand > div { min-width: 0; }
@@ -83,7 +86,7 @@ button { font: inherit; color: inherit; }
 .market-tabs::-webkit-scrollbar { display: none; }
 .tab { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 80%, transparent); color: var(--muted); font-weight: 600; font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
 .tab .dot { width: 8px; height: 8px; border-radius: 50%; }
-.tab[aria-selected="true"] { color: #fff; border-color: transparent; background: var(--grad); box-shadow: 0 6px 16px var(--glow-a); }
+.tab[aria-selected="true"] { color: var(--on-accent); border-color: transparent; background: var(--grad); box-shadow: 0 6px 16px var(--glow-a); }
 
 /* Notice */
 .notice { display: flex; align-items: flex-start; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--flat); border-radius: 10px; padding: 8px 6px 8px 12px; font-size: 0.8rem; color: var(--muted); line-height: 1.35; flex: 0 0 auto; }
@@ -170,7 +173,7 @@ button { font: inherit; color: inherit; }
 .rules { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .rules td { padding: 8px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
 .rules td:last-child { text-align: right; font-family: var(--font-mono); white-space: nowrap; padding-left: 12px; }
-.sheet .close-sheet { align-self: stretch; height: 46px; border-radius: 14px; border: 0; background: var(--grad); color: #fff; font-weight: 600; cursor: pointer; }
+.sheet .close-sheet { align-self: stretch; height: 46px; border-radius: 14px; border: 0; background: var(--grad); color: var(--on-accent); font-weight: 600; cursor: pointer; }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chart-link { border: 0; background: none; color: var(--accent); font: 600 0.75rem var(--font-body); padding: 4px 0 4px 8px; cursor: pointer; }
@@ -239,7 +242,7 @@ html:not([data-app]) .tabbar { position: sticky; bottom: 0; z-index: 10; margin-
 .broker-logo { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 0.9rem; flex: 0 0 42px; }
 .broker-btns { display: flex; gap: 8px; }
 .btn-primary, .btn-ghost { flex: 1; display: grid; place-items: center; height: 44px; border-radius: 14px; font: 700 0.9rem var(--font-body); text-decoration: none; cursor: pointer; }
-.btn-primary { border: 0; color: #fff; background: var(--grad); box-shadow: 0 8px 20px var(--glow-a); }
+.btn-primary { border: 0; color: var(--on-accent); background: var(--grad); box-shadow: 0 8px 20px var(--glow-a); }
 .btn-ghost { border: 1px solid var(--border); color: var(--fg); background: transparent; }
 .url-in { width: 55%; font: 500 0.8rem var(--font-mono); padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--fg); }
 .tabbtn { font-size: 0.66rem; }
@@ -247,8 +250,33 @@ html:not([data-app]) .tabbar { position: sticky; bottom: 0; z-index: 10; margin-
 @media (max-height: 880px) { .spark { height: 48px; } .card { gap: 11px; padding: 14px; } .price { font-size: 1.8rem; } .metric { padding: 8px; } .reasons li { font-size: 0.8rem; } .app { gap: 8px; padding-block: 8px; } }
 @media (max-width: 360px) { .metric { padding: 8px; } .metric-val { font-size: 0.82rem; } .pill { display: none; } }
 @media (prefers-reduced-motion: reduce) { .slider { scroll-behavior: auto; } .icon-btn:disabled svg { animation: none; } .dots button { transition: none; } }
+
+/* ---------- Luxe theme layer: black & gold, serif display type, slow ambient light ---------- */
+.brand-name, .card-title, .panel h2.big, .sheet h2, .welcome h1 { font-family: 'Fraunces', Georgia, serif; font-weight: 600; letter-spacing: -0.01em; }
+.brand-name { font-size: 1.25rem; }
+.card-title { font-size: 1.35rem; }
+.card { border-color: color-mix(in srgb, var(--accent) 22%, var(--border)); background: radial-gradient(120% 60% at 100% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 62%), var(--surface); border-radius: 22px; }
+.panel { border-color: color-mix(in srgb, var(--accent) 16%, var(--border)); border-radius: 18px; }
+.mark, .btn-primary, .toast button, .tab[aria-selected="true"] { background-size: 220% 100%; animation: sheen 6s ease-in-out infinite; }
+@keyframes sheen { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+.section-label { letter-spacing: 0.14em; }
+.tabbar { background: color-mix(in srgb, var(--bg) 78%, transparent); border-top: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border)); }
+.tabbtn[aria-current="page"]::before { display: none; }
+.tab-ink { position: absolute; top: 6px; height: 46px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); pointer-events: none; transition: none; }
+.tabbar-inner { position: relative; }
+.tabbtn[aria-current="page"] svg { color: var(--accent); filter: drop-shadow(0 0 8px var(--glow-a)); }
+button:active, .tabbtn:active { transform: scale(0.97); }
+.ambient { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+.ambient i { position: absolute; width: 60vmax; height: 60vmax; border-radius: 50%; filter: blur(60px); opacity: 0.55; background: radial-gradient(circle, var(--glow-a), transparent 65%); }
+.ambient i:nth-child(1) { left: -25vmax; top: -30vmax; animation: drift1 26s ease-in-out infinite alternate; }
+.ambient i:nth-child(2) { right: -30vmax; bottom: -35vmax; animation: drift2 32s ease-in-out infinite alternate; background: radial-gradient(circle, var(--glow-b), transparent 65%); }
+@keyframes drift1 { to { transform: translate(18vmax, 22vmax) scale(1.1); } }
+@keyframes drift2 { to { transform: translate(-16vmax, -18vmax) scale(1.15); } }
+.shell { position: relative; z-index: 1; }
+@media (prefers-reduced-motion: reduce) { .ambient i, .mark, .btn-primary, .toast button, .tab[aria-selected="true"] { animation: none; } }
 </style>
 
+<div class="ambient" aria-hidden="true"><i></i><i></i></div>
 <div class="shell">
 <main class="views">
 <section class="view" id="viewMarkets">
@@ -331,6 +359,7 @@ html:not([data-app]) .tabbar { position: sticky; bottom: 0; z-index: 10; margin-
 </section>
 </main>
 <nav class="tabbar" aria-label="Sections"><div class="tabbar-inner">
+  <span class="tab-ink" id="tabInk" aria-hidden="true"></span>
   <button type="button" class="tabbtn" data-tab="markets" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 20V12M12 20V5M19 20v-9"/></svg>Markets</button>
   <button type="button" class="tabbtn tab-charts" data-tab="charts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 4v16M17 4v16"/><rect x="5" y="8" width="4" height="7" rx="1"/><rect x="15" y="6" width="4" height="9" rx="1"/></svg>Charts</button>
   <button type="button" class="tabbtn tab-charts" data-tab="scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>Scanner</button>
@@ -358,6 +387,7 @@ html:not([data-app]) .tabbar { position: sticky; bottom: 0; z-index: 10; margin-
   </section>
 </div>
 
+<script src="vendor/gsap.min.js"></script>
 <script>
 var MARKETS = [
   { name: "Gold",      cftcCode: "088691", ticker: "GC=F",    icon: "Au", iconBg: "#b8860b", decimals: 2, type: "commodity" },
@@ -660,6 +690,8 @@ function setActive(i) {
   var strip = document.getElementById("marketTabs"), tab = tabs[i];
   if (tab) strip.scrollTo({ left: tab.offsetLeft - strip.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2, behavior: "smooth" });
   updateNav();
+  var card = document.getElementById("dashboard").children[i];
+  if (card && card.dataset.shown !== "1") { card.dataset.shown = "1"; Motion.stagger(card.children); }
 }
 
 function updateNav() {
@@ -885,6 +917,26 @@ function renderAlerts() {
   document.getElementById("clearAlerts").hidden = !list.length;
 }
 
+/* ---------- motion (GSAP when available; nothing when reduced motion is on) ---------- */
+var Motion = (function() {
+  var reduce = false;
+  try { reduce = matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+  var g = function() { return !reduce && window.gsap ? window.gsap : null; };
+  return {
+    view: function(el) { var G = g(); if (G && el) G.fromTo(el, { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, duration: 0.38, ease: "power3.out", clearProps: "transform,opacity,visibility" }); },
+    stagger: function(list) { var G = g(); if (G && list && list.length) G.fromTo(list, { autoAlpha: 0, y: 12 }, { autoAlpha: 1, y: 0, duration: 0.4, stagger: 0.045, ease: "power2.out", clearProps: "transform,opacity,visibility" }); },
+    ink: function(btn) {
+      var ink = document.getElementById("tabInk"); if (!ink || !btn) return;
+      var x = btn.offsetLeft + 4, w = btn.offsetWidth - 8, G = g();
+      if (G) G.to(ink, { x: x, width: w, duration: 0.45, ease: "elastic.out(1, 0.75)" }); else { ink.style.transform = "translateX(" + x + "px)"; ink.style.width = w + "px"; }
+    },
+    count: function(el, to, dp) {
+      var G = g(); if (!G || !el) return;
+      var o = { v: 0 }; G.to(o, { v: to, duration: 0.9, ease: "power2.out", onUpdate: function() { el.textContent = o.v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp }); } });
+    }
+  };
+})();
+
 /* ---------- tabs ---------- */
 var currentTab = "markets", chartsFrame = null, scannerFrame = null, newsFrame = null, goldCot = null;
 function openTab(name, chart) {
@@ -917,6 +969,8 @@ function openTab(name, chart) {
   if (name === "alerts") { lsSet("cot.alert.seen", Date.now()); renderAlerts(); }
   updateBadge();
   if (name === "markets") goTo(currentIdx, true);
+  Motion.view(document.getElementById("view" + name.charAt(0).toUpperCase() + name.slice(1)));
+  Motion.ink(document.querySelector('.tabbtn[data-tab="' + name + '"]'));
 }
 window.appOpenTab = function(name) { openTab(name); };
 
@@ -1047,6 +1101,8 @@ window.appBack = function() {
   renderStored();
   loadData();
   if (IS_APP) setTimeout(ensureNewsFrame, 3000);
+  setTimeout(function() { Motion.ink(document.querySelector('.tabbtn[aria-current="page"]')); }, 60);
+  window.addEventListener("resize", function() { Motion.ink(document.querySelector('.tabbtn[aria-current="page"]')); });
 })();
 </script>
 </html>

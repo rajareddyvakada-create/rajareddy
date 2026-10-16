@@ -329,13 +329,41 @@
     if(o && isFinite(o.sl) && (b.close-o.sl)*dir>0) d=Math.abs(b.close-o.sl);
     const tp=o && isFinite(o.tp) && (o.tp-b.close)*dir>0 ? o.tp : b.close+dir*d*cfg.rr;
     pos={file:srcName,side,entryIdx:idx-1,entryTime:b.time,entry:b.close,by:o&&o.by||'',
+         id:srcName+'|'+b.time+'|'+side+'|'+Date.now(),tf:tfLabel(tf),openedAt:Date.now(),mfe:0,mae:0,ctx:entryContext(side),
          sl:b.close-dir*d,tp,slDist:d,risk:cfg.risk,
          lots:cfg.contract>0?cfg.risk/(d*cfg.contract):0,trail:!!cfg.trail,stage:0,ext:b.close,doneK:-1};
+    pos.sl0=pos.sl; pos.tp0=pos.tp;
     drawPosLines(); updateMarkers(); refresh(); saveBook();
     return true;
   }
+  // What the market looked like at entry, for the Journal's loss review.
+  function entryContext(side){
+    const c={session:idx>0?new Date((bars[idx-1].time+new Date().getTimezoneOffset()*60)*1000).getUTCHours():new Date().getUTCHours(),agent:null};
+    try{
+      if(window.ChartAgent){
+        const a=window.ChartAgent.analyze();
+        if(a && a.ready) c.agent={side:a.side,conf:a.conf,total:a.total,tech:a.tech,rPos:Math.round(a.rPos),atr:a.atr,
+          sigSide:a.sig?a.sig.side:null,sigAgo:a.sigAgo,news:a.news?{score:a.news.score,bias:a.news.bias}:null,
+          cot:a.cot?{score:a.cot.score,verdict:a.cot.verdict}:null,soon:a.soon?{title:a.soon.title,min:Math.round((a.soon.t-Date.now())/60000)}:null,
+          parts:a.parts.map(p=>[p[0],p[1]])};
+      }
+      const n=closedCount(), k=Math.max(0,n-4);
+      if(n>4){ const T=window.ChartIndicatorTools; const atr=T.rmaATR(agg.slice(0,n),14)[n-1]; c.run=(agg[n-1].close-agg[k].close)/atr; c.lastRange=(agg[n-1].high-agg[n-1].low)/atr; }
+      const prev=trades.filter(t=>t.file===srcName).slice(-1)[0];
+      if(prev) c.prev={r:prev.r,exitTime:prev.exitTime,closedAt:prev.closedAt||0};
+      const day=new Date(bars[idx-1].time*1000).toISOString().slice(0,10);
+      c.tradesToday=trades.filter(t=>new Date(t.entryTime*1000).toISOString().slice(0,10)===day).length;
+    }catch(e){}
+    return c;
+  }
+  function trackExcursion(b){
+    if(!pos || b.time<pos.entryTime) return;
+    const dir=pos.side==='long'?1:-1, fav=((dir>0?b.high:b.low)-pos.entry)*dir/pos.slDist, adv=((dir>0?b.low:b.high)-pos.entry)*dir/pos.slDist;
+    if(fav>pos.mfe) pos.mfe=fav; if(adv<pos.mae) pos.mae=adv;
+  }
   function checkTrade(b){
     if(!pos || b.time<=pos.entryTime) return;
+    trackExcursion(b);
     if(pos.trail){
       if(pos.side==='long' ? b.high>=pos.tp : b.low<=pos.tp) closePos(pos.side==='long' ? (b.open>pos.tp?b.open:pos.tp) : (b.open<pos.tp?b.open:pos.tp),'Target',b.time);
       return;
@@ -359,8 +387,23 @@
   function closePos(price,reason,time){
     if(!pos) return;
     const dir=pos.side==='long'?1:-1, r=(price-pos.entry)*dir/pos.slDist;
-    trades.push({file:pos.file,side:pos.side,entryTime:pos.entryTime,entry:pos.entry,exitTime:time,exit:price,reason,r,pnl:r*pos.risk});
+    const t={file:pos.file,side:pos.side,entryTime:pos.entryTime,entry:pos.entry,exitTime:time,exit:price,reason,r,pnl:r*pos.risk,
+      id:pos.id||(pos.file+'|'+pos.entryTime+'|'+pos.side),tf:pos.tf||tfLabel(tf),by:pos.by||'',sl0:pos.sl0!=null?pos.sl0:pos.entry-dir*pos.slDist,tp0:pos.tp0!=null?pos.tp0:pos.tp,
+      slFinal:pos.sl,slDist:pos.slDist,risk:pos.risk,lots:pos.lots,trail:!!pos.trail,mfe:Math.max(pos.mfe||0,r),mae:Math.min(pos.mae||0,r),
+      openedAt:pos.openedAt||0,closedAt:Date.now(),ctx:pos.ctx||null,precision};
+    saveTradeBars(t);
+    trades.push(t);
     pos=null; clearPosLines(); saveBook(); updateMarkers(); renderStats();
+  }
+  // A window of candles around the trade, so the Journal can draw it. Kept for the newest 150 trades.
+  function saveTradeBars(t){
+    try{
+      const et=bucket(t.entryTime); let k=agg.findIndex(c=>c.time>=et); if(k<0) k=agg.length-1;
+      const from=Math.max(0,k-40), list=agg.slice(from, Math.min(agg.length, from+140)).map(c=>[c.time,+c.open.toFixed(precision),+c.high.toFixed(precision),+c.low.toFixed(precision),+c.close.toFixed(precision)]);
+      const store=loadJSON('journal-bars',{}); store[t.id]={tf:tfLabel(tf),bars:list};
+      const ids=Object.keys(store); if(ids.length>150) for(const id of ids.slice(0,ids.length-150)) delete store[id];
+      saveJSON('journal-bars',store);
+    }catch(e){}
   }
   function cancelPos(msg){ pos=null; clearPosLines(); saveBook(); flash(msg); }
   const sgn=(v,d)=>`${v>=0?'+':'−'}${Math.abs(v).toFixed(d)}`;
