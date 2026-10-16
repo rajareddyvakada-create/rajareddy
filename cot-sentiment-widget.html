@@ -2,47 +2,47 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap">
 <style>
 /* Layout: full-height phone app shell. App bar, market strip, one swipeable card, pager pinned at the bottom. */
 :root {
-  --bg: #f6f1e7; --surface: #fffcf5; --surface-2: #f1eadb; --border: #e3d8c3;
-  --fg: #1c1912; --muted: #6e6553; --accent: #a5781f; --accent-2: #c99a3c; --accent-dim: rgba(165,120,31,0.12);
-  --grad: linear-gradient(135deg, #e3bf62 0%, #b8862b 55%, #8d6216 100%);
-  --bull: #12915c; --bull-dim: rgba(18,145,92,0.12);
-  --bear: #cf3a2d; --bear-dim: rgba(207,58,45,0.10);
-  --flat: #b07a12; --flat-dim: rgba(176,122,18,0.13);
-  --glow-a: rgba(201,154,60,0.16); --glow-b: rgba(165,120,31,0.08);
-  --shadow: 0 1px 2px rgba(40,30,10,0.06), 0 14px 34px rgba(120,90,30,0.10);
-  --font-body: 'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --bg: #060913; --surface: #131C31; --surface-2: #0F172A; --border: #1E293B;
+  --fg: #F8FAFC; --muted: #94A3B8; --accent: #00E5FF; --accent-2: #00B0FF; --accent-dim: rgba(0,229,255,0.15);
+  --grad: linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%);
+  --bull: #00E5FF; --bull-dim: rgba(0,229,255,0.15);
+  --bear: #FF0055; --bear-dim: rgba(255,0,85,0.15);
+  --flat: #FFB300; --flat-dim: rgba(255,179,0,0.15);
+  --glow-a: rgba(0,229,255,0.16); --glow-b: rgba(255,0,85,0.10);
+  --shadow: 0 0 0 1px rgba(0,229,255,0.06), 0 18px 40px rgba(0,0,0,0.55);
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  --on-accent:#1a1408;
+  --on-accent:#031018;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0b0a08; --surface: #15130f; --surface-2: #1e1b15; --border: #2e2920;
-    --fg: #f5efe3; --muted: #a8a08f; --accent: #e0b354; --accent-2: #f6dc96; --accent-dim: rgba(224,179,84,0.15);
-    --grad: linear-gradient(135deg, #f6dc96 0%, #e0b354 45%, #a8741f 100%);
-    --bull: #4ade9b; --bull-dim: rgba(74,222,155,0.13);
-    --bear: #ff6f61; --bear-dim: rgba(255,111,97,0.13);
-    --flat: #e9b949; --flat-dim: rgba(233,185,73,0.14);
-    --glow-a: rgba(224,179,84,0.16); --glow-b: rgba(246,220,150,0.06);
-    --shadow: 0 18px 40px rgba(0,0,0,0.45);
+    --bg: #060913; --surface: #131C31; --surface-2: #0F172A; --border: #1E293B;
+    --fg: #F8FAFC; --muted: #94A3B8; --accent: #00E5FF; --accent-2: #00B0FF; --accent-dim: rgba(0,229,255,0.15);
+    --grad: linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%);
+    --bull: #00E5FF; --bull-dim: rgba(0,229,255,0.15);
+    --bear: #FF0055; --bear-dim: rgba(255,0,85,0.15);
+    --flat: #FFB300; --flat-dim: rgba(255,179,0,0.15);
+    --glow-a: rgba(0,229,255,0.16); --glow-b: rgba(255,0,85,0.10);
+    --shadow: 0 0 0 1px rgba(0,229,255,0.06), 0 18px 40px rgba(0,0,0,0.55);
     color-scheme: dark;
-  --on-accent:#1a1408;
+  --on-accent:#031018;
 }
 }
 :root[data-theme="dark"] {
-  --bg: #0b0a08; --surface: #15130f; --surface-2: #1e1b15; --border: #2e2920;
-  --fg: #f5efe3; --muted: #a8a08f; --accent: #e0b354; --accent-2: #f6dc96; --accent-dim: rgba(224,179,84,0.15);
-  --grad: linear-gradient(135deg, #f6dc96 0%, #e0b354 45%, #a8741f 100%);
-  --bull: #4ade9b; --bull-dim: rgba(74,222,155,0.13);
-  --bear: #ff6f61; --bear-dim: rgba(255,111,97,0.13);
-  --flat: #e9b949; --flat-dim: rgba(233,185,73,0.14);
-  --glow-a: rgba(224,179,84,0.16); --glow-b: rgba(246,220,150,0.06);
-  --shadow: 0 18px 40px rgba(0,0,0,0.45);
+  --bg: #060913; --surface: #131C31; --surface-2: #0F172A; --border: #1E293B;
+  --fg: #F8FAFC; --muted: #94A3B8; --accent: #00E5FF; --accent-2: #00B0FF; --accent-dim: rgba(0,229,255,0.15);
+  --grad: linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%);
+  --bull: #00E5FF; --bull-dim: rgba(0,229,255,0.15);
+  --bear: #FF0055; --bear-dim: rgba(255,0,85,0.15);
+  --flat: #FFB300; --flat-dim: rgba(255,179,0,0.15);
+  --glow-a: rgba(0,229,255,0.16); --glow-b: rgba(255,0,85,0.10);
+  --shadow: 0 0 0 1px rgba(0,229,255,0.06), 0 18px 40px rgba(0,0,0,0.55);
   color-scheme: dark;
-  --on-accent:#1a1408;
+  --on-accent:#031018;
 }
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -249,29 +249,46 @@ html:not([data-app]) .tabbar { position: sticky; bottom: 0; z-index: 10; margin-
 @media (max-width: 360px) { .metric { padding: 8px; } .metric-val { font-size: 0.82rem; } .pill { display: none; } }
 @media (prefers-reduced-motion: reduce) { .slider { scroll-behavior: auto; } .icon-btn:disabled svg { animation: none; } .dots button { transition: none; } }
 
-/* ---------- Luxe theme layer: black & gold, serif display type, slow ambient light ---------- */
-.brand-name, .card-title, .panel h2.big, .sheet h2, .welcome h1 { font-family: 'Fraunces', Georgia, serif; font-weight: 600; letter-spacing: -0.01em; }
-.brand-name { font-size: 1.25rem; }
-.card-title { font-size: 1.35rem; }
-.card { border-color: color-mix(in srgb, var(--accent) 22%, var(--border)); background: radial-gradient(120% 60% at 100% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 62%), var(--surface); border-radius: 22px; }
-.panel { border-color: color-mix(in srgb, var(--accent) 16%, var(--border)); border-radius: 18px; }
-.mark, .btn-primary, .toast button, .tab[aria-selected="true"] { background-size: 220% 100%; animation: sheen 6s ease-in-out infinite; }
-@keyframes sheen { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+/* ---------- Midnight Cyberpunk layer: neon cyan = bullish, magenta = bearish, amber = special ---------- */
+.brand-name, .card-title, .panel h2.big, .sheet h2, .welcome h1, .alerts h1 { font-family: 'Rajdhani', sans-serif; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.brand-name { font-size: 1.3rem; }
+.card-title { font-size: 1.45rem; }
+.card { border: 1px solid rgba(0,229,255,0.15); background: radial-gradient(120% 50% at 50% 0%, rgba(0,229,255,0.07), transparent 60%), #131C31; border-radius: 20px; box-shadow: var(--shadow); }
+.panel { border-color: rgba(0,229,255,0.15); background: #131C31; border-radius: 18px; }
+.metric { background: #0F172A !important; border: 1px solid rgba(255,255,255,0.08) !important; }
+.price, .metric-val { color: #F8FAFC; text-shadow: 0 0 18px rgba(0,229,255,0.25); }
+.v-bull { box-shadow: 0 0 12px rgba(0,229,255,0.35); } .v-bear { box-shadow: 0 0 12px rgba(255,0,85,0.35); } .v-flat { box-shadow: 0 0 12px rgba(255,179,0,0.3); }
+.verdict, .pill, .src { border-radius: 999px; }
+.mark, .btn-primary, .toast button, .tab[aria-selected="true"], .sheet .close-sheet { background: var(--grad); color: #031018; box-shadow: 0 0 15px rgba(0,225,255,0.35); }
+.tab { background: #0F172A; border-color: rgba(0,229,255,0.15); }
 .section-label { letter-spacing: 0.14em; }
-.tabbar { background: color-mix(in srgb, var(--bg) 78%, transparent); border-top: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border)); }
+.spark .line { stroke: #00E5FF; filter: drop-shadow(0 0 4px rgba(0,229,255,0.6)); }
+.spark .area { fill: #00E5FF; opacity: 0.12; }
+.tabbar { background: rgba(6,9,19,0.86); border-top: 1px solid rgba(0,229,255,0.15); }
 .tabbtn[aria-current="page"]::before { display: none; }
-.tab-ink { position: absolute; top: 6px; height: 46px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); pointer-events: none; transition: none; }
+.tab-ink { position: absolute; top: 6px; height: 46px; border-radius: 14px; background: rgba(0,229,255,0.10); border: 1px solid rgba(0,229,255,0.35); box-shadow: 0 0 15px rgba(0,225,255,0.35), inset 0 0 12px rgba(0,229,255,0.12); pointer-events: none; }
 .tabbar-inner { position: relative; }
-.tabbtn[aria-current="page"] svg { color: var(--accent); filter: drop-shadow(0 0 8px var(--glow-a)); }
+.tabbtn[aria-current="page"] { color: #F8FAFC; }
+.tabbtn[aria-current="page"] svg { color: #00E5FF; filter: drop-shadow(0 0 6px rgba(0,229,255,0.8)); }
 button:active, .tabbtn:active { transform: scale(0.97); }
-.ambient { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
-.ambient i { position: absolute; width: 60vmax; height: 60vmax; border-radius: 50%; filter: blur(60px); opacity: 0.55; background: radial-gradient(circle, var(--glow-a), transparent 65%); }
-.ambient i:nth-child(1) { left: -25vmax; top: -30vmax; animation: drift1 26s ease-in-out infinite alternate; }
-.ambient i:nth-child(2) { right: -30vmax; bottom: -35vmax; animation: drift2 32s ease-in-out infinite alternate; background: radial-gradient(circle, var(--glow-b), transparent 65%); }
-@keyframes drift1 { to { transform: translate(18vmax, 22vmax) scale(1.1); } }
-@keyframes drift2 { to { transform: translate(-16vmax, -18vmax) scale(1.15); } }
+/* neon arc gauge */
+.gauge-wrap { position: relative; display: grid; place-items: center; margin: -4px 0 0; }
+.gauge-wrap svg { width: 100%; max-width: 300px; height: auto; overflow: visible; }
+.gauge-num { text-align: center; margin-top: 2px; }
+.gauge-num b { display: block; font: 700 2.2rem 'JetBrains Mono', monospace; line-height: 1; }
+.gauge-num small { display: block; font: 700 0.78rem 'Rajdhani', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+/* background: night-city glow and a faint perspective grid */
+.ambient { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; background: linear-gradient(180deg, #060913 0%, #070b1a 60%, #060913 100%); }
+.ambient::after { content: ""; position: absolute; left: -50%; right: -50%; bottom: -10%; height: 55%; background-image: linear-gradient(rgba(0,229,255,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(0,229,255,0.07) 1px, transparent 1px); background-size: 44px 44px; transform: perspective(300px) rotateX(62deg); transform-origin: bottom; mask-image: linear-gradient(to top, #000, transparent 80%); -webkit-mask-image: linear-gradient(to top, #000, transparent 80%); animation: gridmove 6s linear infinite; }
+@keyframes gridmove { to { background-position: 0 44px, 0 0; } }
+.ambient i { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; filter: blur(70px); opacity: 0.5; }
+.ambient i:nth-child(1) { left: -30vmax; top: -35vmax; background: radial-gradient(circle, rgba(0,229,255,0.20), transparent 65%); animation: drift1 26s ease-in-out infinite alternate; }
+.ambient i:nth-child(2) { right: -35vmax; top: 10vmax; background: radial-gradient(circle, rgba(255,0,85,0.14), transparent 65%); animation: drift2 32s ease-in-out infinite alternate; }
+@keyframes drift1 { to { transform: translate(16vmax, 18vmax) scale(1.1); } }
+@keyframes drift2 { to { transform: translate(-14vmax, 14vmax) scale(1.15); } }
 .shell { position: relative; z-index: 1; }
-@media (prefers-reduced-motion: reduce) { .ambient i, .mark, .btn-primary, .toast button, .tab[aria-selected="true"] { animation: none; } }
+body { background: #060913; }
+@media (prefers-reduced-motion: reduce) { .ambient i, .ambient::after { animation: none; } }
 </style>
 
 <div class="ambient" aria-hidden="true"><i></i><i></i></div>
@@ -591,17 +608,13 @@ function renderCard(d) {
       '<div><div class="card-title">' + d.name + '</div><div class="card-sub">' + d.ticker + '</div></div>' +
       '<div class="verdict ' + d.vClass + '">' + d.verdict + '</div>' +
     '</div>' +
+    gaugeSVG(sc, d.verdict) +
     '<div class="price-row"><span class="price">' + fmt(d.price, d.decimals) + '</span><span class="src src-' + d.source + '">' + srcLabel + '</span></div>' +
     '<div><div class="section-label">20-week price<b>' + fmt(d.lo, d.decimals) + ' – ' + fmt(d.hi, d.decimals) + '</b></div>' +
       '<div class="spark">' + spark.html + '</div></div>' +
     '<div class="range">' +
       '<div class="range-bar"><span class="range-mid"></span><span class="range-dot" style="left:' + d.pos + '%;background:' + zoneColor + ';"></span></div>' +
       '<div class="range-ends"><span>20-wk low</span><span class="zone" style="color:' + zoneColor + ';">' + (d.zone === "DISCOUNT" ? "Discount" : "Premium") + ' · ' + d.pos + '% of range</span><span>20-wk high</span></div>' +
-    '</div>' +
-    '<div class="score">' +
-      '<div class="section-label">Sentiment score<b style="color:' + scColor + ';">' + (sc > 0 ? "+" : "") + sc + '</b></div>' +
-      '<div class="score-track"><span class="range-mid"></span><span class="score-fill" style="left:' + fillLeft + '%;width:' + fillWidth + '%;background:' + scColor + ';"></span></div>' +
-      '<div class="score-ends"><span>Bearish −100</span><span>+100 Bullish</span></div>' +
     '</div>' +
     '<div class="metrics">' +
       '<div class="metric"><div class="metric-label">' + instLabel + '</div><div class="metric-val">' + d.inst.toLocaleString() + '</div>' + delta(d.dInst) + '</div>' +
@@ -614,6 +627,26 @@ function renderCard(d) {
 
   attachSparkHover(card.querySelector(".spark"), spark.pts, d);
   return card;
+}
+
+// Neon arc gauge, −100 (left, bearish) to +100 (right, bullish); fill grows from the top centre toward the score.
+function gaugeSVG(sc, verdict) {
+  var cx = 110, cy = 112, r = 88, P = function(th, rr) { return (cx + rr * Math.cos(th)).toFixed(1) + " " + (cy - rr * Math.sin(th)).toFixed(1); };
+  var th = Math.PI - (sc + 100) / 200 * Math.PI, mid = Math.PI / 2, col = sc >= 0 ? "#00E5FF" : "#FF0055";
+  var ticks = "";
+  for (var k = 0; k <= 40; k++) { var a = Math.PI - k / 40 * Math.PI, big = k % 10 === 0; ticks += '<line x1="' + P(a, r + 9).split(" ")[0] + '" y1="' + P(a, r + 9).split(" ")[1] + '" x2="' + P(a, r + (big ? 18 : 14)).split(" ")[0] + '" y2="' + P(a, r + (big ? 18 : 14)).split(" ")[1] + '" stroke="' + (big ? "#94A3B8" : "rgba(148,163,184,0.35)") + '" stroke-width="' + (big ? 2 : 1) + '"/>'; }
+  var fill = sc === 0 ? "" : '<path d="M ' + (sc > 0 ? P(mid, r) + " A " + r + " " + r + " 0 0 1 " + P(th, r) : P(th, r) + " A " + r + " " + r + " 0 0 1 " + P(mid, r)) + '" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round" filter="url(#gglow)"/>';
+  var nd = P(th, r - 26).split(" ");
+  return '<div class="gauge-wrap"><svg viewBox="0 0 220 128" role="img" aria-label="Sentiment score ' + sc + ' of 100">' +
+    '<defs><filter id="gglow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>' +
+    ticks +
+    '<path d="M ' + P(Math.PI, r) + ' A ' + r + ' ' + r + ' 0 0 1 ' + P(0, r) + '" fill="none" stroke="#0F172A" stroke-width="12" stroke-linecap="round"/>' +
+    '<path d="M ' + P(Math.PI, r) + ' A ' + r + ' ' + r + ' 0 0 1 ' + P(0, r) + '" fill="none" stroke="rgba(0,229,255,0.12)" stroke-width="1"/>' +
+    fill +
+    '<g class="needle"><line x1="' + cx + '" y1="' + cy + '" x2="' + nd[0] + '" y2="' + nd[1] + '" stroke="#FFB300" stroke-width="3" stroke-linecap="round" filter="url(#gglow)"/><circle cx="' + cx + '" cy="' + cy + '" r="6" fill="#FFB300" filter="url(#gglow)"/></g>' +
+    '<text x="' + P(Math.PI, r).split(" ")[0] + '" y="' + (cy + 16) + '" fill="#FF0055" font-size="9" text-anchor="middle" font-family="JetBrains Mono">−100</text>' +
+    '<text x="' + P(0, r).split(" ")[0] + '" y="' + (cy + 16) + '" fill="#00E5FF" font-size="9" text-anchor="middle" font-family="JetBrains Mono">+100</text>' +
+    '</svg><div class="gauge-num"><b style="color:' + (sc >= 15 ? "#00E5FF" : sc <= -15 ? "#FF0055" : "#FFB300") + ';text-shadow:0 0 14px currentColor">' + (sc > 0 ? "+" : "") + sc + '</b><small>Sentiment score</small></div></div>';
 }
 
 function attachSparkHover(el, pts, d) {
@@ -689,7 +722,7 @@ function setActive(i) {
   if (tab) strip.scrollTo({ left: tab.offsetLeft - strip.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2, behavior: "smooth" });
   updateNav();
   var card = document.getElementById("dashboard").children[i];
-  if (card && card.dataset.shown !== "1") { card.dataset.shown = "1"; Motion.stagger(card.children); }
+  if (card && card.dataset.shown !== "1") { card.dataset.shown = "1"; Motion.stagger(card.children); Motion.needle(card.querySelector(".needle")); }
 }
 
 function updateNav() {
@@ -928,6 +961,7 @@ var Motion = (function() {
       var x = btn.offsetLeft + 4, w = btn.offsetWidth - 8, G = g();
       if (G) G.to(ink, { x: x, width: w, duration: 0.45, ease: "elastic.out(1, 0.75)" }); else { ink.style.transform = "translateX(" + x + "px)"; ink.style.width = w + "px"; }
     },
+    needle: function(el) { var G = g(); if (G && el) G.from(el, { rotation: -120, svgOrigin: "110 112", duration: 1.2, ease: "elastic.out(1, 0.6)" }); },
     count: function(el, to, dp) {
       var G = g(); if (!G || !el) return;
       var o = { v: 0 }; G.to(o, { v: to, duration: 0.9, ease: "power2.out", onUpdate: function() { el.textContent = o.v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp }); } });

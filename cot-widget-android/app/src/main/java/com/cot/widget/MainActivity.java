@@ -42,7 +42,9 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
 
         boolean night = (getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        int bg = Color.parseColor(night ? "#0b0e14" : "#eef1f5");
+        // The Midnight Cyberpunk theme is dark in both system modes.
+        night = true;
+        int bg = Color.parseColor("#060913");
 
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         getWindow().setStatusBarColor(Color.TRANSPARENT);

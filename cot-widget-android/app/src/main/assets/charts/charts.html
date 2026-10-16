@@ -4,34 +4,34 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Charts</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap">
 <style>
 /* Same tokens as the Markets tab. --brass is the chart accent (replay position, crosshair, entries). */
 :root{
-  --bg:#f6f1e7; --surface:#fffcf5; --line:#e3d8c3; --grid:#efe7d6;
-  --text:#1c1912; --muted:#6e6553;
-  --brass:#a5781f; --brass-ink:#1a1408; --grad:linear-gradient(135deg, #e3bf62 0%, #b8862b 55%, #8d6216 100%);
-  --up:#12915c; --down:#cf3a2d; --on-color:#ffffff;
-  color-scheme:light;
-  --on-accent:#1a1408;
+  --bg:#060913; --surface:#131C31; --line:#1E293B; --grid:rgba(255,255,255,0.04);
+  --text:#F8FAFC; --muted:#94A3B8;
+  --brass:#FFB300; --brass-ink:#031018; --grad:linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%);
+  --up:#00E5FF; --down:#FF0055; --on-color:#031018;
+  color-scheme:dark;
+  --on-accent:#031018;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#0b0a08; --surface:#15130f; --line:#2e2920; --grid:#17150f;
-    --text:#f5efe3; --muted:#a8a08f;
-    --brass:#e0b354; --brass-ink:#1a1408; --grad:linear-gradient(135deg, #f6dc96 0%, #e0b354 45%, #a8741f 100%);
-    --up:#4ade9b; --down:#ff6f61; --on-color:#0b0a08;
+    --bg:#060913; --surface:#131C31; --line:#1E293B; --grid:rgba(255,255,255,0.04);
+    --text:#F8FAFC; --muted:#94A3B8;
+    --brass:#FFB300; --brass-ink:#031018; --grad:linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%);
+    --up:#00E5FF; --down:#FF0055; --on-color:#031018;
     color-scheme:dark;
-  --on-accent:#1a1408;
+  --on-accent:#031018;
 }
 }
 :root[data-theme="dark"]{
-  --bg:#0b0a08; --surface:#15130f; --line:#2e2920; --grid:#17150f;
-  --text:#f5efe3; --muted:#a8a08f;
-  --brass:#e0b354; --brass-ink:#1a1408; --grad:linear-gradient(135deg, #f6dc96 0%, #e0b354 45%, #a8741f 100%);
-  --up:#4ade9b; --down:#ff6f61; --on-color:#0b0a08;
+  --bg:#060913; --surface:#131C31; --line:#1E293B; --grid:rgba(255,255,255,0.04);
+  --text:#F8FAFC; --muted:#94A3B8;
+  --brass:#FFB300; --brass-ink:#031018; --grad:linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%);
+  --up:#00E5FF; --down:#FF0055; --on-color:#031018;
   color-scheme:dark;
-  --on-accent:#1a1408;
+  --on-accent:#031018;
 }
 *,*::before,*::after{box-sizing:border-box}
 [hidden]{display:none !important}
@@ -39,7 +39,7 @@ html,body{height:100%}
 body{
   margin:0;display:flex;flex-direction:column;overflow:hidden;
   background:var(--bg);color:var(--text);
-  font-family:'Manrope',system-ui,-apple-system,Roboto,sans-serif;
+  font-family:'Inter',system-ui,-apple-system,Roboto,sans-serif;
   font-size:15px;line-height:1.35;font-variant-numeric:tabular-nums;
   -webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;
 }
@@ -134,7 +134,8 @@ body.no-replay .replay-only{display:none !important}
 .ag-form button{width:auto;padding:0 14px}
 .orders{flex:1;display:flex;gap:8px;min-width:0}
 .orders button{flex:1;border-color:transparent;color:var(--on-color);font-size:1rem}
-.sell{background:var(--down)} .buy{background:var(--up)}
+.sell{background:linear-gradient(135deg,#FF0055,#E6004C);color:#fff !important;box-shadow:0 0 12px rgba(255,0,85,.4);font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:1.1rem !important}
+.buy{background:linear-gradient(135deg,#00E5FF,#00B0FF);color:#031018 !important;box-shadow:0 0 12px rgba(0,225,255,.4);font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:1.1rem !important}
 .pos{flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:0 4px 0 12px;border:1px solid var(--brass);border-radius:12px}
 .pos-info{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.15}
 .pos-info span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -206,6 +207,23 @@ legend{font-weight:700;font-size:1rem;padding:0;margin-bottom:4px}
 }
 @media (max-height:640px){ .tfs button{min-height:28px} .play{min-height:44px} button{min-height:40px} .deck{gap:6px} }
 @media (prefers-reduced-motion: reduce){ .switch input,.switch input::after{transition:none} }
+
+/* Midnight Cyberpunk layer */
+body{background:#060913}
+button{background:#0F172A;border-color:rgba(0,229,255,.15)}
+.chart-wrap{border-color:rgba(0,229,255,.18);box-shadow:0 0 0 1px rgba(0,229,255,.05),0 0 24px rgba(0,229,255,.06);background:#060913}
+.tog[aria-pressed="true"]{background:rgba(0,229,255,.12);color:#00E5FF;border-color:rgba(0,229,255,.55);box-shadow:0 0 12px rgba(0,225,255,.35)}
+.tfs{background:#0F172A;border-color:rgba(0,229,255,.15)}
+.tfs button[aria-pressed="true"]{background:rgba(0,229,255,.15);color:#00E5FF;box-shadow:0 0 10px rgba(0,225,255,.35)}
+.play{box-shadow:0 0 15px rgba(0,225,255,.35)}
+.live.on{color:#00E5FF;box-shadow:0 0 10px rgba(0,229,255,.35)}
+.market .src,.sheet-head h2,legend{font-family:'Rajdhani',sans-serif;letter-spacing:.05em;text-transform:uppercase}
+.market .src{font-size:1.05rem}
+.ind-panel{background:rgba(15,23,42,.85);border-color:rgba(0,229,255,.2)}
+.agent-bar{background:#131C31;border-color:rgba(0,229,255,.3);box-shadow:0 0 12px rgba(0,225,255,.15)}
+.ag-dot.up{background:#00E5FF;box-shadow:0 0 10px #00E5FF} .ag-dot.down{background:#FF0055;box-shadow:0 0 10px #FF0055}
+dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
+.primary{color:#031018;box-shadow:0 0 15px rgba(0,225,255,.35)}
 </style>
 </head>
 <body>
