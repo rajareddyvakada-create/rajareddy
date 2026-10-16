@@ -2,4 +2,6 @@ node_modules/
 client/node_modules/
 client/dist/
 server/data/*.db
+server/data/*.db-shm
+server/data/*.db-wal
 .DS_Store
