@@ -535,6 +535,79 @@ body {
 }
 .copy-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* Free Score Platforms */
+.platforms-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.platform-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  text-decoration: none;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.platform-link:hover {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  transform: translateY(-1px);
+}
+.platform-link .p-icon {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+}
+.platform-link .p-info {
+  min-width: 0;
+}
+.platform-link .p-name {
+  display: block;
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.platform-link .p-bureau {
+  display: block;
+  font-size: 10px;
+  color: var(--fg-dim);
+  font-weight: 500;
+}
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+  margin: 16px 0 8px;
+}
+.section-label:first-child { margin-top: 0; }
+.score-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--success-light);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--fg-muted);
+  margin-top: 16px;
+}
+.score-tip strong { color: var(--success); }
+
 /* Disclaimer */
 .disclaimer {
   text-align: center;
@@ -572,6 +645,72 @@ body {
     <div>
       <h1>CreditScore Recovery Coach</h1>
       <p>Your CIBIL rebuilding companion</p>
+    </div>
+  </div>
+
+  <!-- Free Score Check -->
+  <div class="card" id="freeScoreCard">
+    <h2>Don't Know Your Score? Check It Free</h2>
+    <p class="sub">These platforms let you check your credit score for free. It does NOT affect your score (soft pull only).</p>
+
+    <div class="section-label">UPI &amp; Payment Apps (Quickest)</div>
+    <div class="platforms-grid">
+      <a href="https://phonepe.com" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#5f259f">Pe</div>
+        <div class="p-info"><span class="p-name">PhonePe</span><span class="p-bureau">Experian Score</span></div>
+      </a>
+      <a href="https://pay.google.com" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:linear-gradient(135deg,#4285f4,#34a853)">G</div>
+        <div class="p-info"><span class="p-name">Google Pay</span><span class="p-bureau">CIBIL Score</span></div>
+      </a>
+      <a href="https://paytm.com" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#00baf2">Py</div>
+        <div class="p-info"><span class="p-name">Paytm</span><span class="p-bureau">CIBIL / Experian</span></div>
+      </a>
+    </div>
+
+    <div class="section-label">Credit Tracking Apps</div>
+    <div class="platforms-grid">
+      <a href="https://cred.club" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#1a1a2e">C</div>
+        <div class="p-info"><span class="p-name">CRED</span><span class="p-bureau">CIBIL Score</span></div>
+      </a>
+      <a href="https://onescore.app" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#ff6b35">1</div>
+        <div class="p-info"><span class="p-name">OneScore</span><span class="p-bureau">CIBIL + Experian</span></div>
+      </a>
+      <a href="https://www.paisabazaar.com/cibil-score/" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#2d5f9a">PB</div>
+        <div class="p-info"><span class="p-name">Paisabazaar</span><span class="p-bureau">CIBIL + Experian</span></div>
+      </a>
+      <a href="https://www.bankbazaar.com/free-credit-score.html" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#e94235">BB</div>
+        <div class="p-info"><span class="p-name">BankBazaar</span><span class="p-bureau">Experian Score</span></div>
+      </a>
+    </div>
+
+    <div class="section-label">Official Bureau Portals (1 Free Report / Year)</div>
+    <div class="platforms-grid">
+      <a href="https://www.cibil.com/freecibilscore" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#003d6a">TU</div>
+        <div class="p-info"><span class="p-name">CIBIL Official</span><span class="p-bureau">TransUnion CIBIL</span></div>
+      </a>
+      <a href="https://www.experian.in" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#d03c44">Ex</div>
+        <div class="p-info"><span class="p-name">Experian</span><span class="p-bureau">Experian India</span></div>
+      </a>
+      <a href="https://www.equifax.co.in" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#6f2c91">Eq</div>
+        <div class="p-info"><span class="p-name">Equifax</span><span class="p-bureau">Equifax India</span></div>
+      </a>
+      <a href="https://www.crifhighmark.com" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#0070ba">CH</div>
+        <div class="p-info"><span class="p-name">CRIF Highmark</span><span class="p-bureau">CRIF Score</span></div>
+      </a>
+    </div>
+
+    <div class="score-tip">
+      <strong>Tip:</strong>&nbsp;Checking your own score is a "soft inquiry" and does NOT lower it. Check once, enter it below, and get your recovery plan.
     </div>
   </div>
 
