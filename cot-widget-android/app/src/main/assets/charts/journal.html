@@ -164,6 +164,7 @@ const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } cat
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const sgn = (v, d) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d);
 const money = v => (v >= 0 ? '+' : '−') + '$' + Math.abs(v).toFixed(2);
+const px = (t, v) => isFinite(v) ? (+v).toFixed(t.precision != null ? t.precision : 2) : '—';
 const EMOS = ['Calm', 'Confident', 'FOMO', 'Fearful', 'Angry', 'Bored', 'Tired', 'Rushed'];
 let filter = 'all', open = null;
 
@@ -205,7 +206,7 @@ function review(t){
       if(a.atr && t.slDist < 0.6 * a.atr) add(2, 'tight', 'Stop-loss inside normal noise', 'Your stop was ' + (t.slDist / a.atr).toFixed(2) + '× ATR. Ordinary candle wiggles reach that far.', 'Put the stop beyond the last swing, at least about 1× ATR away, and reduce the lot size to keep the same risk.');
     }
     if(c.run != null && Math.sign(c.run) === dir && Math.abs(c.run) > 2) add(2, 'chase', 'Chased an extended move', 'Price had already run ' + Math.abs(c.run).toFixed(1) + '× ATR in your direction over the 4 candles before entry.', 'After a big push, wait for the pullback and enter on the retest.');
-    if(c.prev && c.prev.r < 0 && t.openedAt && c.prev.closedAt && t.openedAt - c.prev.closedAt < 15 * 60e3) add(3, 'revenge', 'Revenge trade', 'You re-entered ' + Math.max(1, Math.round((t.openedAt - c.prev.closedAt) / 60e3)) + ' minutes after a loss.', 'After a loss, take a 15-minute break. After 2 losses in a row, stop for the session.');
+    if(c.prev && c.prev.r < 0 && t.openedAt && c.prev.closedAt && t.openedAt - c.prev.closedAt < 15 * 60e3) add(3, 'revenge', 'Revenge trade', (m => 'You re-entered ' + m + (m === 1 ? ' minute' : ' minutes') + ' after a loss.')(Math.max(1, Math.round((t.openedAt - c.prev.closedAt) / 60e3))), 'After a loss, take a 15-minute break. After 2 losses in a row, stop for the session.');
     if(c.tradesToday >= 5) add(2, 'overtrade', 'Overtrading', 'This was trade number ' + (c.tradesToday + 1) + ' of the day.', 'Set a daily maximum (e.g. 3 trades). Quality setups don\'t come every hour.');
     if(t.mfe >= 1 && t.r < 0 && !t.trail) add(2, 'giveback', 'Let a winner turn into a loser', 'The trade was up ' + t.mfe.toFixed(1) + 'R before it reversed into a loss.', 'Turn on Auto trailing stop-loss (Settings), or move the stop to break-even at +1R.');
     if(t.mfe >= 1 && t.r < 0 && t.trail) add(1, 'giveback', 'Gave back an open profit', 'It reached +' + t.mfe.toFixed(1) + 'R, then the trail stop closed it below entry.', 'Consider taking partial profit at +1R.');
@@ -294,7 +295,7 @@ function render(){
       const n = N[t.id] || {};
       h += '<div class="detail">' + miniChart(t) +
         '<div class="verdict ' + (t.r < 0 ? 'down-t' : 'up-t') + '">' + esc(rv.verdict) + '</div>' +
-        '<div class="note">Entry ' + t.entry + ' → exit ' + t.exit + (isFinite(t.sl0) ? ' · first stop ' + t.sl0 : '') + (t.mfe != null && t.kind !== 'real' ? ' · best ' + sgn(t.mfe, 1) + 'R, worst ' + sgn(t.mae, 1) + 'R while open' : '') + '</div>' +
+        '<div class="note">Entry ' + px(t, t.entry) + ' → exit ' + px(t, t.exit) + (isFinite(t.sl0) ? ' · first stop ' + px(t, t.sl0) : '') + (t.mfe != null && t.kind !== 'real' ? ' · best ' + sgn(t.mfe, 1) + 'R, worst ' + sgn(t.mae, 1) + 'R while open' : '') + '</div>' +
         (rv.list.length ? rv.list.map(m => '<div class="mist' + (m.sev === 1 ? ' minor' : '') + '"><b>' + esc(m.title) + '</b><p>' + esc(m.why) + '</p><p class="fix">' + esc(m.fix) + '</p></div>').join('')
           : '<div class="mist good"><b>No rule broken</b><p>' + (t.r < 0 ? 'Every check passed. Even a good plan loses sometimes; the edge shows over many trades.' : 'Signal, trend, zone and timing all agreed.') + '</p></div>') +
         '<div class="lbl">How did you feel?</div><div class="emo">' + EMOS.map(e => '<button class="chip" type="button" data-emo="' + e + '" aria-pressed="' + (n.emo === e) + '">' + e + '</button>').join('') + '</div>' +
@@ -341,7 +342,7 @@ $('list').addEventListener('click', e => {
   if(e.target.closest('[data-del]')){ save('journal.manual', load('journal.manual', []).filter(x => x.id !== id)); open = null; render(); return; }
   if(e.target.closest('textarea')) return;
   open = open === id ? null : id; render();
-  if(open && window.gsap && !matchMedia('(prefers-reduced-motion: reduce)').matches){ const d = card.parentNode.querySelector('[data-id="' + CSS.escape(id) + '"] .detail'); if(d) gsap.fromTo(d.children, { autoAlpha:0, y:8 }, { autoAlpha:1, y:0, duration:.35, stagger:.05, ease:'power2.out', clearProps:'all' }); }
+  if(open && window.gsap && !matchMedia('(prefers-reduced-motion: reduce)').matches){ const d = document.querySelector('[data-id="' + CSS.escape(id) + '"] .detail'); if(d) gsap.fromTo(d.children, { autoAlpha:0, y:8 }, { autoAlpha:1, y:0, duration:.35, stagger:.05, ease:'power2.out', clearProps:'all' }); }
 });
 $('list').addEventListener('change', e => { if(e.target.matches('textarea[data-note]')){ setNote(e.target.closest('.trade').dataset.id, { text:e.target.value }); } });
 for(const b of document.querySelectorAll('#filters .chip')) b.addEventListener('click', () => {
@@ -367,6 +368,7 @@ setInterval(() => { if(!document.hidden && window.innerWidth > 0 && !document.ac
 render(); render.n = allTrades().length;
 try { if(window.gsap && !matchMedia('(prefers-reduced-motion: reduce)').matches) gsap.from('.wrap > *', { autoAlpha:0, y:12, duration:.4, stagger:.05, ease:'power2.out', clearProps:'all' }); } catch(e){}
 window.JournalTools = { review, allTrades };
+window.appBack = () => { const d = document.querySelector('dialog[open]'); if(d){ d.close(); return true; } if(open){ open = null; render(); return true; } return false; };
 })();
 </script>
 </body>

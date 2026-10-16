@@ -290,6 +290,16 @@ button:active, .tabbtn:active { transform: scale(0.97); }
 @keyframes drift2 { to { transform: translate(-14vmax, 14vmax) scale(1.15); } }
 .shell { position: relative; z-index: 1; }
 body { background: #060913; }
+.me-h { margin: 8px 2px -4px; font: 700 0.8rem 'Rajdhani', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+.avatar { width: 46px; height: 46px; flex: 0 0 46px; border-radius: 50%; display: grid; place-items: center; font: 700 1.2rem 'Rajdhani', sans-serif; color: #031018; background: var(--grad); box-shadow: 0 0 15px rgba(0,225,255,0.4); }
+.acct .broker-head b { font-size: 1.05rem; }
+.welcome { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: radial-gradient(80% 60% at 50% 20%, rgba(0,229,255,0.16), transparent 70%), rgba(6,9,19,0.94); }
+.welcome-box { width: min(380px, 100%); text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.welcome-box .mark { font-size: 1.1rem; padding: 14px 16px; border-radius: 18px; }
+.welcome h1 { margin: 6px 0 0; font-size: 2rem; }
+.welcome p { margin: 0; color: var(--muted); line-height: 1.5; }
+.welcome .btn-primary { width: 100%; min-height: 52px; border-radius: 16px; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 700; font-size: 1rem; }
+.gmark { width: 22px; height: 22px; border-radius: 50%; background: #fff; display: grid; place-items: center; font: 800 0.8rem Inter, sans-serif; color: #4285F4; }
 @media (prefers-reduced-motion: reduce) { .ambient i, .ambient::after { animation: none; } }
 </style>
 
@@ -324,9 +334,19 @@ body { background: #060913; }
 <section class="view" id="viewCharts" hidden></section>
 <section class="view" id="viewScanner" hidden></section>
 <section class="view" id="viewNews" hidden></section>
-<section class="view" id="viewBrokers" hidden>
+<section class="view" id="viewJournal" hidden></section>
+<section class="view" id="viewMe" hidden>
   <div class="alerts">
-    <h1>Brokers</h1>
+    <h1>Me</h1>
+    <div class="broker acct" id="acctCard">
+      <div class="broker-head"><span class="avatar" id="acctAvatar">?</span><div><b id="acctName">Not signed in</b><small id="acctMail">Sign in with the Google account on this phone</small></div></div>
+      <div class="broker-btns"><button type="button" class="btn-primary" id="acctSignIn">Sign in with Google</button><button type="button" class="btn-ghost" id="acctSwitch" hidden>Switch account</button><button type="button" class="btn-ghost" id="acctSignOut" hidden>Sign out</button></div>
+    </div>
+    <div class="broker" id="tvCard">
+      <div class="broker-head"><span class="broker-logo" style="background:#131722;box-shadow:0 0 12px rgba(0,229,255,.35)">TV</span><div><b>TradingView live chart</b><small>Real-time spot gold (XAUUSD) with your own TradingView account, inside the app</small></div></div>
+      <div class="broker-btns"><button type="button" class="btn-primary" id="openTv">Open TradingView</button><button type="button" class="btn-ghost" id="tvJoin">Create TradingView account</button></div>
+    </div>
+    <h2 class="me-h">Brokers</h2>
     <p class="brk-note">Sign in or open an account on your broker's own website. Your password is typed only on their page; this app never sees or stores it.</p>
     <div class="broker">
       <div class="broker-head"><span class="broker-logo" style="background:#d1202f">XM</span><div><b>XM</b><small>Forex, gold and indices · MT4 / MT5</small></div></div>
@@ -352,11 +372,8 @@ body { background: #060913; }
       <label class="row"><span>Octa login page</span><input class="url-in" id="urlOcta" type="url" placeholder="https://..."></label>
     </div>
     <p class="brk-note">How a signal reaches a trade: a BUY / SELL notification arrives the moment the candle closes, you tap Open MetaTrader 5, and place the order there. Brokers don't let outside apps place orders for you, so the last tap is yours.</p>
-  </div>
-</section>
-<section class="view" id="viewAlerts" hidden>
-  <div class="alerts">
-    <h1>Alerts</h1>
+  
+    <h2 class="me-h">Alerts</h2>
     <div class="panel">
       <h2>Notifications</h2>
       <label class="row"><span>Notify me when a verdict changes<small>For example Gold moving from Neutral to Lean bullish</small></span><span class="switch"><input type="checkbox" role="switch" id="prefNotify"></span></label>
@@ -372,8 +389,10 @@ body { background: #060913; }
       <ul class="log" id="alertLog"></ul>
     </div>
     <button type="button" class="text-btn" id="clearAlerts" hidden>Clear recent changes</button>
+  
   </div>
 </section>
+
 </main>
 <nav class="tabbar" aria-label="Sections"><div class="tabbar-inner">
   <span class="tab-ink" id="tabInk" aria-hidden="true"></span>
@@ -381,9 +400,19 @@ body { background: #060913; }
   <button type="button" class="tabbtn tab-charts" data-tab="charts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 4v16M17 4v16"/><rect x="5" y="8" width="4" height="7" rx="1"/><rect x="15" y="6" width="4" height="9" rx="1"/></svg>Charts</button>
   <button type="button" class="tabbtn tab-charts" data-tab="scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>Scanner</button>
   <button type="button" class="tabbtn tab-charts" data-tab="news"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h13v14H6a2 2 0 0 1-2-2z"/><path d="M17 9h3v8a2 2 0 0 1-2 2"/><path d="M8 9h5M8 13h5M8 16h3"/></svg>News<span class="badge-n" id="newsLive" hidden>!</span></button>
-  <button type="button" class="tabbtn" data-tab="alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>Alerts<span class="badge-n" id="alertBadge" hidden></span></button>
-  <button type="button" class="tabbtn" data-tab="brokers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10h18M5 10V20M19 10V20M9 14v3M15 14v3M2 20h20M12 3l9 5H3z"/></svg>Brokers</button>
+  <button type="button" class="tabbtn tab-charts" data-tab="journal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11l3 3v13H5z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg>Journal</button>
+  <button type="button" class="tabbtn" data-tab="me"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>Me<span class="badge-n" id="alertBadge" hidden></span></button>
 </div></nav>
+</div>
+<div class="welcome" id="welcome" hidden>
+  <div class="welcome-box">
+    <div class="mark">COT</div>
+    <h1>Welcome, trader</h1>
+    <p>Sign in with your Google account to keep your journal, alerts and settings under your name. You pick the account on this phone; no browser, no password typed here.</p>
+    <button type="button" class="btn-primary" id="wSignIn"><span class="gmark">G</span>Continue with Google</button>
+    <p style="font-size:.8rem">No Google account? Android lets you create one from the same screen (Add account).</p>
+    <button type="button" class="text-btn" id="wSkip">Not now</button>
+  </div>
 </div>
 <div class="toast" id="toast" role="status" hidden><span id="toastText"></span><button type="button" id="toastView">View</button></div>
 
@@ -878,16 +907,16 @@ function reportVerdicts(results) {
   var changes = Alerts.report(map), muted = Alerts.prefs().muted || [];
   var shown = changes.filter(function(c) { return muted.indexOf(c.ticker) < 0; });
   if (shown.length) {
-    toastTarget = "alerts";
+    toastTarget = "me";
     showToast(shown.length === 1 ? shown[0].name + ": " + shown[0].from + " → " + shown[0].to
                                  : shown.length + " verdicts changed: " + shown.map(function(c){ return c.name; }).join(", "));
   }
   updateBadge();
-  if (currentTab === "alerts") renderAlerts();
+  if (currentTab === "me") renderAlerts();
   maybeAskPermission();
 }
 
-var toastTimer = 0, toastTarget = "alerts";
+var toastTimer = 0, toastTarget = "me";
 function showToast(msg) {
   document.getElementById("toastText").textContent = msg;
   document.getElementById("toast").hidden = false;
@@ -900,7 +929,7 @@ function updateBadge() {
   var n = Alerts.list().filter(function(a){ return a.time > seen && muted.indexOf(a.ticker) < 0; }).length;
   var b = document.getElementById("alertBadge");
   b.textContent = n > 9 ? "9+" : String(n);
-  b.hidden = !n || currentTab === "alerts";
+  b.hidden = !n || currentTab === "me";
 }
 
 function maybeAskPermission() {
@@ -908,7 +937,7 @@ function maybeAskPermission() {
   var p = Alerts.prefs();
   if (p.notify && !p.permission) { lsSet("cot.alert.asked", true); Bridge.requestNotificationPermission(); }
 }
-window.onNotifPermission = function() { if (currentTab === "alerts") renderAlerts(); };
+window.onNotifPermission = function() { if (currentTab === "me") renderAlerts(); };
 
 function renderAlerts() {
   var p = Alerts.prefs(), muted = p.muted || [];
@@ -971,13 +1000,57 @@ var Motion = (function() {
   };
 })();
 
+
+/* ---------- account: the Google account picked on this phone (Android account chooser, no browser) ---------- */
+var Account = (function() {
+  function get() { try { return Bridge && Bridge.getAccount ? JSON.parse(Bridge.getAccount() || "null") : null; } catch (e) { return null; } }
+  function render() {
+    var a = get(), card = document.getElementById("acctCard");
+    if (!card) return;
+    card.hidden = !Bridge || !Bridge.getAccount;
+    document.getElementById("acctAvatar").textContent = a ? (a.name || a.email).charAt(0).toUpperCase() : "?";
+    document.getElementById("acctName").textContent = a ? (a.name || a.email.split("@")[0]) : "Not signed in";
+    document.getElementById("acctMail").textContent = a ? a.email : "Sign in with the Google account on this phone";
+    document.getElementById("acctSignIn").hidden = !!a;
+    document.getElementById("acctSwitch").hidden = !a;
+    document.getElementById("acctSignOut").hidden = !a;
+    var b = document.querySelector(".brand-sub");
+    if (a && b && !b.dataset.user) { b.dataset.user = "1"; }
+  }
+  function signIn() { if (Bridge && Bridge.signIn) Bridge.signIn(); }
+  window.onAccount = function(a) {
+    render();
+    document.getElementById("welcome").hidden = true;
+    if (a && a.email) showToast("Signed in as " + a.email);
+  };
+  function init() {
+    render();
+    if (Bridge && Bridge.getAccount && !get() && !lsGet("cot.welcome.skipped", false)) {
+      document.getElementById("welcome").hidden = false;
+      if (window.gsap) gsap.from(".welcome-box > *", { autoAlpha: 0, y: 18, duration: 0.5, stagger: 0.07, ease: "power3.out" });
+    }
+    document.getElementById("wSignIn").addEventListener("click", signIn);
+    document.getElementById("wSkip").addEventListener("click", function() { lsSet("cot.welcome.skipped", true); document.getElementById("welcome").hidden = true; });
+    document.getElementById("acctSignIn").addEventListener("click", signIn);
+    document.getElementById("acctSwitch").addEventListener("click", signIn);
+    document.getElementById("acctSignOut").addEventListener("click", function() { if (Bridge && Bridge.signOut) Bridge.signOut(); render(); showToast("Signed out"); });
+    // TradingView opens in the app's own TradingView screen
+    var tv = function(path) { if (Bridge && Bridge.openTradingView) Bridge.openTradingView(path); };
+    document.getElementById("openTv").addEventListener("click", function() { tv("chart/?symbol=OANDA:XAUUSD"); });
+    document.getElementById("tvJoin").addEventListener("click", function() { tv("pricing/?source=account_activate"); });
+    document.getElementById("tvCard").hidden = !Bridge || !Bridge.openTradingView;
+  }
+  return { render: render, init: init, get: get };
+})();
+
 /* ---------- tabs ---------- */
-var currentTab = "markets", chartsFrame = null, scannerFrame = null, newsFrame = null, goldCot = null;
+var currentTab = "markets", journalFrame = null, chartsFrame = null, scannerFrame = null, newsFrame = null, goldCot = null;
 function openTab(name, chart) {
-  if ((name === "charts" || name === "scanner" || name === "news") && !IS_APP) name = "markets";
+  if (name === "alerts" || name === "brokers") name = "me";
+  if ((name === "charts" || name === "scanner" || name === "news" || name === "journal") && !IS_APP) name = "markets";
   if (chartFull && name !== "charts" && chartsFrame) chartsFrame.contentWindow.postMessage({ type: "exitFull" }, "*");
   currentTab = name;
-  ["markets", "charts", "scanner", "news", "alerts", "brokers"].forEach(function(t) {
+  ["markets", "charts", "scanner", "news", "journal", "me"].forEach(function(t) {
     document.getElementById("view" + t.charAt(0).toUpperCase() + t.slice(1)).hidden = t !== name;
   });
   document.querySelectorAll(".tabbtn").forEach(function(b) {
@@ -999,8 +1072,14 @@ function openTab(name, chart) {
     scannerFrame.src = "charts/scanner.html";
     document.getElementById("viewScanner").appendChild(scannerFrame);
   }
+  if (name === "journal" && !journalFrame) {
+    journalFrame = document.createElement("iframe");
+    journalFrame.title = "Journal";
+    journalFrame.src = "charts/journal.html";
+    document.getElementById("viewJournal").appendChild(journalFrame);
+  }
   if (name === "news") { ensureNewsFrame(); document.getElementById("newsLive").hidden = true; }
-  if (name === "alerts") { lsSet("cot.alert.seen", Date.now()); renderAlerts(); }
+  if (name === "me") { lsSet("cot.alert.seen", Date.now()); renderAlerts(); Account.render(); }
   updateBadge();
   if (name === "markets") goTo(currentIdx, true);
   Motion.view(document.getElementById("view" + name.charAt(0).toUpperCase() + name.slice(1)));
@@ -1031,6 +1110,9 @@ window.appBack = function() {
   if (!document.getElementById("sheet").hidden) { closeSheet(); return true; }
   if (currentTab === "charts" && chartsFrame) {
     try { if (chartsFrame.contentWindow.appBack && chartsFrame.contentWindow.appBack()) return true; } catch (e) {}
+  }
+  if (currentTab === "journal" && journalFrame) {
+    try { if (journalFrame.contentWindow.appBack && journalFrame.contentWindow.appBack()) return true; } catch (e) {}
   }
   if (currentTab === "news" && newsFrame) {
     try { if (newsFrame.contentWindow.appBack && newsFrame.contentWindow.appBack()) return true; } catch (e) {}
@@ -1098,6 +1180,7 @@ window.appBack = function() {
     if (d.type === "chartFull") setChartFull(!!d.on);
     if (d.type === "openTab" && /^(markets|scanner|news|alerts|brokers|charts)$/.test(d.tab || "")) openTab(d.tab);
     if (d.type === "openMt5" && Bridge && Bridge.openMt5) Bridge.openMt5();
+    if (d.type === "openTv" && Bridge && Bridge.openTradingView) Bridge.openTradingView("chart/?symbol=" + encodeURIComponent(d.symbol || "OANDA:XAUUSD"));
     if (d.type === "agentTrade" && d.title) {
       if (Bridge && Bridge.notifySignal) Bridge.notifySignal(String(d.title), String(d.body || ""));
       toastTarget = "charts";
@@ -1135,6 +1218,7 @@ window.appBack = function() {
   renderStored();
   loadData();
   if (IS_APP) setTimeout(ensureNewsFrame, 3000);
+  Account.init();
   setTimeout(function() { Motion.ink(document.querySelector('.tabbtn[aria-current="page"]')); }, 60);
   window.addEventListener("resize", function() { Motion.ink(document.querySelector('.tabbtn[aria-current="page"]')); });
 })();

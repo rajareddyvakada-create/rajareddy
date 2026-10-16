@@ -15,6 +15,10 @@ final class AppBridge {
         void openMt5();
 
         void setLandscape(boolean on);
+
+        void signIn();
+
+        void openTradingView(String path);
     }
 
     private final Context ctx;
@@ -114,5 +118,35 @@ final class AppBridge {
     @JavascriptInterface
     public void setLandscape(boolean on) {
         host.setLandscape(on);
+    }
+
+    /** The Google account the user picked on this phone, as {"email","name"}, or "null". */
+    @JavascriptInterface
+    public String getAccount() {
+        String email = ctx.getSharedPreferences("cot_account", Context.MODE_PRIVATE).getString("email", null);
+        if (email == null) return "null";
+        try {
+            String name = email.contains("@") ? email.substring(0, email.indexOf('@')) : email;
+            return new JSONObject().put("email", email).put("name", name).toString();
+        } catch (Exception e) {
+            return "null";
+        }
+    }
+
+    /** Shows Android's own account chooser (with "Add account" to create one). The result calls window.onAccount. */
+    @JavascriptInterface
+    public void signIn() {
+        host.signIn();
+    }
+
+    @JavascriptInterface
+    public void signOut() {
+        ctx.getSharedPreferences("cot_account", Context.MODE_PRIVATE).edit().remove("email").apply();
+    }
+
+    /** Opens TradingView inside the app, e.g. "chart/?symbol=OANDA:XAUUSD". */
+    @JavascriptInterface
+    public void openTradingView(String path) {
+        host.openTradingView(path == null ? "" : path);
     }
 }

@@ -1,6 +1,8 @@
 package com.cot.widget;
 
 import android.Manifest;
+import android.accounts.Account;
+import android.accounts.AccountManager;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
@@ -19,6 +21,8 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -34,6 +38,7 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
     private static final int REQ_NOTIFY = 7;
     private WebView webView;
     private String pendingTab;
+    private ActivityResultLauncher<Intent> accountPicker;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -129,6 +134,18 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
             }
         });
 
+        accountPicker = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+            Intent data = result.getData();
+            String email = data == null ? null : data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME);
+            if (email != null) {
+                getSharedPreferences("cot_account", MODE_PRIVATE).edit().putString("email", email).apply();
+            }
+            if (webView != null) {
+                String json = new AppBridge(this, this).getAccount();
+                webView.evaluateJavascript("window.onAccount && window.onAccount(" + json + ")", null);
+            }
+        });
+
         pendingTab = getIntent().getStringExtra("openTab");
         AlertCenter.ensureChannel(this);
         VerdictWorker.sync(this);
@@ -164,6 +181,32 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
             } catch (Exception ignored) {
             }
         });
+    }
+
+    @Override
+    public void signIn() {
+        runOnUiThread(() -> {
+            String current = getSharedPreferences("cot_account", MODE_PRIVATE).getString("email", null);
+            Account selected = current == null ? null : new Account(current, "com.google");
+            Intent pick;
+            if (Build.VERSION.SDK_INT >= 26) {
+                pick = AccountManager.newChooseAccountIntent(selected, null, new String[]{"com.google"},
+                        "Sign in to COT Sentiment", null, null, null);
+            } else {
+                pick = AccountManager.newChooseAccountIntent(selected, null, new String[]{"com.google"},
+                        true, "Sign in to COT Sentiment", null, null, null);
+            }
+            try {
+                accountPicker.launch(pick);
+            } catch (Exception e) {
+                webView.evaluateJavascript("window.onAccount && window.onAccount(null)", null);
+            }
+        });
+    }
+
+    @Override
+    public void openTradingView(String path) {
+        runOnUiThread(() -> startActivity(new Intent(this, TradingViewActivity.class).putExtra("path", path)));
     }
 
     @Override

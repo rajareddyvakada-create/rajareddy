@@ -462,7 +462,8 @@
     if(isOnline){
       if(idx<n){ lb.textContent='Replay, go live'; lb.className='live replay'; }
       else {
-        const txt={on:'Live',connecting:'Connecting…',off:'Offline, retrying',limit:'API limit reached'}[liveState]||'Live';
+        const srcNow=loadJSON('bar-replay-source',{}), delayed=srcNow.type==='yahoo' && /=F$/.test(srcNow.symbol||'');
+        const txt=liveState==='on' && delayed ? 'Live · 10 min delay ⚡' : ({on:'Live',connecting:'Connecting…',off:'Offline, retrying',limit:'API limit reached'}[liveState]||'Live');
         lb.textContent=txt; lb.className='live '+(liveState==='on'?'on':'off');
       }
     }
@@ -721,7 +722,14 @@
     try{ await loadSource({type:'yahoo',symbol:d.ticker,label:d.name||d.ticker,res:cur.type==='yahoo'&&cur.res?cur.res:'1m'}); restoreNotice(); }
     catch(err){ showNotice(err.message,'err'); }
   });
-  $('liveBadge').addEventListener('click',()=>{ if(idx<bars.length){ setPlaying(false); jumpTo(bars.length); showRecent(); save(); } });
+  // TradingView symbols with free real-time data for each market (spot / CFD feeds)
+  const TV_SYMBOL={'GC=F':'OANDA:XAUUSD','SI=F':'OANDA:XAGUSD','CL=F':'OANDA:WTICOUSD','ES=F':'OANDA:SPX500USD','NQ=F':'OANDA:NAS100USD','HG=F':'OANDA:XCUUSD','NG=F':'OANDA:NATGASUSD','BTC-USD':'BITSTAMP:BTCUSD'};
+  function openTv(){ const src=loadJSON('bar-replay-source',{}); try{ window.parent.postMessage({type:'openTv',symbol:TV_SYMBOL[src.symbol]||(src.type==='binance'?'BINANCE:'+src.symbol:'OANDA:XAUUSD')},'*'); }catch(e){} }
+  $('tvOpen').addEventListener('click',()=>{ $('dataDlg').close(); openTv(); });
+  $('liveBadge').addEventListener('click',()=>{
+    if(idx<bars.length){ setPlaying(false); jumpTo(bars.length); showRecent(); save(); return; }
+    if(/delay/.test($('liveBadge').textContent)) openTv();
+  });
 
   const scrub=$('scrub');
   scrub.addEventListener('input',()=>{

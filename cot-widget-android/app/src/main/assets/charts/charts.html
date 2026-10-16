@@ -345,6 +345,8 @@ dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
 <dialog id="dataDlg" aria-labelledby="dataTitle">
   <div class="sheet-head"><h2 id="dataTitle">Chart data</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
   <div class="sheet-body">
+    <button type="button" class="primary tv-btn" id="tvOpen">⚡ Live chart on TradingView (your account)</button>
+    <p class="hint" style="margin:6px 0 12px">Real-time spot price with your own TradingView login and indicators, inside the app. Gold futures from Yahoo below are delayed about 10 minutes.</p>
     <div role="radiogroup" aria-label="Data source">
       <label class="src-opt"><input type="radio" name="src" value="yahoo"><b>Markets (futures and Bitcoin)</b><small>Real exchange prices from Yahoo Finance for the same 8 markets as the Markets tab, or any Yahoo symbol. No key needed.</small></label>
       <label class="src-opt"><input type="radio" name="src" value="binance"><b>Binance crypto, live tick by tick</b><small>Any Binance pair, for example PAXGUSDT (gold-backed token) or BTCUSDT. Trades 24/7.</small></label>
