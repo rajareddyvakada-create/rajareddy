@@ -17,6 +17,31 @@ A fast web app that:
 
 ---
 
+## AI-Powered Input
+
+Three ways to find or add a box — whichever is fastest in the moment.
+
+### Camera Scanner
+Tap the camera icon on the search bar, point the phone at the set-top box
+label, and the app reads the serial number automatically using OCR
+(Tesseract.js, runs in the browser — no server call, no delay). It fills
+the search bar with the detected number and shows the matching box instantly.
+
+### Voice Input
+Tap the mic icon and say the box number. Speech-to-text (Web Speech API,
+built into the browser) converts it to text, searches for the box, and
+shows it. Useful when hands are full — say "STB zero zero one two three"
+and the box appears.
+
+### Smart Search
+The search bar matches as you type — by serial number, customer name, area,
+or phone number. Partial matches work: typing "123" finds every box with 123
+in its serial number.
+
+All three feed into the same search → find → activate flow.
+
+---
+
 ## Architecture Overview
 
 ```
@@ -183,6 +208,8 @@ Since activation happens through a slow web portal:
 | Database  | SQLite (start)    | Simple, no server needed      |
 | Auth      | JWT tokens        | Stateless, secure             |
 | Automation| Puppeteer         | Browser automation for portal |
+| OCR       | Tesseract.js      | Camera scan, runs in-browser  |
+| Voice     | Web Speech API    | Built-in speech-to-text       |
 | Hosting   | Self-hosted / VPS | Data stays private            |
 
 ---
