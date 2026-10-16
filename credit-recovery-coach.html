@@ -1,0 +1,1425 @@
+<title>CreditScore Recovery Coach</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: single-column financial dashboard with card sections, max-width 860px centered */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --fg: #1a1d23;
+  --fg-muted: #6b7280;
+  --fg-dim: #9ca3af;
+  --accent: #1a73e8;
+  --accent-light: #e8f0fe;
+  --success: #0d9f6e;
+  --success-light: #ecfdf5;
+  --warning: #d97706;
+  --warning-light: #fffbeb;
+  --danger: #dc2626;
+  --danger-light: #fef2f2;
+  --border: #e5e7eb;
+  --border-light: #f0f1f3;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-lg: 0 4px 14px rgba(0,0,0,0.08);
+  --ff-display: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --ff-body: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --ff-mono: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111318;
+    --surface: #1a1d24;
+    --fg: #e5e7eb;
+    --fg-muted: #9ca3af;
+    --fg-dim: #6b7280;
+    --accent: #5b9cf6;
+    --accent-light: #1e2a3e;
+    --success: #34d399;
+    --success-light: #0d2818;
+    --warning: #fbbf24;
+    --warning-light: #2a1f0a;
+    --danger: #f87171;
+    --danger-light: #2a0f0f;
+    --border: #2d3039;
+    --border-light: #23262e;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3);
+    --shadow-lg: 0 4px 14px rgba(0,0,0,0.4);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111318;
+  --surface: #1a1d24;
+  --fg: #e5e7eb;
+  --fg-muted: #9ca3af;
+  --fg-dim: #6b7280;
+  --accent: #5b9cf6;
+  --accent-light: #1e2a3e;
+  --success: #34d399;
+  --success-light: #0d2818;
+  --warning: #fbbf24;
+  --warning-light: #2a1f0a;
+  --danger: #f87171;
+  --danger-light: #2a0f0f;
+  --border: #2d3039;
+  --border-light: #23262e;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-lg: 0 4px 14px rgba(0,0,0,0.4);
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--ff-body);
+  font-size: 15px;
+  line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+.wrap {
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-bottom: 40px;
+}
+
+/* Header */
+.hdr {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 0 4px;
+}
+.hdr-icon {
+  width: 40px; height: 40px;
+  background: linear-gradient(135deg, var(--accent), var(--success));
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.hdr-icon svg { width: 22px; height: 22px; }
+.hdr h1 { font-size: 18px; font-weight: 700; margin: 0; line-height: 1.2; }
+.hdr p { font-size: 12px; color: var(--fg-dim); margin: 0; }
+
+/* Cards */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+}
+.card h2 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.card .sub {
+  font-size: 13px;
+  color: var(--fg-muted);
+  margin: 0 0 20px;
+}
+
+/* Form grid */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 560px) {
+  .form-grid { grid-template-columns: 1fr; }
+}
+.form-grid .full { grid-column: 1 / -1; }
+.field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.field input, .field select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.field input:focus, .field select:focus {
+  border-color: var(--accent);
+}
+.field input[type="range"] {
+  padding: 0;
+  border: none;
+  background: transparent;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+.field input[type="range"]::-webkit-slider-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--danger), var(--warning), #eab308, var(--success), #059669);
+}
+.field input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 3px solid var(--accent);
+  margin-top: -7px;
+  box-shadow: var(--shadow);
+}
+.score-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.score-num {
+  font-size: 28px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  transition: color 0.3s;
+}
+.score-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+
+/* Button */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--success));
+  color: #fff;
+  width: 100%;
+}
+.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+.btn-sm {
+  padding: 8px 14px;
+  font-size: 13px;
+  border-radius: 6px;
+}
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+}
+.btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+  overflow-x: auto;
+}
+.tab {
+  flex: 1;
+  min-width: 80px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+.tab:not(.active):hover { background: var(--bg); }
+
+/* Progress tracker */
+.progress-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.progress-ring {
+  position: relative;
+  width: 80px; height: 80px;
+  flex-shrink: 0;
+}
+.progress-ring svg { width: 80px; height: 80px; transform: rotate(-90deg); }
+.progress-ring .val {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.progress-ring .val strong {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.progress-ring .val small {
+  font-size: 9px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.stat { text-align: center; }
+.stat .n { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.stat .l { font-size: 10px; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* Progress bar linear */
+.pbar-wrap { margin-top: 12px; }
+.pbar-track {
+  height: 6px;
+  background: var(--border-light);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.pbar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s ease;
+}
+.pbar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--fg-dim);
+  margin-top: 4px;
+}
+
+/* Recovery steps */
+.step-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.step-card + .step-card { margin-top: 8px; }
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  background: var(--surface);
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  color: var(--fg);
+}
+.step-header:hover { background: var(--bg); }
+.step-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.badge-high { background: var(--danger-light); color: var(--danger); }
+.badge-med { background: var(--warning-light); color: var(--warning); }
+.badge-low { background: var(--accent-light); color: var(--accent); }
+.step-title { flex: 1; font-size: 14px; font-weight: 600; min-width: 0; }
+.step-chevron {
+  width: 18px; height: 18px;
+  color: var(--fg-dim);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.step-card.open .step-chevron { transform: rotate(180deg); }
+.step-body {
+  padding: 0 16px 16px;
+  display: none;
+}
+.step-card.open .step-body { display: block; }
+.step-body p { font-size: 13px; color: var(--fg-muted); margin: 0 0 12px; }
+.step-body ul { margin: 0; padding: 0; list-style: none; }
+.step-body li {
+  font-size: 13px;
+  padding: 4px 0;
+  padding-left: 20px;
+  position: relative;
+  color: var(--fg);
+}
+.step-body li::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 10px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--success);
+}
+.impact-box {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: var(--success-light);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--success);
+  font-weight: 600;
+}
+
+/* SVG Chart */
+.chart-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+.chart-wrap svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Simulator */
+.sim-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+@media (max-width: 500px) {
+  .sim-actions { grid-template-columns: 1fr; }
+}
+.sim-btn {
+  padding: 12px 14px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+.sim-btn:hover { border-color: var(--accent); }
+.sim-btn.active { border-color: var(--accent); background: var(--accent-light); }
+.sim-result {
+  margin-top: 16px;
+  padding: 20px;
+  background: linear-gradient(135deg, var(--success-light), var(--accent-light));
+  border-radius: var(--radius);
+  text-align: center;
+}
+.sim-result .big {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--success);
+  font-variant-numeric: tabular-nums;
+}
+.sim-result .label { font-size: 13px; color: var(--fg-muted); }
+.sim-result .range {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin-top: 8px;
+}
+.sim-result .range div { text-align: center; }
+.sim-result .range .v { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sim-result .range .l { font-size: 11px; color: var(--fg-dim); }
+
+/* Checklist */
+.check-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+}
+.check-item input[type="checkbox"] {
+  width: 18px; height: 18px;
+  margin-top: 1px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.check-item span { font-size: 14px; }
+.check-item.done span { text-decoration: line-through; color: var(--fg-dim); }
+.check-section {
+  border: 2px solid var(--border-light);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.check-section h3 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.check-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 560px) {
+  .check-cols { grid-template-columns: 1fr; }
+}
+
+/* Dispute */
+.dispute-form { display: flex; flex-direction: column; gap: 12px; }
+.dispute-output {
+  width: 100%;
+  min-height: 260px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--ff-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.copy-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(60px);
+  background: var(--fg);
+  color: var(--bg);
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0;
+  transition: all 0.3s ease;
+  z-index: 100;
+  pointer-events: none;
+}
+.copy-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Free Score Platforms */
+.platforms-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.platform-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  text-decoration: none;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.platform-link:hover {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  transform: translateY(-1px);
+}
+.platform-link .p-icon {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+}
+.platform-link .p-info {
+  min-width: 0;
+}
+.platform-link .p-name {
+  display: block;
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.platform-link .p-bureau {
+  display: block;
+  font-size: 10px;
+  color: var(--fg-dim);
+  font-weight: 500;
+}
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+  margin: 16px 0 8px;
+}
+.section-label:first-child { margin-top: 0; }
+.score-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--success-light);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--fg-muted);
+  margin-top: 16px;
+}
+.score-tip strong { color: var(--success); }
+
+/* Disclaimer */
+.disclaimer {
+  text-align: center;
+  font-size: 12px;
+  color: var(--fg-dim);
+  padding: 16px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--warning-light);
+}
+.disclaimer strong { color: var(--warning); }
+
+/* Sections visibility */
+.section { display: none; }
+.section.active { display: block; }
+
+/* Motivation */
+.moti {
+  text-align: center;
+  font-size: 13px;
+  color: var(--fg-muted);
+  font-style: italic;
+  padding: 8px 0;
+}
+</style>
+
+<div class="wrap">
+  <!-- Header -->
+  <div class="hdr">
+    <div class="hdr-icon">
+      <svg fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="2.2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+      </svg>
+    </div>
+    <div>
+      <h1>CreditScore Recovery Coach</h1>
+      <p>Your CIBIL rebuilding companion</p>
+    </div>
+  </div>
+
+  <!-- Free Score Check -->
+  <div class="card" id="freeScoreCard">
+    <h2>Don't Know Your Score? Check It Free</h2>
+    <p class="sub">These platforms let you check your credit score for free. It does NOT affect your score (soft pull only).</p>
+
+    <div class="section-label">UPI &amp; Payment Apps (Quickest)</div>
+    <div class="platforms-grid">
+      <a href="https://phonepe.com" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#5f259f">Pe</div>
+        <div class="p-info"><span class="p-name">PhonePe</span><span class="p-bureau">Experian Score</span></div>
+      </a>
+      <a href="https://pay.google.com" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:linear-gradient(135deg,#4285f4,#34a853)">G</div>
+        <div class="p-info"><span class="p-name">Google Pay</span><span class="p-bureau">CIBIL Score</span></div>
+      </a>
+      <a href="https://paytm.com" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#00baf2">Py</div>
+        <div class="p-info"><span class="p-name">Paytm</span><span class="p-bureau">CIBIL / Experian</span></div>
+      </a>
+    </div>
+
+    <div class="section-label">Credit Tracking Apps</div>
+    <div class="platforms-grid">
+      <a href="https://cred.club" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#1a1a2e">C</div>
+        <div class="p-info"><span class="p-name">CRED</span><span class="p-bureau">CIBIL Score</span></div>
+      </a>
+      <a href="https://onescore.app" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#ff6b35">1</div>
+        <div class="p-info"><span class="p-name">OneScore</span><span class="p-bureau">CIBIL + Experian</span></div>
+      </a>
+      <a href="https://www.paisabazaar.com/cibil-score/" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#2d5f9a">PB</div>
+        <div class="p-info"><span class="p-name">Paisabazaar</span><span class="p-bureau">CIBIL + Experian</span></div>
+      </a>
+      <a href="https://www.bankbazaar.com/free-credit-score.html" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#e94235">BB</div>
+        <div class="p-info"><span class="p-name">BankBazaar</span><span class="p-bureau">Experian Score</span></div>
+      </a>
+    </div>
+
+    <div class="section-label">Official Bureau Portals (1 Free Report / Year)</div>
+    <div class="platforms-grid">
+      <a href="https://www.cibil.com/freecibilscore" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#003d6a">TU</div>
+        <div class="p-info"><span class="p-name">CIBIL Official</span><span class="p-bureau">TransUnion CIBIL</span></div>
+      </a>
+      <a href="https://www.experian.in" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#d03c44">Ex</div>
+        <div class="p-info"><span class="p-name">Experian</span><span class="p-bureau">Experian India</span></div>
+      </a>
+      <a href="https://www.equifax.co.in" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#6f2c91">Eq</div>
+        <div class="p-info"><span class="p-name">Equifax</span><span class="p-bureau">Equifax India</span></div>
+      </a>
+      <a href="https://www.crifhighmark.com" target="_blank" rel="noopener" class="platform-link">
+        <div class="p-icon" style="background:#0070ba">CH</div>
+        <div class="p-info"><span class="p-name">CRIF Highmark</span><span class="p-bureau">CRIF Score</span></div>
+      </a>
+    </div>
+
+    <div class="score-tip">
+      <strong>Tip:</strong>&nbsp;Checking your own score is a "soft inquiry" and does NOT lower it. Check once, enter it below, and get your recovery plan.
+    </div>
+  </div>
+
+  <!-- Input Form -->
+  <div id="formSection">
+    <div class="card">
+      <h2>Tell Us About Your Situation</h2>
+      <p class="sub">We'll create a personalized recovery plan based on your inputs.</p>
+      <div class="form-grid">
+        <div class="field full">
+          <label>Current CIBIL Score</label>
+          <div class="score-display">
+            <div style="flex:1">
+              <input type="range" id="scoreSlider" min="300" max="900" value="500">
+            </div>
+            <div>
+              <span class="score-num" id="scoreNum">500</span>
+              <div class="score-label" id="scoreLabel">Fair</div>
+            </div>
+          </div>
+        </div>
+        <div class="field full">
+          <label>Primary Reason for Score Damage</label>
+          <select id="reason">
+            <option value="missed_payments">Missed EMI / Credit Card Payments</option>
+            <option value="loan_settlement">Loan Settlement (Paid Less Than Owed)</option>
+            <option value="credit_card_default">Credit Card Default / Write-off</option>
+            <option value="too_many_inquiries">Too Many Hard Inquiries</option>
+            <option value="high_utilization">High Credit Utilization (>50%)</option>
+            <option value="no_credit_history">No Credit History / Thin File</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Overdue Accounts</label>
+          <input type="number" id="overdueAccounts" min="0" max="20" value="0">
+        </div>
+        <div class="field">
+          <label>Total Outstanding (₹)</label>
+          <input type="number" id="outstandingAmt" min="0" step="1000" value="0" placeholder="e.g. 250000">
+        </div>
+        <div class="field">
+          <label>Monthly Income (₹)</label>
+          <input type="number" id="monthlyIncome" min="0" step="1000" value="0" placeholder="e.g. 50000">
+        </div>
+        <div class="field">
+          <label>Total EMI per Month (₹)</label>
+          <input type="number" id="existingEmi" min="0" step="500" value="0" placeholder="e.g. 15000">
+        </div>
+        <div class="field full">
+          <label>Credit Utilization: <strong id="utilVal">0%</strong></label>
+          <input type="range" id="utilSlider" min="0" max="100" value="0" style="background: linear-gradient(to right, var(--success), var(--warning), var(--danger));">
+        </div>
+        <div class="field full">
+          <label>Age of Oldest Credit Account (Years)</label>
+          <input type="number" id="oldestAccount" min="0" max="50" step="0.5" value="0">
+        </div>
+        <div class="full">
+          <button class="btn btn-primary" onclick="generatePlan()">Generate My Recovery Plan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="resultsSection" hidden>
+    <!-- Progress Tracker -->
+    <div class="card" id="trackerCard"></div>
+
+    <!-- Tabs -->
+    <div class="tabs" id="tabsBar"></div>
+
+    <!-- Tab Content -->
+    <div id="planTab" class="section active"></div>
+    <div id="chartTab" class="section"></div>
+    <div id="simTab" class="section"></div>
+    <div id="checkTab" class="section"></div>
+    <div id="disputeTab" class="section"></div>
+
+    <div style="text-align:center; padding-top: 8px;">
+      <button class="btn btn-outline btn-sm" onclick="resetForm()">Start Over</button>
+    </div>
+  </div>
+
+  <!-- Disclaimer -->
+  <div class="disclaimer">
+    <strong>Disclaimer:</strong> CreditScore Recovery Coach is an educational tool only.
+    Score estimates are approximations based on general CIBIL scoring patterns and are <strong>not guaranteed</strong>.
+    Consult a certified financial planner for personalized guidance.
+  </div>
+</div>
+
+<div class="copy-toast" id="toast">Copied to clipboard</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let currentPlan = null;
+let currentScore = 500;
+
+// Score helpers
+function scoreColor(s) {
+  if (s < 500) return 'var(--danger)';
+  if (s < 600) return 'var(--warning)';
+  if (s < 700) return '#eab308';
+  if (s < 750) return 'var(--success)';
+  return '#059669';
+}
+function scoreLabel(s) {
+  if (s < 500) return 'Poor';
+  if (s < 600) return 'Fair';
+  if (s < 700) return 'Good';
+  if (s < 750) return 'Very Good';
+  return 'Excellent';
+}
+
+// Live slider updates
+$('scoreSlider').oninput = function() {
+  currentScore = +this.value;
+  $('scoreNum').textContent = this.value;
+  $('scoreNum').style.color = scoreColor(+this.value);
+  $('scoreLabel').textContent = scoreLabel(+this.value);
+  $('scoreLabel').style.color = scoreColor(+this.value);
+};
+$('utilSlider').oninput = function() {
+  $('utilVal').textContent = this.value + '%';
+};
+
+// Rules Engine
+function generatePlan() {
+  const score = +$('scoreSlider').value;
+  const reason = $('reason').value;
+  const overdue = +$('overdueAccounts').value;
+  const outstanding = +$('outstandingAmt').value;
+  const income = +$('monthlyIncome').value;
+  const emi = +$('existingEmi').value;
+  const util = +$('utilSlider').value;
+  const oldest = +$('oldestAccount').value;
+  const dti = income > 0 ? (emi / income * 100) : 0;
+  const disposable = income - emi;
+
+  currentScore = score;
+  const steps = [];
+  let p = 1;
+
+  if (overdue > 0) {
+    const mo = disposable > 0 ? Math.min(disposable * 0.5, outstanding) : outstanding;
+    const months = mo > 0 ? Math.ceil(outstanding / mo) : 24;
+    steps.push({
+      priority: 'high', title: 'Clear All Overdue Accounts',
+      why: `${overdue} overdue account(s) with ₹${outstanding.toLocaleString('en-IN')} outstanding — the single biggest drag on your score.`,
+      actions: [
+        `Allocate ₹${Math.round(mo).toLocaleString('en-IN')}/month toward overdue payments`,
+        'Contact each lender and negotiate a payment plan',
+        'Prioritize the newest overdue account first',
+        'Get a "No Dues Certificate" after each payoff',
+        'Request removal of "Written Off" or "Settled" status if paying in full'
+      ],
+      impact: '+50 to +100 points over 3–6 months', months: Math.min(months, 12)
+    });
+  }
+
+  if (reason === 'loan_settlement') {
+    steps.push({
+      priority: 'high', title: 'Address Settlement Marks',
+      why: '"Settled" status stays on your report for 7 years and tells lenders you didn\'t pay in full.',
+      actions: [
+        'Contact the lender and offer to pay the remaining amount for a "Closed" status',
+        'Get a written agreement BEFORE paying that they will update CIBIL',
+        'Keep all payment receipts and correspondence',
+        'Verify the update on your CIBIL report within 45 days'
+      ],
+      impact: '+30 to +60 points once updated', months: 3
+    });
+  }
+
+  if (util > 30) {
+    steps.push({
+      priority: 'high', title: `Reduce Credit Utilization from ${util}% to Below 30%`,
+      why: `High utilization (${util}%) signals credit hunger. Lenders want below 30%, ideally below 10%.`,
+      actions: [
+        'Pay down balances before the statement date, not just the due date',
+        'Request a credit limit increase on your oldest card',
+        'Spread purchases across multiple cards',
+        'Set billing alerts at 25% and 50% of limit'
+      ],
+      impact: '+20 to +50 points within 1–2 billing cycles', months: 2
+    });
+  }
+
+  if (score < 550) {
+    steps.push({
+      priority: 'medium', title: 'Get a Secured Credit Card Against a Fixed Deposit',
+      why: 'With a score below 550, unsecured credit is nearly impossible. A secured card is your best rebuilding tool.',
+      actions: [
+        'Open a Fixed Deposit of ₹10,000–25,000 at your bank',
+        'Apply for a secured credit card against this FD',
+        'Use ONLY 10–20% of the card limit each month',
+        'Pay the FULL balance before the due date every month',
+        'Banks: SBI, ICICI, Axis, Kotak, HDFC offer secured cards'
+      ],
+      impact: '+40 to +80 points over 6–12 months', months: 12
+    });
+  }
+
+  if (reason === 'no_credit_history' || oldest === 0) {
+    steps.push({
+      priority: 'medium', title: 'Build Credit History from Scratch',
+      why: 'No history means lenders can\'t assess your risk. Start building a track record.',
+      actions: [
+        'Apply for a secured credit card (against FD)',
+        'Become an authorized user on a family member\'s card',
+        'Take a small credit-builder personal loan (₹25,000–50,000)',
+        'Keep your first credit card for life — account age matters'
+      ],
+      impact: 'Score appears in 6 months; 650+ in 12–18 months', months: 18
+    });
+  }
+
+  if (reason === 'too_many_inquiries') {
+    steps.push({
+      priority: 'medium', title: 'Stop Applying for New Credit',
+      why: 'Each hard inquiry drops your score 5–10 points. Multiple applications signal desperation.',
+      actions: [
+        'No new credit applications for at least 6 months',
+        'Check for unauthorized inquiries and dispute them',
+        'Use pre-approval tools that do soft pulls only',
+        'Submit all future loan applications within a 14-day window'
+      ],
+      impact: '+15 to +30 points as inquiries age past 6 months', months: 6
+    });
+  }
+
+  if (reason === 'credit_card_default') {
+    steps.push({
+      priority: 'high', title: 'Resolve Credit Card Defaults',
+      why: 'Defaults are the most severe negative marks. They must be resolved before any recovery.',
+      actions: [
+        'Contact the bank\'s recovery department',
+        'INSIST on "Closed" status, not "Settled"',
+        'Get everything in writing before payment',
+        'Follow up every 30 days until CIBIL is updated'
+      ],
+      impact: '+60 to +120 points over 3–6 months', months: 6
+    });
+  }
+
+  if (dti > 50) {
+    steps.push({
+      priority: 'medium', title: `Reduce Debt-to-Income Ratio (Currently ${Math.round(dti)}%)`,
+      why: `EMIs consume ${Math.round(dti)}% of income. Lenders reject above 50% DTI.`,
+      actions: [
+        'Pay off the smallest loan first for quick wins',
+        `Target DTI below 40%: reduce EMIs by ₹${Math.round(emi - income * 0.4).toLocaleString('en-IN')}`,
+        'Consider debt consolidation if 3+ active loans',
+        'Do NOT take new loans to pay old ones'
+      ],
+      impact: 'Improves loan eligibility and lowers utilization', months: 12
+    });
+  }
+
+  steps.push({
+    priority: 'low', title: 'Build Perfect Payment Habits',
+    why: 'Payment history is 35% of your CIBIL score — the single largest factor.',
+    actions: [
+      'Set up auto-debit for ALL EMIs and credit card minimums',
+      'Pay credit card bills in FULL, not just the minimum',
+      'Set phone reminders 5 days before each due date'
+    ],
+    impact: 'Prevents further damage; builds positive history', months: 1
+  });
+
+  steps.push({
+    priority: 'low', title: 'Monitor and Dispute Report Errors',
+    why: 'Up to 25% of credit reports contain errors. Free annual check at cibil.com.',
+    actions: [
+      'Download your free CIBIL report annually',
+      'Check for wrong accounts, incorrect balances, duplicates',
+      'Dispute errors through CIBIL\'s online portal'
+    ],
+    impact: '+10 to +50 points if errors are corrected', months: 2
+  });
+
+  // Projection
+  const target = 750;
+  const gap = target - score;
+  const projection = [];
+  for (let m = 0; m <= 24; m++) {
+    const t = m / 24;
+    const logistic = 1 / (1 + Math.exp(-8 * (t - 0.35)));
+    const proj = Math.min(Math.round(score + gap * logistic), target);
+    const opt = Math.min(Math.round(proj + gap * 0.08), 900);
+    const pess = Math.max(Math.round(proj - gap * 0.12), score);
+    projection.push({ month: m, projected: proj, optimistic: opt, pessimistic: pess });
+  }
+
+  let estMonths;
+  if (gap <= 50) estMonths = 3;
+  else if (gap <= 100) estMonths = 6;
+  else if (gap <= 200) estMonths = 12;
+  else if (gap <= 300) estMonths = 18;
+  else estMonths = 24;
+
+  currentPlan = { score, target, gap, steps, projection, estMonths, dti: Math.round(dti) };
+
+  $('formSection').hidden = true;
+  $('resultsSection').hidden = false;
+  renderTracker();
+  renderTabs();
+  renderPlan();
+  renderChart();
+  renderSimulator();
+  renderChecklist();
+  renderDispute();
+  switchTab('plan');
+}
+
+function resetForm() {
+  $('formSection').hidden = false;
+  $('resultsSection').hidden = true;
+}
+
+// Tracker
+function renderTracker() {
+  const p = currentPlan;
+  const pct = Math.max(0, Math.min(100, ((p.score - 300) / (p.target - 300)) * 100));
+  const col = scoreColor(p.score);
+  const urgentCount = p.steps.filter(s => s.priority === 'high').length;
+  const circumference = 2 * Math.PI * 32;
+  const offset = circumference - (pct / 100) * circumference;
+
+  let diff;
+  if (p.gap <= 50) diff = 'Light tune-up';
+  else if (p.gap <= 150) diff = 'Moderate rebuild';
+  else if (p.gap <= 300) diff = 'Significant recovery';
+  else diff = 'Major rehabilitation';
+
+  const mot = p.score < 500
+    ? "Every journey starts with a single step. Your score CAN recover."
+    : p.score < 650
+    ? "You're on the road to recovery. Stay consistent."
+    : "Great progress! A few more steps to unlock the best rates.";
+
+  $('trackerCard').innerHTML = `
+    <div class="progress-bar">
+      <div class="progress-ring">
+        <svg viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="32" fill="none" stroke="var(--border-light)" stroke-width="6"/>
+          <circle cx="40" cy="40" r="32" fill="none" stroke="${col}" stroke-width="6"
+            stroke-linecap="round" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"/>
+        </svg>
+        <div class="val">
+          <strong style="color:${col}">${p.score}</strong>
+          <small>${scoreLabel(p.score)}</small>
+        </div>
+      </div>
+      <div class="stats-row">
+        <div class="stat"><div class="n" style="color:var(--success)">${p.target}</div><div class="l">Target</div></div>
+        <div class="stat"><div class="n" style="color:var(--warning)">~${p.estMonths}</div><div class="l">Months</div></div>
+        <div class="stat"><div class="n" style="color:var(--danger)">${urgentCount}</div><div class="l">Urgent</div></div>
+      </div>
+    </div>
+    <div class="pbar-wrap">
+      <div class="pbar-track"><div class="pbar-fill" style="width:${pct}%;background:${col}"></div></div>
+      <div class="pbar-label"><span>${diff}</span><span>${Math.round(pct)}% to target</span></div>
+    </div>
+    <div class="moti">${mot}</div>
+  `;
+}
+
+// Tabs
+const TABS = [
+  { id: 'plan', label: 'Recovery Plan' },
+  { id: 'chart', label: 'Projection' },
+  { id: 'sim', label: 'Simulator' },
+  { id: 'check', label: 'Checklist' },
+  { id: 'dispute', label: 'Dispute' }
+];
+
+function renderTabs() {
+  $('tabsBar').innerHTML = TABS.map(t =>
+    `<button class="tab${t.id === 'plan' ? ' active' : ''}" onclick="switchTab('${t.id}')">${t.label}</button>`
+  ).join('');
+}
+
+function switchTab(id) {
+  TABS.forEach(t => {
+    const el = $(t.id + 'Tab');
+    el.classList.toggle('active', t.id === id);
+  });
+  document.querySelectorAll('.tab').forEach((btn, i) => {
+    btn.classList.toggle('active', TABS[i].id === id);
+  });
+}
+
+// Recovery Plan
+function renderPlan() {
+  const chevron = `<svg class="step-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>`;
+  $('planTab').innerHTML = `<div class="card">
+    <h2>Your Recovery Steps</h2>
+    <p class="sub">${currentPlan.steps.length} personalized steps based on your situation</p>
+    ${currentPlan.steps.map((s, i) => `
+      <div class="step-card${i === 0 ? ' open' : ''}" onclick="this.classList.toggle('open')">
+        <button class="step-header">
+          <span class="step-badge badge-${s.priority === 'high' ? 'high' : s.priority === 'medium' ? 'med' : 'low'}">${s.priority}</span>
+          <span class="step-title">${s.title}</span>
+          ${chevron}
+        </button>
+        <div class="step-body">
+          <p>${s.why}</p>
+          <ul>${s.actions.map(a => `<li>${a}</li>`).join('')}</ul>
+          <div class="impact-box">Expected Impact: ${s.impact}</div>
+        </div>
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+// Chart
+function renderChart() {
+  const proj = currentPlan.projection;
+  const minY = Math.max(250, currentPlan.score - 50);
+  const maxY = Math.min(900, currentPlan.target + 60);
+  const W = 780, H = 300, pad = { top: 20, right: 20, bottom: 35, left: 45 };
+  const cw = W - pad.left - pad.right;
+  const ch = H - pad.top - pad.bottom;
+
+  function x(m) { return pad.left + (m / 24) * cw; }
+  function y(v) { return pad.top + ch - ((v - minY) / (maxY - minY)) * ch; }
+
+  function polyline(key) {
+    return proj.map((p, i) => `${x(p.month)},${y(p[key])}`).join(' ');
+  }
+
+  const gridLines = [];
+  for (let v = Math.ceil(minY / 50) * 50; v <= maxY; v += 50) {
+    gridLines.push(`<line x1="${pad.left}" y1="${y(v)}" x2="${W - pad.right}" y2="${y(v)}" stroke="var(--border-light)" stroke-width="1"/>
+      <text x="${pad.left - 8}" y="${y(v) + 4}" fill="var(--fg-dim)" font-size="10" text-anchor="end" font-variant-numeric="tabular-nums">${v}</text>`);
+  }
+
+  const xLabels = [];
+  for (let m = 0; m <= 24; m += 4) {
+    xLabels.push(`<text x="${x(m)}" y="${H - 5}" fill="var(--fg-dim)" font-size="10" text-anchor="middle">${m === 0 ? 'Now' : 'M' + m}</text>`);
+  }
+
+  // Area fill
+  const areaPath = `M${proj.map((p, i) => `${x(p.month)},${y(p.projected)}`).join(' L')} L${x(24)},${y(minY)} L${x(0)},${y(minY)} Z`;
+
+  $('chartTab').innerHTML = `<div class="card">
+    <h2>Score Projection</h2>
+    <p class="sub">Estimated trajectory over 24 months</p>
+    <div class="chart-wrap">
+      <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="font-family:var(--ff-body)">
+        ${gridLines.join('')}
+        ${xLabels.join('')}
+        <!-- Target line -->
+        <line x1="${pad.left}" y1="${y(currentPlan.target)}" x2="${W - pad.right}" y2="${y(currentPlan.target)}" stroke="var(--success)" stroke-dasharray="6 4" stroke-width="1"/>
+        <text x="${W - pad.right + 4}" y="${y(currentPlan.target) + 4}" fill="var(--success)" font-size="10">${currentPlan.target}</text>
+        <!-- Current line -->
+        <line x1="${pad.left}" y1="${y(currentPlan.score)}" x2="${W - pad.right}" y2="${y(currentPlan.score)}" stroke="var(--fg-dim)" stroke-dasharray="4 4" stroke-width="1"/>
+        <!-- Area -->
+        <path d="${areaPath}" fill="var(--accent)" opacity="0.08"/>
+        <!-- Pessimistic -->
+        <polyline points="${polyline('pessimistic')}" fill="none" stroke="var(--fg-dim)" stroke-width="1" stroke-dasharray="4 4"/>
+        <!-- Optimistic -->
+        <polyline points="${polyline('optimistic')}" fill="none" stroke="var(--success)" stroke-width="1" stroke-dasharray="4 4" opacity="0.6"/>
+        <!-- Projected -->
+        <polyline points="${polyline('projected')}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Dots at start and end -->
+        <circle cx="${x(0)}" cy="${y(proj[0].projected)}" r="4" fill="var(--accent)"/>
+        <circle cx="${x(24)}" cy="${y(proj[24].projected)}" r="4" fill="var(--accent)"/>
+      </svg>
+    </div>
+    <div style="display:flex;justify-content:center;gap:24px;margin-top:8px;font-size:11px;color:var(--fg-dim)">
+      <span><span style="display:inline-block;width:16px;height:2px;background:var(--accent);vertical-align:middle;margin-right:4px"></span>Projected</span>
+      <span><span style="display:inline-block;width:16px;height:2px;background:var(--success);vertical-align:middle;margin-right:4px;opacity:0.6"></span>Optimistic</span>
+      <span><span style="display:inline-block;width:16px;height:2px;background:var(--fg-dim);vertical-align:middle;margin-right:4px"></span>Pessimistic</span>
+    </div>
+  </div>`;
+}
+
+// Simulator
+const SIM_ACTIONS = [
+  { id: 'pay_overdue', label: 'Pay off ₹50,000 overdue', min: 30, max: 70 },
+  { id: 'reduce_util', label: 'Reduce utilization to 25%', min: 20, max: 50 },
+  { id: 'dispute_error', label: 'Dispute a report error', min: 10, max: 45 },
+  { id: 'secured_card', label: 'Secured card for 6 months', min: 30, max: 60 },
+  { id: 'stop_inquiries', label: 'Stop applications for 6 months', min: 10, max: 25 },
+  { id: 'on_time_6mo', label: '6 months on-time payments', min: 20, max: 50 },
+  { id: 'settled_to_closed', label: 'Convert "Settled" to "Closed"', min: 25, max: 55 },
+  { id: 'close_overdue', label: 'Close all overdue accounts', min: 40, max: 90 }
+];
+let activeSim = 0;
+
+function renderSimulator() {
+  $('simTab').innerHTML = `<div class="card">
+    <h2>Score Impact Simulator</h2>
+    <p class="sub">See how actions could affect your credit score</p>
+    <div class="sim-actions" id="simActions">
+      ${SIM_ACTIONS.map((a, i) => `<button class="sim-btn${i === 0 ? ' active' : ''}" onclick="simSelect(${i})">${a.label}</button>`).join('')}
+    </div>
+    <div class="sim-result" id="simResult"></div>
+  </div>`;
+  simSelect(0);
+}
+
+function simSelect(i) {
+  activeSim = i;
+  document.querySelectorAll('.sim-btn').forEach((b, j) => b.classList.toggle('active', j === i));
+  const a = SIM_ACTIONS[i];
+  const lo = Math.min(currentScore + a.min, 900);
+  const hi = Math.min(currentScore + a.max, 900);
+  $('simResult').innerHTML = `
+    <div class="label">Estimated Score Impact</div>
+    <div class="big">+${a.min} to +${a.max}</div>
+    <div class="label">points</div>
+    <div class="range">
+      <div><div class="v" style="color:var(--warning)">${lo}</div><div class="l">Conservative</div></div>
+      <div style="color:var(--fg-dim);font-size:20px;padding-top:4px">→</div>
+      <div><div class="v" style="color:var(--success)">${hi}</div><div class="l">Optimistic</div></div>
+    </div>
+  `;
+}
+
+// Checklist
+const DOS = [
+  'Set up auto-debit for all EMIs and credit cards',
+  'Keep credit utilization below 30% on every card',
+  'Pay credit card bills in full, not just minimum',
+  'Check your CIBIL report at least once a year',
+  'Keep your oldest credit card active',
+  'Maintain a healthy mix of credit types',
+  'Dispute any errors on your report immediately',
+  'Build a 3-month emergency fund',
+  'Get "No Dues" certificates after every loan closure'
+];
+const DONTS = [
+  "Don't close old credit card accounts",
+  "Don't apply for multiple loans within 6 months",
+  "Don't pay only the minimum due month after month",
+  "Don't settle a loan for less than owed",
+  "Don't be a loan guarantor unless you can afford it",
+  "Don't max out any single credit card",
+  "Don't ignore collection calls — negotiate instead",
+  "Don't take a new loan to pay off an old one"
+];
+
+function loadChecked() {
+  try { return JSON.parse(localStorage.getItem('csc_checks') || '{}'); } catch { return {}; }
+}
+function saveChecked(obj) {
+  try { localStorage.setItem('csc_checks', JSON.stringify(obj)); } catch {}
+}
+
+function renderChecklist() {
+  const checked = loadChecked();
+  const allItems = DOS.concat(DONTS);
+  const total = allItems.length;
+  const done = allItems.filter((_, i) => checked['c' + i]).length;
+  const pct = Math.round(done / total * 100);
+
+  function items(arr, offset) {
+    return arr.map((text, i) => {
+      const idx = offset + i;
+      const isDone = checked['c' + idx];
+      return `<div class="check-item${isDone ? ' done' : ''}">
+        <input type="checkbox" id="chk${idx}" ${isDone ? 'checked' : ''} onchange="toggleCheck(${idx})">
+        <span>${text}</span>
+      </div>`;
+    }).join('');
+  }
+
+  const mot = pct === 100 ? "You've committed to all the right habits!" :
+    pct > 50 ? "Great progress — keep checking them off!" :
+    "Start checking items as you implement them.";
+
+  $('checkTab').innerHTML = `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2>Your Checklist</h2>
+      <span style="font-size:14px;font-weight:700;color:var(--accent)">${done}/${total}</span>
+    </div>
+    <div class="pbar-wrap" style="margin-top:4px">
+      <div class="pbar-track"><div class="pbar-fill" style="width:${pct}%;background:var(--accent)"></div></div>
+      <div class="pbar-label"><span>${mot}</span><span>${pct}%</span></div>
+    </div>
+  </div>
+  <div class="check-cols" style="margin-top:12px">
+    <div class="check-section" style="border-color:var(--success)">
+      <h3><span style="color:var(--success)">✓</span> Things to DO</h3>
+      ${items(DOS, 0)}
+    </div>
+    <div class="check-section" style="border-color:var(--danger)">
+      <h3><span style="color:var(--danger)">✗</span> Things to AVOID</h3>
+      ${items(DONTS, DOS.length)}
+    </div>
+  </div>`;
+}
+
+function toggleCheck(idx) {
+  const checked = loadChecked();
+  checked['c' + idx] = !checked['c' + idx];
+  saveChecked(checked);
+  renderChecklist();
+}
+
+// Dispute
+const ERROR_TYPES = {
+  wrong_account: { title: 'Account Does Not Belong to Me', body: d => `I have identified an account on my CIBIL report (Account No: ${d.acct || '[ACCOUNT NUMBER]'} with ${d.lender || '[LENDER NAME]'}) that does not belong to me. This is likely a case of mixed files or identity error. I request immediate investigation and removal.` },
+  incorrect_balance: { title: 'Incorrect Outstanding Balance', body: d => `The outstanding balance reported for Account No: ${d.acct || '[ACCOUNT NUMBER]'} with ${d.lender || '[LENDER NAME]'} is incorrect. I have supporting documents including my latest statement. Please correct this discrepancy.` },
+  duplicate_entry: { title: 'Duplicate Account Entry', body: d => `My CIBIL report contains a duplicate entry for Account No: ${d.acct || '[ACCOUNT NUMBER]'} with ${d.lender || '[LENDER NAME]'}, artificially inflating my outstanding debt.` },
+  closed_showing_open: { title: 'Closed Account Showing as Open', body: d => `Account No: ${d.acct || '[ACCOUNT NUMBER]'} with ${d.lender || '[LENDER NAME]'} was paid in full and closed. However, it still appears as "Open" on my CIBIL report. I have the closure certificate as proof.` },
+  wrong_dpd: { title: 'Incorrect Payment / DPD Status', body: d => `The Days Past Due status for Account No: ${d.acct || '[ACCOUNT NUMBER]'} with ${d.lender || '[LENDER NAME]'} is incorrectly reported. I made all payments on time and have bank statements as proof.` },
+  unauthorized_inquiry: { title: 'Unauthorized Hard Inquiry', body: d => `My CIBIL report shows a hard inquiry by ${d.lender || '[LENDER NAME]'} that I never authorized. This unauthorized inquiry is negatively impacting my credit score.` }
+};
+
+function renderDispute() {
+  $('disputeTab').innerHTML = `<div class="card">
+    <h2>CIBIL Dispute Letter Generator</h2>
+    <p class="sub">Auto-generate a ready-to-send dispute letter</p>
+    <div class="dispute-form">
+      <div class="field">
+        <label>Your Full Name</label>
+        <input type="text" id="dName" placeholder="As on PAN card">
+      </div>
+      <div class="field">
+        <label>PAN Number</label>
+        <input type="text" id="dPan" placeholder="ABCDE1234F">
+      </div>
+      <div class="field">
+        <label>Error Type</label>
+        <select id="dType">
+          ${Object.entries(ERROR_TYPES).map(([k, v]) => `<option value="${k}">${v.title}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Lender / Bank Name</label>
+        <input type="text" id="dLender" placeholder="e.g. HDFC Bank">
+      </div>
+      <div class="field">
+        <label>Account / Loan Number</label>
+        <input type="text" id="dAcct" placeholder="e.g. 1234567890">
+      </div>
+      <button class="btn btn-primary" onclick="genLetter()">Generate Dispute Letter</button>
+      <textarea class="dispute-output" id="dOutput" readonly placeholder="Your dispute letter will appear here..."></textarea>
+      <button class="btn btn-outline btn-sm" onclick="copyLetter()" style="align-self:flex-end">Copy to Clipboard</button>
+    </div>
+  </div>`;
+}
+
+function genLetter() {
+  const name = $('dName').value || '[YOUR NAME]';
+  const pan = $('dPan').value || '[PAN NUMBER]';
+  const type = $('dType').value;
+  const lender = $('dLender').value;
+  const acct = $('dAcct').value;
+  const tmpl = ERROR_TYPES[type];
+  const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  const letter = `Date: ${today}
+
+To,
+TransUnion CIBIL Limited
+One Indiabulls Centre, Tower 2A, Floor 19
+Senapati Bapat Marg, Elphinstone Road
+Mumbai — 400 013
+
+Subject: Dispute — ${tmpl.title}
+
+Dear Sir/Madam,
+
+I am writing to formally dispute inaccurate information on my CIBIL credit report.
+
+Name: ${name}
+PAN: ${pan}
+
+DISPUTE DETAILS:
+${tmpl.body({ lender, acct })}
+
+Under the Credit Information Companies (Regulation) Act, 2005, Section 21, CIBIL is required to investigate this dispute within 30 days and correct or delete any information that cannot be verified.
+
+I request that you investigate this matter and provide me with the results in writing.
+
+Enclosed:
+1. Copy of my CIBIL report (disputed item highlighted)
+2. Copy of PAN and Aadhaar (identity proof)
+3. Supporting bank statements / payment receipts
+
+Thanking you,
+${name}
+
+---
+Generated by CreditScore Recovery Coach (educational tool)`;
+
+  $('dOutput').value = letter;
+}
+
+function copyLetter() {
+  const text = $('dOutput').value;
+  if (!text) return;
+  try {
+    navigator.clipboard.writeText(text).then(() => showToast()).catch(() => fallbackSelect());
+  } catch { fallbackSelect(); }
+}
+function fallbackSelect() {
+  $('dOutput').select();
+  showToast('Selected — press Ctrl+C to copy');
+}
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg || 'Copied to clipboard';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+</script>
