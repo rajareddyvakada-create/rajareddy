@@ -19,6 +19,10 @@ final class AppBridge {
         void signIn();
 
         void openTradingView(String path);
+
+        void tvShow(int x, int y, int w, int h, String url);
+
+        void tvHide();
     }
 
     private final Context ctx;
@@ -148,5 +152,16 @@ final class AppBridge {
     @JavascriptInterface
     public void openTradingView(String path) {
         host.openTradingView(path == null ? "" : path);
+    }
+
+    /** Shows the TradingView chart over the given screen rectangle (CSS pixels) of the app page. */
+    @JavascriptInterface
+    public void tvShow(int x, int y, int w, int h, String url) {
+        host.tvShow(x, y, w, h, url);
+    }
+
+    @JavascriptInterface
+    public void tvHide() {
+        host.tvHide();
     }
 }

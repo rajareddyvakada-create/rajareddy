@@ -263,6 +263,7 @@
     const my=session;
     setData(res,res.name,false,st||loadJSON('bar-replay-state',null),true);
     saveJSON('bar-replay-source',src);
+    if(typeof tvMode!=='undefined' && tvMode) setTimeout(tvSync,50);
     stopStream=window.BRData.stream(src,res,
       list=>{ if(my===session) ingest(list); },
       state=>{ if(my===session){ liveState=state; refresh(); } });
@@ -725,7 +726,47 @@
   // TradingView symbols with free real-time data for each market (spot / CFD feeds)
   const TV_SYMBOL={'GC=F':'OANDA:XAUUSD','SI=F':'OANDA:XAGUSD','CL=F':'OANDA:WTICOUSD','ES=F':'OANDA:SPX500USD','NQ=F':'OANDA:NAS100USD','HG=F':'OANDA:XCUUSD','NG=F':'OANDA:NATGASUSD','BTC-USD':'BITSTAMP:BTCUSD'};
   function openTv(){ const src=loadJSON('bar-replay-source',{}); try{ window.parent.postMessage({type:'openTv',symbol:TV_SYMBOL[src.symbol]||(src.type==='binance'?'BINANCE:'+src.symbol:'OANDA:XAUUSD')},'*'); }catch(e){} }
-  $('tvOpen').addEventListener('click',()=>{ $('dataDlg').close(); openTv(); });
+  $('tvOpen').addEventListener('click',()=>{ $('dataDlg').close(); setTvMode(true); });
+
+  /* ---------- TradingView in the chart area ----------
+     In the app, the user's own TradingView chart (their login, indicators, symbol search) is laid
+     natively over .chart-wrap; elsewhere the free TradingView widget is embedded instead. */
+  const TV_INTERVAL={60:'1',300:'5',900:'15',1800:'30',3600:'60',14400:'240',86400:'D'};
+  let tvMode=!!loadJSON('tv-mode',false), tvSym='';
+  const nativeTv=()=>!!(window.AppBridge && window.AppBridge.tvShow);
+  function tvSymbol(){ const src=loadJSON('bar-replay-source',{}); return TV_SYMBOL[src.symbol]||(src.type==='binance'?'BINANCE:'+src.symbol:'OANDA:XAUUSD'); }
+  function tvUrl(){ return 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent(tvSymbol())+'&interval='+(TV_INTERVAL[tf]||'5'); }
+  function tvPost(action){
+    const r=document.querySelector('.chart-wrap').getBoundingClientRect();
+    try{ window.parent.postMessage({type:'tv',action,rect:{x:r.left,y:r.top,w:r.width,h:r.height},url:tvUrl()},'*'); }catch(e){}
+  }
+  function tvSync(){
+    const open=document.querySelector('dialog[open]');
+    if(nativeTv()){ tvPost(tvMode && !open ? 'show' : 'hide'); return; }
+    let fr=document.querySelector('.tv-frame');
+    if(!tvMode){ if(fr) fr.remove(); return; }
+    const sym=tvSymbol();
+    if(!fr || sym!==tvSym){
+      if(fr) fr.remove();
+      fr=document.createElement('iframe'); fr.className='tv-frame'; fr.title='TradingView chart';
+      fr.src='https://s.tradingview.com/widgetembed/?symbol='+encodeURIComponent(sym)+'&interval='+(TV_INTERVAL[tf]||'5')+'&theme=dark&style=1&timezone=exchange&allow_symbol_change=1&saveimage=0&toolbarbg=060913&locale=en';
+      document.querySelector('.chart-wrap').appendChild(fr);
+    }
+    tvSym=sym;
+  }
+  function setTvMode(on){
+    tvMode=!!on; saveJSON('tv-mode',tvMode);
+    document.body.classList.toggle('tv-on',tvMode);
+    $('tvBtn').setAttribute('aria-pressed',String(tvMode));
+    tvSync();
+  }
+  $('tvBtn').addEventListener('click',()=>setTvMode(!tvMode));
+  try{ new ResizeObserver(()=>{ if(tvMode && nativeTv()) tvSync(); }).observe(document.querySelector('.chart-wrap')); }catch(e){}
+  window.addEventListener('resize',()=>{ if(tvMode) setTimeout(tvSync,120); });
+  // A native view sits above the page, so step aside while any sheet is open.
+  for(const d of document.querySelectorAll('dialog')) new MutationObserver(()=>{ if(tvMode) tvSync(); }).observe(d,{attributes:true,attributeFilter:['open']});
+  window.addEventListener('message',e=>{ const d=e.data||{}; if(d.type==='tvRefresh' && tvMode) tvSync(); });
+  setTimeout(()=>setTvMode(tvMode),300);
   $('liveBadge').addEventListener('click',()=>{
     if(idx<bars.length){ setPlaying(false); jumpTo(bars.length); showRecent(); save(); return; }
     if(/delay/.test($('liveBadge').textContent)) openTv();
@@ -815,7 +856,7 @@
     updateMarkers(); renderStats(); renderTrades();
   });
   for(const d of document.querySelectorAll('dialog')) d.addEventListener('click',e=>{ if(e.target===d) d.close(); });
-  window.appBack=()=>{ const d=document.querySelector('dialog[open]'); if(d){ d.close(); return true; } if(picking){ endPick(true); return true; } if(document.body.classList.contains('wide')){ $('rotateBtn').click(); return true; } return false; };
+  window.appBack=()=>{ const d=document.querySelector('dialog[open]'); if(d){ d.close(); return true; } if(picking){ endPick(true); return true; } if(document.body.classList.contains('wide')){ $('rotateBtn').click(); return true; } if(document.body.classList.contains('tv-on')){ $('tvBtn').click(); return true; } return false; };
   for(const b of document.querySelectorAll('[data-close]')) b.addEventListener('click',()=>b.closest('dialog').close());
 
   document.addEventListener('keydown',e=>{

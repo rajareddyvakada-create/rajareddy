@@ -39,6 +39,9 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
     private WebView webView;
     private String pendingTab;
     private ActivityResultLauncher<Intent> accountPicker;
+    private FrameLayout root;
+    private WebView tvView;
+    private String tvUrl;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -59,7 +62,7 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
         bars.setAppearanceLightStatusBars(!night);
         bars.setAppearanceLightNavigationBars(!night);
 
-        FrameLayout root = new FrameLayout(this);
+        root = new FrameLayout(this);
         root.setBackgroundColor(bg);
         webView = new WebView(this);
         webView.setBackgroundColor(bg);
@@ -124,6 +127,11 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
+                if (tvView != null && tvView.getVisibility() == View.VISIBLE && tvView.canGoBack()
+                        && tvView.getUrl() != null && !tvView.getUrl().contains("/chart")) {
+                    tvView.goBack();
+                    return;
+                }
                 webView.evaluateJavascript("window.appBack ? window.appBack() : false", value -> {
                     if (!"true".equals(value)) {
                         setEnabled(false);
@@ -204,6 +212,36 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
         });
     }
 
+    /** Lays the user's TradingView chart exactly over the Charts tab's chart area (rect in CSS pixels). */
+    @Override
+    public void tvShow(int x, int y, int w, int h, String url) {
+        runOnUiThread(() -> {
+            if (tvView == null) {
+                tvView = new WebView(this);
+                tvView.setBackgroundColor(Color.parseColor("#060913"));
+                TradingViewActivity.setup(this, tvView, null);
+                root.addView(tvView);
+            }
+            float d = getResources().getDisplayMetrics().density;
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Math.round(w * d), Math.round(h * d));
+            lp.leftMargin = Math.round(x * d);
+            lp.topMargin = Math.round(y * d);
+            tvView.setLayoutParams(lp);
+            if (url != null && url.startsWith("https://") && !url.equals(tvUrl)) {
+                tvUrl = url;
+                tvView.loadUrl(url);
+            }
+            tvView.setVisibility(View.VISIBLE);
+        });
+    }
+
+    @Override
+    public void tvHide() {
+        runOnUiThread(() -> {
+            if (tvView != null) tvView.setVisibility(View.GONE);
+        });
+    }
+
     @Override
     public void openTradingView(String path) {
         runOnUiThread(() -> startActivity(new Intent(this, TradingViewActivity.class).putExtra("path", path)));
@@ -262,6 +300,7 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
 
     @Override
     protected void onPause() {
+        android.webkit.CookieManager.getInstance().flush();
         webView.onPause();
         super.onPause();
     }

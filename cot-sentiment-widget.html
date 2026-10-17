@@ -1048,6 +1048,10 @@ function openTab(name, chart) {
   if ((name === "charts" || name === "scanner" || name === "news" || name === "journal") && !IS_APP) name = "markets";
   if (chartFull && name !== "charts" && chartsFrame) chartsFrame.contentWindow.postMessage({ type: "exitFull" }, "*");
   currentTab = name;
+  if (Bridge && Bridge.tvHide) {
+    if (name === "charts" && chartsFrame) setTimeout(function() { chartsFrame.contentWindow.postMessage({ type: "tvRefresh" }, "*"); }, 480);
+    else Bridge.tvHide();
+  }
   ["markets", "charts", "scanner", "news", "journal", "me"].forEach(function(t) {
     document.getElementById("view" + t.charAt(0).toUpperCase() + t.slice(1)).hidden = t !== name;
   });
@@ -1176,6 +1180,13 @@ window.appBack = function() {
     if (d.type === "newsReady") sendGoldCot();
     // Charts tab: landscape full screen, and AI-agent actions
     if (d.type === "chartFull") setChartFull(!!d.on);
+    // Charts tab: the user's TradingView chart laid natively over the chart area
+    if (d.type === "tv" && Bridge && Bridge.tvShow) {
+      if (d.action === "show" && currentTab === "charts" && chartsFrame && d.rect) {
+        var fr = chartsFrame.getBoundingClientRect();
+        Bridge.tvShow(Math.round(fr.left + d.rect.x), Math.round(fr.top + d.rect.y), Math.round(d.rect.w), Math.round(d.rect.h), String(d.url || ""));
+      } else Bridge.tvHide();
+    }
     if (d.type === "openTab" && /^(markets|scanner|news|alerts|brokers|charts)$/.test(d.tab || "")) openTab(d.tab);
     if (d.type === "openMt5" && Bridge && Bridge.openMt5) Bridge.openMt5();
     if (d.type === "openTv" && Bridge && Bridge.openTradingView) Bridge.openTradingView("chart/?symbol=" + encodeURIComponent(d.symbol || "OANDA:XAUUSD"));

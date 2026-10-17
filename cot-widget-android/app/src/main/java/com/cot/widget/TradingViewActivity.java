@@ -1,6 +1,7 @@
 package com.cot.widget;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -35,7 +36,6 @@ public class TradingViewActivity extends AppCompatActivity {
     private static final String HOME = "https://www.tradingview.com/";
     private WebView web;
 
-    @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -83,40 +83,7 @@ public class TradingViewActivity extends AppCompatActivity {
             return WindowInsetsCompat.CONSUMED;
         });
 
-        WebSettings s = web.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setDatabaseEnabled(true);
-        s.setUseWideViewPort(true);
-        s.setLoadWithOverviewMode(true);
-        s.setSupportMultipleWindows(false);
-        s.setMediaPlaybackRequiresUserGesture(true);
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        CookieManager cookies = CookieManager.getInstance();
-        cookies.setAcceptCookie(true);
-        cookies.setAcceptThirdPartyCookies(web, true);
-
-        web.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public void onProgressChanged(WebView view, int p) {
-                progress.setProgress(p);
-                progress.setVisibility(p >= 100 ? View.INVISIBLE : View.VISIBLE);
-            }
-        });
-        web.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Uri u = request.getUrl();
-                String scheme = u.getScheme() == null ? "" : u.getScheme();
-                String host = u.getHost() == null ? "" : u.getHost();
-                if (host.endsWith("accounts.google.com") || host.endsWith("appleid.apple.com")) {
-                    explainSocialLogin(host.contains("google") ? "Google" : "Apple");
-                    return true;
-                }
-                // Everything web stays in this screen; app links (intent://, market://) are ignored.
-                return !("https".equals(scheme) || "http".equals(scheme));
-            }
-        });
+        setup(this, web, progress);
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -132,9 +99,48 @@ public class TradingViewActivity extends AppCompatActivity {
         }
     }
 
+    /** Shared by this screen and the overlay on the Charts tab: settings, cookies, in-app navigation. */
+    @SuppressLint("SetJavaScriptEnabled")
+    static void setup(Activity act, WebView web, ProgressBar progress) {
+        WebSettings s = web.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setDatabaseEnabled(true);
+        s.setUseWideViewPort(true);
+        s.setLoadWithOverviewMode(true);
+        s.setSupportMultipleWindows(false);
+        s.setMediaPlaybackRequiresUserGesture(true);
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        CookieManager cookies = CookieManager.getInstance();
+        cookies.setAcceptCookie(true);
+        cookies.setAcceptThirdPartyCookies(web, true);
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onProgressChanged(WebView view, int p) {
+                if (progress == null) return;
+                progress.setProgress(p);
+                progress.setVisibility(p >= 100 ? View.INVISIBLE : View.VISIBLE);
+            }
+        });
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                Uri u = request.getUrl();
+                String scheme = u.getScheme() == null ? "" : u.getScheme();
+                String host = u.getHost() == null ? "" : u.getHost();
+                if (host.endsWith("accounts.google.com") || host.endsWith("appleid.apple.com")) {
+                    explainSocialLogin(act, host.contains("google") ? "Google" : "Apple");
+                    return true;
+                }
+                // Everything web stays in this view; app links (intent://, market://) are ignored.
+                return !("https".equals(scheme) || "http".equals(scheme));
+            }
+        });
+    }
+
     // Google and Apple refuse sign-in inside embedded web views, so explain the email route.
-    private void explainSocialLogin(String who) {
-        new AlertDialog.Builder(this)
+    static void explainSocialLogin(Activity act, String who) {
+        new AlertDialog.Builder(act)
                 .setTitle(who + " sign-in isn't allowed here")
                 .setMessage(who + " blocks its sign-in inside apps. On TradingView, choose \"Email\" instead.\n\n"
                         + "If your TradingView account was made with " + who + ", set a password once: on TradingView tap "
