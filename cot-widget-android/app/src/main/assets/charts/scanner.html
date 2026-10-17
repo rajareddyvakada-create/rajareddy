@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scanner</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Scanner: grouped lists of which markets just printed each structure / liquidity event. */
+:root{
+  --bg:#060913; --surface:#131C31; --surface-2:#0F172A; --border:#1E293B;
+  --fg:#F8FAFC; --muted:#94A3B8; --accent:#00E5FF; --accent-2:#00B0FF;
+  --up:#00E5FF; --down:#FF0055; --flat:#FFB300;
+  --glow:0 0 0 1px rgba(0,229,255,0.06), 0 18px 40px rgba(0,0,0,.55);
+  color-scheme:dark;
+  --on-accent:#031018; --grad:linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#060913; --surface:#131C31; --surface-2:#0F172A; --border:#1E293B;
+    --fg:#F8FAFC; --muted:#94A3B8; --accent:#00E5FF; --accent-2:#00B0FF;
+    --up:#00E5FF; --down:#FF0055; --flat:#FFB300;
+    --glow:0 0 0 1px rgba(0,229,255,0.06), 0 18px 40px rgba(0,0,0,.55);
+    color-scheme:dark;
+  --on-accent:#031018; --grad:linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%);
+}
+}
+:root[data-theme="dark"]{
+  --bg:#060913; --surface:#131C31; --surface-2:#0F172A; --border:#1E293B;
+  --fg:#F8FAFC; --muted:#94A3B8; --accent:#00E5FF; --accent-2:#00B0FF;
+  --up:#00E5FF; --down:#FF0055; --flat:#FFB300;
+  --glow:0 0 0 1px rgba(0,229,255,0.06), 0 18px 40px rgba(0,0,0,.55);
+  color-scheme:dark;
+  --on-accent:#031018; --grad:linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%);
+}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'Inter',system-ui,-apple-system,Roboto,sans-serif;font-size:15px;line-height:1.4;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+.wrap{height:100%;overflow-y:auto;max-width:560px;margin:0 auto;padding:14px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:12px}
+.head{display:flex;align-items:center;gap:10px}
+.head h1{margin:0;font-size:1.35rem;font-weight:800;letter-spacing:-.01em;flex:1}
+.head small{display:block;font-size:.75rem;color:var(--muted);font-weight:500}
+.refresh{width:42px;height:42px;border-radius:14px;border:1px solid var(--border);background:var(--surface);color:var(--fg);display:grid;place-items:center;cursor:pointer}
+.refresh svg{width:19px;height:19px}
+.refresh:disabled svg{animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--border);background:var(--surface);color:var(--muted);border-radius:999px;padding:6px 12px;font:600 .78rem inherit;cursor:pointer}
+.chip[aria-pressed="true"]{color:var(--on-accent);border-color:transparent;background:var(--grad)}
+.group{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--glow);overflow:hidden}
+.group h2{margin:0;padding:12px 14px 8px;font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.group h2 .count{font:600 .72rem 'JetBrains Mono',monospace;color:var(--fg);background:var(--surface-2);border-radius:999px;padding:2px 8px;letter-spacing:0}
+.item{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;align-items:center;padding:10px 14px;border-top:1px solid var(--border)}
+.dir{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;font-weight:800;font-size:.9rem}
+.dir.up{background:color-mix(in srgb,var(--up) 16%,transparent);color:var(--up)}
+.dir.down{background:color-mix(in srgb,var(--down) 16%,transparent);color:var(--down)}
+.dir.flat{background:color-mix(in srgb,var(--flat) 16%,transparent);color:var(--flat)}
+.item b{font-size:.95rem}
+.item .what{grid-column:2;font-size:.8rem;color:var(--muted)}
+.item .when{grid-row:1/3;grid-column:3;font:500 .72rem 'JetBrains Mono',monospace;color:var(--muted);text-align:right}
+.item .go{grid-row:1/3;grid-column:3;align-self:end}
+.none{padding:10px 14px 14px;color:var(--muted);font-size:.84rem;border-top:1px solid var(--border)}
+.note{color:var(--muted);font-size:.8rem;line-height:1.5}
+.err{color:var(--down);font-size:.84rem}
+.item.tap{cursor:pointer}
+
+/* Midnight Cyberpunk layer */
+body{background:#060913}
+h1,.dh h2,.head h1{font-family:'Rajdhani',sans-serif !important;font-weight:700 !important;letter-spacing:.05em;text-transform:uppercase}
+.card,.group{background:#131C31;border:1px solid rgba(0,229,255,.15) !important}
+.chip[aria-pressed="true"],.btn.primary{box-shadow:0 0 12px rgba(0,225,255,.35)}
+.seg{background:#0F172A}
+.seg button[aria-selected="true"]{background:rgba(0,229,255,.12);color:#00E5FF;box-shadow:0 0 10px rgba(0,225,255,.3)}
+.pill.up,.side.long,.dir.up{box-shadow:0 0 10px rgba(0,229,255,.3)} .pill.down,.side.short,.dir.down{box-shadow:0 0 10px rgba(255,0,85,.3)}
+.icon-btn,.refresh,.chip,.btn{background:#0F172A;border-color:rgba(0,229,255,.15)}
+.chip[aria-pressed="true"],.btn.primary{background:var(--grad)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div style="flex:1;min-width:0"><h1>Scanner</h1><small id="stamp">Scanning 8 markets…</small></div>
+    <button class="refresh" id="refresh" type="button" aria-label="Scan again"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 4v5h-5"/></svg></button>
+  </div>
+  <div class="chips" id="filters" role="group" aria-label="Show">
+    <button class="chip" type="button" data-f="all" aria-pressed="true">All</button>
+    <button class="chip" type="button" data-f="up" aria-pressed="false">Bullish</button>
+    <button class="chip" type="button" data-f="down" aria-pressed="false">Bearish</button>
+  </div>
+  <p class="err" id="err" hidden></p>
+  <div id="groups"></div>
+  <p class="note">Only confirmed events count: a BOS needs a candle to close beyond the last swing (daily pivots of 3 bars, weekly and monthly of 2), and a sweep needs price to take the level and a candle to close back inside it. Sessions (PSH/PSL) are Asia 00–07, London 07–13 and New York 13–21 UTC. Tap a market to open its chart.</p>
+</div>
+<script src="../vendor/gsap.min.js"></script>
+<script>
+// Entrance motion shared by the tab pages (skipped with reduced motion or without GSAP)
+window.Motion={stagger(list){ try{ if(!window.gsap || matchMedia('(prefers-reduced-motion: reduce)').matches || !list || !list.length) return; gsap.fromTo(list,{autoAlpha:0,y:12},{autoAlpha:1,y:0,duration:.4,stagger:.04,ease:'power2.out',clearProps:'transform,opacity,visibility'}); }catch(e){} }};
+</script>
+<script>
+(function(){
+  'use strict';
+  const MARKETS = [['Gold','GC=F'],['Silver','SI=F'],['Crude Oil','CL=F'],['S&P 500','ES=F'],['Nasdaq','NQ=F'],['Copper','HG=F'],['Nat Gas','NG=F'],['Bitcoin','BTC-USD']];
+  const HOSTS = ['https://query1.finance.yahoo.com/v8/finance/chart/', 'https://query2.finance.yahoo.com/v8/finance/chart/'];
+  const GROUPS = [
+    ['bosD','1 Day BOS / CHoCH'], ['bosW','1 Week BOS / CHoCH'], ['bosM','1 Month BOS / CHoCH'],
+    ['eq','Equal highs / lows (untaken)'], ['sweep','Liquidity sweeps'],
+    ['pd','PDH / PDL sweeps'], ['ps','PSH / PSL sweeps'], ['pw','PWH / PWL sweeps']
+  ];
+  const CACHE = 'scanner.cache.v1';
+  const $ = id => document.getElementById(id);
+  let filter = 'all', last = null;
+
+  async function get(sym, interval, range){
+    let lastErr;
+    for(const h of HOSTS){
+      try {
+        const ctrl = new AbortController(), t = setTimeout(() => ctrl.abort(), 15000);
+        const r = await fetch(h + encodeURIComponent(sym) + '?interval=' + interval + '&range=' + range, { signal:ctrl.signal });
+        clearTimeout(t);
+        if(!r.ok) throw new Error('HTTP ' + r.status);
+        const res = (await r.json()).chart.result[0], q = res.indicators.quote[0], out = [];
+        for(let i = 0; i < res.timestamp.length; i++){
+          const o = q.open[i], hi = q.high[i], lo = q.low[i], c = q.close[i];
+          if([o, hi, lo, c].some(v => v == null)) continue;
+          out.push({ time:res.timestamp[i], open:o, high:hi, low:lo, close:c });
+        }
+        return { bars:out, off:(res.meta && res.meta.gmtoffset) || 0 };
+      } catch(e){ lastErr = e; }
+    }
+    throw lastErr;
+  }
+
+  function atr(b, n){ let s = 0, k = 0; for(let i = Math.max(1, b.length - n); i < b.length; i++){ s += Math.max(b[i].high - b[i].low, Math.abs(b[i].high - b[i - 1].close), Math.abs(b[i].low - b[i - 1].close)); k++; } return k ? s / k : 0; }
+  function group(bars, keyOf){
+    const out = [];
+    for(const b of bars){
+      const k = keyOf(b), l = out[out.length - 1];
+      if(l && l.key === k){ l.high = Math.max(l.high, b.high); l.low = Math.min(l.low, b.low); l.close = b.close; l.end = b.time; }
+      else out.push({ key:k, time:b.time, end:b.time, open:b.open, high:b.high, low:b.low, close:b.close });
+    }
+    return out;
+  }
+  // Structure breaks on closed bars: pivots of L bars each side; reports breaks within the last `recent` bars.
+  function bos(bars, L, recent){
+    let lastH = NaN, lastL = NaN, hB = true, lB = true, trend = 0, found = null;
+    for(let i = 2 * L; i < bars.length; i++){
+      const p = i - L; let isH = true, isL = true;
+      for(let j = p - L; j <= p + L; j++){ if(j === p) continue; if(bars[j].high >= bars[p].high && (j > p || bars[j].high > bars[p].high)) isH = false; if(bars[j].low <= bars[p].low && (j > p || bars[j].low < bars[p].low)) isL = false; }
+      if(isH){ lastH = bars[p].high; hB = false; }
+      if(isL){ lastL = bars[p].low; lB = false; }
+      if(!hB && bars[i].close > lastH){ found = { i, dir:1, kind:trend === -1 ? 'CHoCH' : 'BOS', level:lastH }; trend = 1; hB = true; }
+      if(!lB && bars[i].close < lastL){ found = { i, dir:-1, kind:trend === 1 ? 'CHoCH' : 'BOS', level:lastL }; trend = -1; lB = true; }
+    }
+    return found && found.i >= bars.length - recent ? found : null;
+  }
+  function pivots(bars, L){
+    const hs = [], ls = [];
+    for(let p = L; p < bars.length - L; p++){
+      let isH = true, isL = true;
+      for(let j = p - L; j <= p + L; j++){ if(j === p) continue; if(bars[j].high > bars[p].high) isH = false; if(bars[j].low < bars[p].low) isL = false; }
+      if(isH) hs.push(p); if(isL) ls.push(p);
+    }
+    return { hs, ls };
+  }
+  // A confirmed sweep: a bar takes the level and that bar (or a later one in the window) closes back inside.
+  function sweepOf(bars, from, level, side){
+    for(let i = from; i < bars.length; i++){
+      const b = bars[i];
+      if(side === 1 ? b.high > level : b.low < level){
+        if(side === 1 ? b.close < level : b.close > level) return i;
+        return -1; // broke and held: that is a breakout, not a sweep
+      }
+    }
+    return -1;
+  }
+  const fmtT = t => new Date(t * 1000).toLocaleString(undefined, { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+  const fmtD = t => new Date(t * 1000).toLocaleDateString(undefined, { day:'numeric', month:'short' });
+  const fmtP = v => v.toLocaleString(undefined, { maximumFractionDigits: v < 10 ? 4 : 2 });
+
+  function analyse(name, sym, D, H){
+    const ev = [], nowS = Date.now() / 1000;
+    // closed daily bars only (drop today's forming bar)
+    const day = b => Math.floor((b.time + D.off) / 86400);
+    let d = group(D.bars, day);
+    if(d.length && d[d.length - 1].key === Math.floor((nowS + D.off) / 86400)) d = d.slice(0, -1);
+    const w = group(d, b => Math.floor((b.key - 4) / 7)).slice(0, -1); // weeks start Monday; drop the forming week
+    const m = group(d, b => { const x = new Date(b.key * 86400000); return x.getUTCFullYear() * 12 + x.getUTCMonth(); }).slice(0, -1);
+    const add = (g, dir, what, t) => ev.push({ g, name, sym, dir, what, t });
+    const bD = bos(d, 3, 5), bW = bos(w, 2, 3), bM = bos(m, 2, 2);
+    if(bD) add('bosD', bD.dir, (bD.dir > 0 ? 'Bullish ' : 'Bearish ') + bD.kind + ' through ' + fmtP(bD.level), d[bD.i].time);
+    if(bW) add('bosW', bW.dir, (bW.dir > 0 ? 'Bullish ' : 'Bearish ') + bW.kind + ' through ' + fmtP(bW.level), w[bW.i].time);
+    if(bM) add('bosM', bM.dir, (bM.dir > 0 ? 'Bullish ' : 'Bearish ') + bM.kind + ' through ' + fmtP(bM.level), m[bM.i].time);
+
+    // equal highs / lows from daily pivots of the last 60 days that price has not taken yet
+    const rec = d.slice(-60), a = atr(d, 14), tol = 0.15 * a, pv = pivots(rec, 3);
+    const untaken = (idx, side) => { for(let j = idx + 1; j < rec.length; j++) if(side === 1 ? rec[j].high > rec[idx].high : rec[j].low < rec[idx].low) return false; return true; };
+    const hs = pv.hs.filter(i => untaken(i, 1)), ls = pv.ls.filter(i => untaken(i, -1));
+    outer: for(let x = hs.length - 1; x > 0; x--) for(let y = x - 1; y >= 0; y--) if(Math.abs(rec[hs[x]].high - rec[hs[y]].high) <= tol){ add('eq', -1, 'Equal highs at ' + fmtP(Math.max(rec[hs[x]].high, rec[hs[y]].high)) + ' · buy-side liquidity', rec[hs[x]].time); break outer; }
+    outer2: for(let x = ls.length - 1; x > 0; x--) for(let y = x - 1; y >= 0; y--) if(Math.abs(rec[ls[x]].low - rec[ls[y]].low) <= tol){ add('eq', 1, 'Equal lows at ' + fmtP(Math.min(rec[ls[x]].low, rec[ls[y]].low)) + ' · sell-side liquidity', rec[ls[x]].time); break outer2; }
+
+    // liquidity sweeps of daily swing points in the last 3 closed days
+    const all = pivots(d.slice(-40), 3), base = d.length - 40;
+    for(const side of [1, -1]){
+      const list = side === 1 ? all.hs : all.ls;
+      for(let k = list.length - 1; k >= 0; k--){
+        const p = base + list[k], lvl = side === 1 ? d[p].high : d[p].low;
+        const i = sweepOf(d, p + 4, lvl, side);
+        if(i >= d.length - 3){ add('sweep', -side, (side === 1 ? 'Buy-side sweep of ' : 'Sell-side sweep of ') + fmtP(lvl) + ', closed back ' + (side === 1 ? 'below' : 'above'), d[i].time); break; }
+      }
+    }
+
+    // intraday sweeps on closed hourly bars (the forming hour is dropped)
+    let h = H.bars.filter(b => b.time + 3600 <= nowS);
+    if(h.length && d.length >= 2){
+      const today = Math.floor((nowS + H.off) / 86400), prevDay = d[d.length - 1];
+      const todays = h.findIndex(b => Math.floor((b.time + H.off) / 86400) === today);
+      if(todays >= 0){
+        const iH = sweepOf(h, todays, prevDay.high, 1), iL = sweepOf(h, todays, prevDay.low, -1);
+        if(iH >= 0) add('pd', -1, 'PDH ' + fmtP(prevDay.high) + ' swept, closed back below', h[iH].time);
+        if(iL >= 0) add('pd', 1, 'PDL ' + fmtP(prevDay.low) + ' swept, closed back above', h[iL].time);
+      }
+      if(w.length){
+        const pw = w[w.length - 1], weekStart = h.findIndex(b => b.time > pw.end + 86400);
+        if(weekStart >= 0){
+          const iH = sweepOf(h, weekStart, pw.high, 1), iL = sweepOf(h, weekStart, pw.low, -1);
+          if(iH >= 0) add('pw', -1, 'PWH ' + fmtP(pw.high) + ' swept, closed back below', h[iH].time);
+          if(iL >= 0) add('pw', 1, 'PWL ' + fmtP(pw.low) + ' swept, closed back above', h[iL].time);
+        }
+      }
+      // sessions in UTC: Asia 0-7, London 7-13, New York 13-21
+      const sess = t => { const hr = new Date(t * 1000).getUTCHours(); return hr < 7 ? 'Asia' : hr < 13 ? 'London' : hr < 21 ? 'New York' : null; };
+      const runs = [];
+      for(let i = 0; i < h.length; i++){
+        const s = sess(h[i].time), dk = Math.floor(h[i].time / 86400), l = runs[runs.length - 1];
+        if(!s) continue;
+        if(l && l.s === s && l.dk === dk){ l.hi = Math.max(l.hi, h[i].high); l.lo = Math.min(l.lo, h[i].low); l.end = i; }
+        else runs.push({ s, dk, start:i, end:i, hi:h[i].high, lo:h[i].low });
+      }
+      if(runs.length >= 2){
+        const prev = runs[runs.length - 2], cur = runs[runs.length - 1];
+        const iH = sweepOf(h.slice(0, cur.end + 1), cur.start, prev.hi, 1), iL = sweepOf(h.slice(0, cur.end + 1), cur.start, prev.lo, -1);
+        if(iH >= 0) add('ps', -1, cur.s + ' swept ' + prev.s + ' high ' + fmtP(prev.hi) + ', closed back below', h[iH].time);
+        if(iL >= 0) add('ps', 1, cur.s + ' swept ' + prev.s + ' low ' + fmtP(prev.lo) + ', closed back above', h[iL].time);
+      }
+    }
+    return ev;
+  }
+
+  function render(){
+    const box = $('groups'); box.innerHTML = '';
+    if(!last) return;
+    for(const [g, title] of GROUPS){
+      const items = last.events.filter(e => e.g === g && (filter === 'all' || (filter === 'up' ? e.dir > 0 : e.dir < 0))).sort((a, b) => b.t - a.t);
+      const sec = document.createElement('section'); sec.className = 'group';
+      sec.innerHTML = '<h2><span></span><span class="count"></span></h2>';
+      sec.querySelector('h2 span').textContent = title;
+      sec.querySelector('.count').textContent = items.length;
+      if(!items.length){ const p = document.createElement('div'); p.className = 'none'; p.textContent = 'No symbols right now.'; sec.appendChild(p); }
+      for(const e of items){
+        const it = document.createElement('div'); it.className = 'item tap'; it.setAttribute('role', 'button'); it.tabIndex = 0;
+        it.innerHTML = '<span class="dir"></span><b></b><span class="when"></span><span class="what"></span>';
+        const dir = it.querySelector('.dir'); dir.className = 'dir ' + (e.dir > 0 ? 'up' : 'down'); dir.textContent = e.dir > 0 ? '▲' : '▼';
+        it.querySelector('b').textContent = e.name;
+        it.querySelector('.when').textContent = g === 'bosW' || g === 'bosM' || g === 'bosD' || g === 'eq' || g === 'sweep' ? fmtD(e.t) : fmtT(e.t);
+        it.querySelector('.what').textContent = e.what;
+        const open = () => window.parent.postMessage({ type:'openChart', ticker:e.sym, name:e.name }, '*');
+        it.addEventListener('click', open); it.addEventListener('keydown', ev => { if(ev.key === 'Enter') open(); });
+        sec.appendChild(it);
+      }
+      box.appendChild(sec);
+    }
+    $('stamp').textContent = 'Scanned ' + new Date(last.at).toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' }) + ' · ' + last.ok + '/8 markets';
+  }
+
+  let busy = false;
+  async function scan(){
+    if(busy) return; busy = true;
+    $('refresh').disabled = true; $('err').hidden = true;
+    const events = [], failed = [];
+    let ok = 0;
+    await Promise.all(MARKETS.map(async ([name, sym]) => {
+      try {
+        const [D, H] = await Promise.all([get(sym, '1d', '5y'), get(sym, '60m', '1mo')]);
+        events.push(...analyse(name, sym, D, H)); ok++;
+      } catch(e){ failed.push(name); }
+    }));
+    if(ok){ last = { at:Date.now(), events, ok }; try { localStorage.setItem(CACHE, JSON.stringify(last)); } catch(e){} }
+    if(failed.length){ $('err').textContent = 'Couldn\'t load ' + failed.join(', ') + '. ' + (ok ? 'Showing the rest.' : 'Check your connection and tap scan again.'); $('err').hidden = false; }
+    render();
+    Motion.stagger([...document.querySelectorAll('#groups .group')]);
+    $('refresh').disabled = false; busy = false;
+  }
+
+  for(const b of document.querySelectorAll('.chip')) b.addEventListener('click', () => {
+    filter = b.dataset.f;
+    for(const x of document.querySelectorAll('.chip')) x.setAttribute('aria-pressed', String(x === b));
+    render();
+  });
+  $('refresh').addEventListener('click', scan);
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && last && Date.now() - last.at > 15 * 60000) scan(); });
+  try { const c = JSON.parse(localStorage.getItem(CACHE)); if(c && c.events){ last = c; render(); } } catch(e){}
+  scan();
+  window.ScannerTools = { bos, sweepOf, analyse };
+})();
+</script>
+</body>
+</html>
