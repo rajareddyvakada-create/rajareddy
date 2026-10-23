@@ -103,6 +103,7 @@
     linesOn=!!on; saveJSON('lines-on',linesOn);
     $('linesBtn').setAttribute('aria-pressed',String(linesOn));
     for(const id in lineSeries) lineSeries[id].applyOptions({visible:linesOn});
+    if(typeof htfDraw==='function') htfDraw();
   }
   $('linesBtn').addEventListener('click',()=>setLines(!linesOn));
   $('linesBtn').setAttribute('aria-pressed',String(linesOn));
@@ -138,6 +139,7 @@
     if(!force && n===indN) return false;
     indN=n;
     const candles=agg.slice(0,n), markers=[], seen={}, panel=[], ctx={tf,tick:Math.pow(10,-precision)};
+    const candleTimes=new Set(agg.map(c=>c.time));
     for(const ind of IND){
       const s=indSettings(ind);
       if(!s.on) continue;
@@ -150,12 +152,15 @@
         let ser=lineSeries[ln.id];
         if(!ser) ser=lineSeries[ln.id]=chart.addLineSeries({lineWidth:ln.width||2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
         ser.applyOptions({visible:linesOn,color:ln.color||pal.brass,priceFormat:{type:'price',precision,minMove:Math.pow(10,-precision)}});
-        ser.setData(ln.data);
+        // Only points on this timeframe's candles: a stray time (e.g. a 30m gap on a 1h chart) adds an
+        // empty slot to the time scale, and the chart library then fails drawing the candle series there.
+        ser.setData(ln.data.filter(d=>candleTimes.has(d.time)));
       }
     }
     for(const id in lineSeries) if(!seen[id]){ chart.removeSeries(lineSeries[id]); delete lineSeries[id]; }
     indMarkers=markers;
-    renderPanel(panel);
+    const allRows=(typeof htfRows==='function'?htfRows():[]).concat(panel);
+    renderPanel(allRows);
     lastPanel=panel;
     announceSignal(candles);
     try{ window.dispatchEvent(new CustomEvent('chart:candle')); }catch(e){}
@@ -185,6 +190,7 @@
 
   /* ---------- replay engine ---------- */
   function rebuild(){
+    for(const id in lineSeries) lineSeries[id].setData([]); // drop the old timeframe's points before the candles change
     agg=aggregate(idx); series.setData(agg.map(b=>({time:b.time,open:b.open,high:b.high,low:b.low,close:b.close})));
     if(pos) pos.doneK=-1; // candle indexes change with the timeframe
     computeIndicators(true); updateMarkers(); refresh();
@@ -264,6 +270,7 @@
     setData(res,res.name,false,st||loadJSON('bar-replay-state',null),true);
     saveJSON('bar-replay-source',src);
     if(typeof tvMode!=='undefined' && tvMode) setTimeout(tvSync,50);
+    setTimeout(()=>htfRefresh(true),100);
     stopStream=window.BRData.stream(src,res,
       list=>{ if(my===session) ingest(list); },
       state=>{ if(my===session){ liveState=state; refresh(); } });
@@ -894,6 +901,80 @@
   }
   $('rotateBtn').addEventListener('click',()=>setWide(!wide));
   setReplay(replayOn);
+
+  /* ---------- higher-timeframe structure: last 1D / 1W / 1M BOS or CHoCH as levels on the chart ----------
+     Same rules as the Scanner: a candle closes beyond the last swing (daily pivots of 3 bars, weekly and monthly of 2).
+     CHoCH = the break goes against the previous structure; BOS = with it. */
+  let htfOn=loadJSON('htf-on',true), htf={key:'',at:0,levels:[]}, htfLines=[];
+  function htfGroup(bars,keyOf){ const out=[]; for(const b of bars){ const k=keyOf(b), l=out[out.length-1]; if(l&&l.key===k){ l.high=Math.max(l.high,b.high); l.low=Math.min(l.low,b.low); l.close=b.close; } else out.push({key:k,time:b.time,high:b.high,low:b.low,close:b.close}); } return out; }
+  function htfBos(bars,L){
+    let lastH=NaN,lastL=NaN,hB=true,lB=true,trend=0,found=null;
+    for(let i=2*L;i<bars.length;i++){
+      const p=i-L; let isH=true,isL=true;
+      for(let j=p-L;j<=p+L;j++){ if(j===p) continue; if(bars[j].high>=bars[p].high&&(j>p||bars[j].high>bars[p].high)) isH=false; if(bars[j].low<=bars[p].low&&(j>p||bars[j].low<bars[p].low)) isL=false; }
+      if(isH){ lastH=bars[p].high; hB=false; } if(isL){ lastL=bars[p].low; lB=false; }
+      if(!hB&&bars[i].close>lastH){ found={i,dir:1,kind:trend===-1?'CHoCH':'BOS',level:lastH,time:bars[i].time}; trend=1; hB=true; }
+      if(!lB&&bars[i].close<lastL){ found={i,dir:-1,kind:trend===1?'CHoCH':'BOS',level:lastL,time:bars[i].time}; trend=-1; lB=true; }
+    }
+    return found;
+  }
+  async function htfDaily(src){
+    if(src.type==='yahoo'){
+      for(const h of ['https://query1.finance.yahoo.com/v8/finance/chart/','https://query2.finance.yahoo.com/v8/finance/chart/']){
+        try{
+          const r=await fetch(h+encodeURIComponent(src.symbol)+'?interval=1d&range=5y'); if(!r.ok) continue;
+          const res=(await r.json()).chart.result[0], q=res.indicators.quote[0], off=(res.meta&&res.meta.gmtoffset)||0, out=[];
+          for(let i=0;i<res.timestamp.length;i++){ const o=q.open[i],hi=q.high[i],lo=q.low[i],c=q.close[i]; if([o,hi,lo,c].some(v=>v==null)) continue; out.push({day:Math.floor((res.timestamp[i]+off)/86400),high:hi,low:lo,close:c}); }
+          return {bars:out,today:Math.floor((Date.now()/1000+off)/86400)};
+        }catch(e){}
+      }
+      return null;
+    }
+    if(src.type==='binance'){
+      try{ const r=await fetch('https://data-api.binance.vision/api/v3/klines?symbol='+encodeURIComponent(String(src.symbol).toUpperCase().replace(/[^A-Z0-9]/g,''))+'&interval=1d&limit=1000'); if(!r.ok) return null;
+        const k=await r.json(); return {bars:k.map(x=>({day:Math.floor(x[0]/86400000),high:+x[2],low:+x[3],close:+x[4]})),today:Math.floor(Date.now()/86400000)}; }catch(e){ return null; }
+    }
+    return null;
+  }
+  async function htfRefresh(force){
+    const src=loadJSON('bar-replay-source',{}), key=(src.type||'')+'|'+(src.symbol||'');
+    if(!htfOn || !src.symbol){ htf={key,at:0,levels:[]}; htfDraw(); return; }
+    if(!force && htf.key===key && Date.now()-htf.at<30*60000){ htfDraw(); return; }
+    const D=await htfDaily(src);
+    if(!D || !D.bars.length){ htf={key,at:Date.now(),levels:[]}; htfDraw(); return; }
+    let d=htfGroup(D.bars.map(b=>({...b,time:b.day})),b=>b.day); if(d.length&&d[d.length-1].key===D.today) d=d.slice(0,-1);
+    const w=htfGroup(d,b=>Math.floor((b.key-4)/7)).slice(0,-1);
+    const m=htfGroup(d,b=>{ const x=new Date(b.key*86400000); return x.getUTCFullYear()*12+x.getUTCMonth(); }).slice(0,-1);
+    const levels=[]; const add=(tfName,f,width,style)=>{ if(f) levels.push({tf:tfName,...f,width,style}); };
+    add('1D',htfBos(d,3),1,LC.LineStyle.Dotted); add('1W',htfBos(w,2),1,LC.LineStyle.Dashed); add('1M',htfBos(m,2),2,LC.LineStyle.Solid);
+    htf={key,at:Date.now(),levels}; htfDraw();
+  }
+  function htfDraw(){
+    for(const l of htfLines) try{ series.removePriceLine(l); }catch(e){}
+    htfLines=[];
+    if(!htfOn || !linesOn) { computeIndicators(true); return; }
+    for(const v of htf.levels){
+      htfLines.push(series.createPriceLine({price:v.level,color:v.dir>0?pal.up:pal.down,lineWidth:v.width,lineStyle:v.style,axisLabelVisible:true,
+        title:v.tf+' '+v.kind+(v.dir>0?' ▲':' ▼')}));
+    }
+    computeIndicators(true);
+  }
+  function htfRows(){
+    if(!htfOn || !htf.levels.length) return [];
+    const md=t=>{ const x=new Date(t*86400000); return x.getUTCDate()+' '+MONS[x.getUTCMonth()]+(x.getUTCFullYear()!==new Date().getUTCFullYear()?' '+x.getUTCFullYear():''); };
+    return htf.levels.map(v=>({label:v.tf,tone:v.dir>0?'up':'down',text:(v.dir>0?'▲ Bullish ':'▼ Bearish ')+v.kind+' through '+v.level.toFixed(precision)+' · '+md(v.time)}));
+  }
+  // Keep levels within 3% of the price in view; farther ones stay listed in the panel.
+  series.applyOptions({autoscaleInfoProvider:orig=>{
+    const r=orig(); if(!r||!r.priceRange||!htfOn||!linesOn||!htf.levels.length) return r;
+    const last=bars[Math.min(idx,bars.length)-1]; if(!last) return r;
+    const px=last.close; let lo=r.priceRange.minValue, hi=r.priceRange.maxValue;
+    for(const v of htf.levels) if(Math.abs(v.level-px)/px<0.03){ lo=Math.min(lo,v.level); hi=Math.max(hi,v.level); }
+    return {...r,priceRange:{minValue:lo,maxValue:hi}};
+  }});
+  $('sHtf').checked=htfOn;
+  $('sHtf').addEventListener('change',function(){ htfOn=this.checked; saveJSON('htf-on',htfOn); htfRefresh(true); });
+  setInterval(()=>{ if(!document.hidden) htfRefresh(false); },5*60000);
 
   // Used by the AI agent (agent.js)
   window.ChartAPI={
