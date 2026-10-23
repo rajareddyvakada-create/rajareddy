@@ -146,6 +146,48 @@
     return () => { stopped = true; clearTimeout(timer); };
   }
 
+  /* ---------- Spot gold / silver, live (Swissquote public quotes, no key) ----------
+     Yahoo's COMEX futures are 10 minutes late. This source takes recent history from the futures,
+     shifts it to the spot price (futures − spot basis), then builds new candles from live spot
+     ticks every 2 seconds, so the chart, signals and AI agent see the same XAUUSD as the broker. */
+  const SQ = 'https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/';
+  async function sqQuote(pair){
+    const r = await fetch(SQ + pair, { cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const list = await r.json(), best = list.map(p => ({ p, s:(p.spreadProfilePrices || []).find(x => x.spreadProfile === 'prime') || (p.spreadProfilePrices || [])[0] })).find(x => x.s);
+    if(!best) throw new Error('no quote');
+    return { price:(best.s.bid + best.s.ask) / 2, ts:best.p.ts || Date.now() };
+  }
+  async function loadSpot(src){
+    const R = YRES[src.res] || YRES['1m'];
+    const [res, q] = await Promise.all([yhGet(src.fut, R.interval, R.range), sqQuote(src.symbol)]);
+    const fut = yhBars(res, R.sec);
+    if(fut.length < 2) throw new Error('No history for ' + src.label + '.');
+    const basis = fut[fut.length - 1].close - q.price;   // futures premium over spot (approximate: the futures bar is ~10 min old)
+    const dp = src.symbol.startsWith('XAG') ? 3 : 2, k = Math.pow(10, dp), r2 = v => Math.round((v - basis) * k) / k;
+    const bars = fut.map(b => ({ time:b.time, open:r2(b.open), high:r2(b.high), low:r2(b.low), close:r2(b.close), volume:b.volume }));
+    return { bars, precision:dp, name:`${src.label} · LIVE`, basis };
+  }
+  function streamSpot(src, info, onBars, onState){
+    const R = YRES[src.res] || YRES['1m'], dp = info.precision;
+    let stopped = false, timer = 0, cur = null, fails = 0;
+    async function poll(){
+      if(stopped) return;
+      try {
+        const q = await sqQuote(src.symbol);
+        if(stopped) return;
+        const sec = Math.floor(q.ts / 1000), t = toLocalWall(sec - (sec % R.sec)), px = +q.price.toFixed(dp);
+        if(cur && cur.time === t){ cur.high = Math.max(cur.high, px); cur.low = Math.min(cur.low, px); cur.close = px; }
+        else cur = { time:t, open:px, high:px, low:px, close:px, volume:0 };
+        onBars([{ ...cur }]); onState('on'); fails = 0;
+      } catch(e){ if(!stopped && ++fails >= 3) onState('off'); }
+      if(!stopped) timer = setTimeout(poll, 2000);
+    }
+    onState('connecting');
+    poll();
+    return () => { stopped = true; clearTimeout(timer); };
+  }
+
   /* ---------- Twelve Data (free API key) ---------- */
   const TD = 'https://api.twelvedata.com/time_series?';
   function tdBar(v){
@@ -206,8 +248,8 @@
     return () => { stopped = true; clearTimeout(timer); };
   }
 
-  const LOADERS = { yahoo:loadYahoo, twelve:loadTwelve, binance:loadBinance };
-  const STREAMS = { yahoo:streamYahoo, twelve:streamTwelve, binance:streamBinance };
+  const LOADERS = { yahoo:loadYahoo, twelve:loadTwelve, binance:loadBinance, spot:loadSpot };
+  const STREAMS = { yahoo:streamYahoo, twelve:streamTwelve, binance:streamBinance, spot:streamSpot };
   window.BRData = {
     load: src => (LOADERS[src.type] || loadBinance)(src),
     stream: (src, info, onBars, onState) => (STREAMS[src.type] || streamBinance)(src, info, onBars, onState)

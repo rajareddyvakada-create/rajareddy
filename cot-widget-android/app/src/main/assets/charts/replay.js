@@ -28,7 +28,14 @@
   let cfg=Object.assign({},DEFAULTS), book={trades:[],pos:null};
   let trades=book.trades, pos=null, posLines=[];
   let isOnline=false, liveState='off', session=0, stopStream=null;
-  const DEFAULT_SOURCE={type:'yahoo',symbol:'GC=F',label:'Gold',res:'1m',days:2,key:''};
+  const DEFAULT_SOURCE={type:'spot',symbol:'XAU/USD',fut:'GC=F',label:'Gold spot',res:'1m',days:2,key:''};
+  // Gold and silver open as live spot (XAUUSD / XAGUSD) instead of the 10-minute-delayed COMEX futures.
+  const SPOT={'GC=F':{symbol:'XAU/USD',label:'Gold spot'},'SI=F':{symbol:'XAG/USD',label:'Silver spot'}};
+  function liveSource(src){
+    if(window.__SNAP || !src || src.type!=='yahoo' || !SPOT[src.symbol] || src.futures) return src;
+    return {type:'spot',symbol:SPOT[src.symbol].symbol,fut:src.symbol,label:SPOT[src.symbol].label,res:src.res||'1m'};
+  }
+  let spotBasis=0;
   const toLocalWall=epoch=>epoch-new Date(epoch*1000).getTimezoneOffset()*60;
   const nowWall=()=>toLocalWall(Math.floor(Date.now()/1000));
   let pal={up:'#0E8F77',down:'#D0473B',brass:'#A8771A'};
@@ -263,7 +270,10 @@
   let loadSeq=0;
   async function loadSource(src,st){
     const req=++loadSeq;
+    src=liveSource(src);
+    if(src.type==='spot' && window.__SNAP) src={type:'yahoo',symbol:src.fut,label:src.label.replace(' spot',''),res:src.res};
     const res=await window.BRData.load(src); // keep the current chart live until the new data arrives
+    spotBasis=src.type==='spot'?res.basis||0:0;
     if(req!==loadSeq) return;
     stopLive();
     const my=session;
@@ -685,7 +695,8 @@
   });
   function openDataDialog(){
     setPlaying(false);
-    const s=Object.assign({},DEFAULT_SOURCE,loadJSON('bar-replay-source',{}));
+    let s=Object.assign({},DEFAULT_SOURCE,loadJSON('bar-replay-source',{}));
+    if(s.type==='spot') s={...s,type:'yahoo',symbol:s.fut};   // shown as Gold / Silver; loading turns them live again
     for(const r of document.querySelectorAll('input[name=src]')) r.checked=r.value===s.type;
     const known=[...$('dMarket').options].some(o=>o.value===s.symbol);
     $('dMarket').value=s.type==='yahoo' && known ? s.symbol : (s.type==='yahoo' ? 'other' : 'GC=F');
@@ -731,7 +742,7 @@
     catch(err){ showNotice(err.message,'err'); }
   });
   // TradingView symbols with free real-time data for each market (spot / CFD feeds)
-  const TV_SYMBOL={'GC=F':'OANDA:XAUUSD','SI=F':'OANDA:XAGUSD','CL=F':'OANDA:WTICOUSD','ES=F':'OANDA:SPX500USD','NQ=F':'OANDA:NAS100USD','HG=F':'OANDA:XCUUSD','NG=F':'OANDA:NATGASUSD','BTC-USD':'BITSTAMP:BTCUSD'};
+  const TV_SYMBOL={'XAU/USD':'OANDA:XAUUSD','XAG/USD':'OANDA:XAGUSD','GC=F':'OANDA:XAUUSD','SI=F':'OANDA:XAGUSD','CL=F':'OANDA:WTICOUSD','ES=F':'OANDA:SPX500USD','NQ=F':'OANDA:NAS100USD','HG=F':'OANDA:XCUUSD','NG=F':'OANDA:NATGASUSD','BTC-USD':'BITSTAMP:BTCUSD'};
   function openTv(){ const src=loadJSON('bar-replay-source',{}); try{ window.parent.postMessage({type:'openTv',symbol:TV_SYMBOL[src.symbol]||(src.type==='binance'?'BINANCE:'+src.symbol:'OANDA:XAUUSD')},'*'); }catch(e){} }
   $('tvOpen').addEventListener('click',()=>{ $('dataDlg').close(); setTvMode(true); });
 
@@ -919,6 +930,11 @@
     return found;
   }
   async function htfDaily(src){
+    if(src.type==='spot'){
+      const D=await htfDaily({type:'yahoo',symbol:src.fut});
+      if(D) D.bars=D.bars.map(b=>({...b,high:b.high-spotBasis,low:b.low-spotBasis,close:b.close-spotBasis}));
+      return D;
+    }
     if(src.type==='yahoo'){
       for(const h of ['https://query1.finance.yahoo.com/v8/finance/chart/','https://query2.finance.yahoo.com/v8/finance/chart/']){
         try{
@@ -964,12 +980,12 @@
     const md=t=>{ const x=new Date(t*86400000); return x.getUTCDate()+' '+MONS[x.getUTCMonth()]+(x.getUTCFullYear()!==new Date().getUTCFullYear()?' '+x.getUTCFullYear():''); };
     return htf.levels.map(v=>({label:v.tf,tone:v.dir>0?'up':'down',text:(v.dir>0?'▲ Bullish ':'▼ Bearish ')+v.kind+' through '+v.level.toFixed(precision)+' · '+md(v.time)}));
   }
-  // Keep levels within 3% of the price in view; farther ones stay listed in the panel.
+  // Keep levels within 1% of the price in view; farther ones stay listed in the panel.
   series.applyOptions({autoscaleInfoProvider:orig=>{
     const r=orig(); if(!r||!r.priceRange||!htfOn||!linesOn||!htf.levels.length) return r;
     const last=bars[Math.min(idx,bars.length)-1]; if(!last) return r;
     const px=last.close; let lo=r.priceRange.minValue, hi=r.priceRange.maxValue;
-    for(const v of htf.levels) if(Math.abs(v.level-px)/px<0.03){ lo=Math.min(lo,v.level); hi=Math.max(hi,v.level); }
+    for(const v of htf.levels) if(Math.abs(v.level-px)/px<0.01){ lo=Math.min(lo,v.level); hi=Math.max(hi,v.level); }
     return {...r,priceRange:{minValue:lo,maxValue:hi}};
   }});
   $('sHtf').checked=htfOn;
