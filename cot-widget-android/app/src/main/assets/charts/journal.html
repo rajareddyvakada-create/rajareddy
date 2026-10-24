@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Journal</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Journal: every practice and real trade, with a plain-words review of each loss. Tokens match the other tabs. */
+:root{
+  --bg:#060913; --surface:#131C31; --surface-2:#0F172A; --border:#1E293B;
+  --fg:#F8FAFC; --muted:#94A3B8; --accent:#00E5FF; --accent-2:#00B0FF;
+  --up:#00E5FF; --down:#FF0055; --flat:#FFB300;
+  --grad:linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%); --on-accent:#031018;
+  --glow:0 0 0 1px rgba(0,229,255,0.06), 0 18px 40px rgba(0,0,0,.55);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#060913; --surface:#131C31; --surface-2:#0F172A; --border:#1E293B;
+    --fg:#F8FAFC; --muted:#94A3B8; --accent:#00E5FF; --accent-2:#00B0FF;
+    --up:#00E5FF; --down:#FF0055; --flat:#FFB300;
+    --grad:linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%); --on-accent:#031018;
+    --glow:0 0 0 1px rgba(0,229,255,0.06), 0 18px 40px rgba(0,0,0,.55);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#060913; --surface:#131C31; --surface-2:#0F172A; --border:#1E293B;
+  --fg:#F8FAFC; --muted:#94A3B8; --accent:#00E5FF; --accent-2:#00B0FF;
+  --up:#00E5FF; --down:#FF0055; --flat:#FFB300;
+  --grad:linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%); --on-accent:#031018;
+  --glow:0 0 0 1px rgba(0,229,255,0.06), 0 18px 40px rgba(0,0,0,.55);
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'Inter',system-ui,-apple-system,Roboto,sans-serif;font-size:15px;line-height:1.45;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+.wrap{height:100%;overflow-y:auto;max-width:560px;margin:0 auto;padding:14px max(16px,env(safe-area-inset-right,0px)) 28px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:12px}
+.mono{font-family:'JetBrains Mono',monospace}
+h1{margin:0;font:600 1.45rem 'Rajdhani',sans-serif;letter-spacing:-.01em}
+.head{display:flex;align-items:center;gap:8px}
+.head small{display:block;font-size:.74rem;color:var(--muted)}
+.btn{border:1px solid var(--border);background:var(--surface);color:var(--fg);border-radius:12px;min-height:40px;padding:0 14px;font:700 .82rem inherit;cursor:pointer}
+.btn.primary{background:var(--grad);color:var(--on-accent);border-color:transparent}
+.btn.small{min-height:32px;padding:0 10px;font-size:.76rem}
+.card{background:var(--surface);border:1px solid color-mix(in srgb,var(--accent) 16%,var(--border));border-radius:18px;box-shadow:var(--glow);padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.tile{background:var(--surface-2);border-radius:12px;padding:8px}
+.tile small{display:block;font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.tile b{font:700 1rem 'JetBrains Mono',monospace}
+.up-t{color:var(--up)} .down-t{color:var(--down)} .flat-t{color:var(--flat)}
+.lbl{font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--border);background:var(--surface);color:var(--muted);border-radius:999px;padding:6px 12px;font:600 .76rem inherit;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--grad);color:var(--on-accent);border-color:transparent}
+.trade{cursor:pointer}
+.trow{display:flex;align-items:center;gap:10px}
+.side{font:800 .7rem 'JetBrains Mono',monospace;padding:4px 8px;border-radius:8px}
+.side.long{background:color-mix(in srgb,var(--up) 16%,transparent);color:var(--up)}
+.side.short{background:color-mix(in srgb,var(--down) 16%,transparent);color:var(--down)}
+.trow .what{flex:1;min-width:0}
+.trow .what b{display:block;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trow .what small{color:var(--muted);font-size:.74rem}
+.res{text-align:right;font:700 .9rem 'JetBrains Mono',monospace}
+.res small{display:block;font-size:.7rem;font-weight:500;color:var(--muted)}
+.score{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font:800 .74rem 'JetBrains Mono',monospace;border:2px solid currentColor;flex:none}
+.detail{border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:10px}
+.mini{width:100%;height:150px;display:block;background:var(--surface-2);border-radius:12px}
+.verdict{font-weight:700}
+.mist{border-left:3px solid var(--down);background:color-mix(in srgb,var(--down) 6%,var(--surface));border-radius:10px;padding:8px 10px}
+.mist.minor{border-left-color:var(--flat);background:color-mix(in srgb,var(--flat) 7%,var(--surface))}
+.mist.good{border-left-color:var(--up);background:color-mix(in srgb,var(--up) 7%,var(--surface))}
+.mist b{display:block;font-size:.88rem}
+.mist p{margin:3px 0 0;font-size:.84rem}
+.mist .fix{color:var(--fg);font-weight:600}
+.mist .fix::before{content:"Next time → ";color:var(--accent);font-weight:800}
+ul.plain{margin:0;padding-left:18px;font-size:.86rem}
+.emo{display:flex;gap:6px;flex-wrap:wrap}
+textarea,input,select{font:500 .86rem inherit;color:var(--fg);background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:8px 10px;width:100%}
+textarea{min-height:60px;resize:vertical}
+.ai{white-space:pre-wrap;font-size:.86rem;background:var(--surface-2);border-radius:12px;padding:10px}
+.empty{padding:18px;text-align:center;color:var(--muted);font-size:.88rem;border:1px dashed var(--border);border-radius:16px}
+.eq{width:100%;height:90px;display:block}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.q{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:.86rem;padding:4px 0}
+.q select{width:auto}
+.note{color:var(--muted);font-size:.78rem;margin:0}
+dialog{border:1px solid var(--border);border-radius:18px;padding:0;background:var(--surface);color:var(--fg);width:min(460px,calc(100vw - 20px));max-height:calc(100% - 32px)}
+dialog::backdrop{background:rgba(8,6,2,.55)}
+dialog[open]{display:flex;flex-direction:column}
+.dh{display:flex;justify-content:space-between;align-items:center;padding:10px 12px 10px 16px;border-bottom:1px solid var(--border)}
+.dh h2{margin:0;font:600 1.1rem 'Rajdhani',sans-serif}
+.db{padding:12px 16px 16px;overflow:auto;display:flex;flex-direction:column;gap:8px}
+.x{border:0;background:none;color:var(--fg);font-size:1.4rem;cursor:pointer}
+
+/* Midnight Cyberpunk layer */
+body{background:#060913}
+h1,.dh h2,.head h1{font-family:'Rajdhani',sans-serif !important;font-weight:700 !important;letter-spacing:.05em;text-transform:uppercase}
+.card,.group{background:#131C31;border:1px solid rgba(0,229,255,.15) !important}
+.chip[aria-pressed="true"],.btn.primary{box-shadow:0 0 12px rgba(0,225,255,.35)}
+.seg{background:#0F172A}
+.seg button[aria-selected="true"]{background:rgba(0,229,255,.12);color:#00E5FF;box-shadow:0 0 10px rgba(0,225,255,.3)}
+.pill.up,.side.long,.dir.up{box-shadow:0 0 10px rgba(0,229,255,.3)} .pill.down,.side.short,.dir.down{box-shadow:0 0 10px rgba(255,0,85,.3)}
+.icon-btn,.refresh,.chip,.btn{background:#0F172A;border-color:rgba(0,229,255,.15)}
+.chip[aria-pressed="true"],.btn.primary{background:var(--grad)}
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap">
+  <div class="head">
+    <div style="flex:1;min-width:0"><h1>Journal</h1><small id="sub">Every trade, and what each loss teaches you</small></div>
+    <button class="btn primary small" id="addBtn" type="button">+ Real trade</button>
+  </div>
+
+  <div class="card" id="stats"></div>
+  <div class="card" id="patterns"></div>
+
+  <div class="chips" id="filters" role="group" aria-label="Show">
+    <button class="chip" type="button" data-f="all" aria-pressed="true">All</button>
+    <button class="chip" type="button" data-f="loss" aria-pressed="false">Losses</button>
+    <button class="chip" type="button" data-f="win" aria-pressed="false">Wins</button>
+    <button class="chip" type="button" data-f="practice" aria-pressed="false">Practice</button>
+    <button class="chip" type="button" data-f="real" aria-pressed="false">Real (MT5)</button>
+  </div>
+  <div id="list" style="display:flex;flex-direction:column;gap:10px"></div>
+  <p class="note">Practice trades from Charts (yours and the AI agent's) are logged automatically with what the market looked like at entry. Add real MT5 trades with “+ Real trade”. The review is rule-based and works offline; with a Claude key in the AI agent settings you can also ask Claude for a deeper review.</p>
+</div>
+
+<dialog id="addDlg" aria-labelledby="addTitle">
+  <div class="dh"><h2 id="addTitle">Add a real trade</h2><button class="x" type="button" data-close aria-label="Close">×</button></div>
+  <form class="db" id="addForm">
+    <div class="grid2">
+      <label>Market<input id="mMarket" value="XAUUSD" required></label>
+      <label>Side<select id="mSide"><option value="long">Buy</option><option value="short">Sell</option></select></label>
+      <label>Entry price<input id="mEntry" type="number" step="any" inputmode="decimal" required></label>
+      <label>Exit price<input id="mExit" type="number" step="any" inputmode="decimal" required></label>
+      <label>Stop-loss<input id="mSl" type="number" step="any" inputmode="decimal" required></label>
+      <label>Result ($)<input id="mPnl" type="number" step="any" inputmode="decimal" placeholder="optional"></label>
+      <label>Opened<input id="mOpen" type="datetime-local" required></label>
+      <label>Closed<input id="mClose" type="datetime-local"></label>
+    </div>
+    <div class="lbl" style="margin-top:6px">Be honest. This is what the review uses</div>
+    <div class="q"><span>Did you wait for your setup / signal?</span><select id="qSetup"><option value="yes">Yes</option><option value="no">No</option></select></div>
+    <div class="q"><span>Was it with the higher-timeframe trend?</span><select id="qTrend"><option value="yes">Yes</option><option value="no">No</option><option value="na">Not sure</option></select></div>
+    <div class="q"><span>Within 15 min of high-impact news?</span><select id="qNews"><option value="no">No</option><option value="yes">Yes</option></select></div>
+    <div class="q"><span>Did you move or remove the stop-loss?</span><select id="qSl"><option value="no">No</option><option value="yes">Yes</option></select></div>
+    <div class="q"><span>Lot size within your risk plan?</span><select id="qSize"><option value="yes">Yes</option><option value="no">No</option></select></div>
+    <div class="q"><span>Trading to win back a loss?</span><select id="qRevenge"><option value="no">No</option><option value="yes">Yes</option></select></div>
+    <div class="q"><span>Closed early out of fear?</span><select id="qFear"><option value="no">No</option><option value="yes">Yes</option></select></div>
+    <label>Notes<textarea id="mNotes" placeholder="Why did you take it? What did you feel?"></textarea></label>
+    <button class="btn primary" type="submit">Save trade</button>
+  </form>
+</dialog>
+
+<script src="../vendor/gsap.min.js"></script>
+<script>
+(function(){
+'use strict';
+const $ = id => document.getElementById(id);
+const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch(e){ return d; } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const sgn = (v, d) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d);
+const money = v => (v >= 0 ? '+' : '−') + '$' + Math.abs(v).toFixed(2);
+const px = (t, v) => isFinite(v) ? (+v).toFixed(t.precision != null ? t.precision : 2) : '—';
+const EMOS = ['Calm', 'Confident', 'FOMO', 'Fearful', 'Angry', 'Bored', 'Tired', 'Rushed'];
+let filter = 'all', open = null;
+
+/* ---------- data ---------- */
+function allTrades(){
+  const book = load('chart.bar-replay-trades', { trades:[] });
+  const practice = (book.trades || []).map(t => ({ ...t, id:t.id || (t.file + '|' + t.entryTime + '|' + t.side), kind:'practice' }));
+  const real = load('journal.manual', []).map(t => ({ ...t, kind:'real' }));
+  return practice.concat(real).sort((a, b) => (b.closedAt || b.exitTime * 1000) - (a.closedAt || a.exitTime * 1000));
+}
+const notes = () => load('journal.notes', {});
+function setNote(id, patch){ const n = notes(); n[id] = Object.assign(n[id] || {}, patch); save('journal.notes', n); }
+
+/* ---------- the review: rules that turn a trade into mistakes and fixes ---------- */
+// sev: 3 = major rule break, 2 = mistake, 1 = minor. Each finding says what happened, why it hurts, and what to do.
+function review(t){
+  const out = [], dir = t.side === 'long' ? 1 : -1, c = t.ctx || {}, a = c.agent, L = t.r < 0, n = notes()[t.id] || {};
+  const add = (sev, key, title, why, fix) => out.push({ sev, key, title, why, fix });
+  if(t.kind === 'real'){
+    const q = t.q || {};
+    if(q.setup === 'no') add(3, 'impulse', 'No setup: an impulse trade', 'You entered without your signal. Trades without a setup have no tested edge, so the result is a coin flip minus costs.', 'Write your setup in one line before you open MT5. No setup on the chart = no trade.');
+    if(q.trend === 'no') add(2, 'trend', 'Against the higher-timeframe trend', 'Counter-trend trades need a much better entry and usually fail more often.', 'Check the 1h and 4h trend first. Trade only in that direction until you have proof counter-trend works for you.');
+    if(q.news === 'yes') add(3, 'news', 'Traded into high-impact news', 'Spreads widen and price spikes both ways, so the stop gets hit before the idea can work.', 'Be flat 15 minutes before and after red-folder news (check News → Radar).');
+    if(q.sl === 'yes') add(3, 'movedsl', 'Moved or removed the stop-loss', 'Moving the stop turns a planned small loss into an unplanned big one. This is how accounts are blown.', 'Once set, the stop only moves toward profit. If you want a wider stop, decide it before entry and size down.');
+    if(q.size === 'no') add(3, 'size', 'Lot size above your risk plan', 'Oversizing makes one normal loss feel like a disaster and breaks prop-firm daily limits.', 'Size every trade from the stop distance so a loss is at most your planned risk (e.g. 0.5–1%).');
+    if(q.revenge === 'yes') add(3, 'revenge', 'Revenge trade after a loss', 'Trading to win money back means fear and anger chose the entry, not your plan.', 'After a loss, take a 15-minute break. After 2 losses in a row, stop for the session.');
+    if(q.fear === 'yes') add(1, 'fear', 'Closed early out of fear', 'Cutting trades before the stop or target makes your average win too small to pay for your losses.', 'Set the stop and target, then step away. Let the plan decide the exit.');
+  } else {
+    if(a){
+      if(a.side && a.side !== t.side) add(2, 'trend', 'Against the chart\'s bias', 'At entry the trend, structure and signals pointed ' + (a.side === 'long' ? 'up' : 'down') + ' (agent score ' + sgn(a.total, 0) + '), but you ' + (t.side === 'long' ? 'bought' : 'sold') + '.', 'Trade in the direction of the AI bar, or wait until it turns your way.');
+      else if(!a.side && Math.abs(a.total) < 15) add(1, 'noedge', 'No clear edge at entry', 'Trend, news and positioning were mixed (score ' + sgn(a.total, 0) + '), which is where most random losses come from.', 'Skip trades when the agent says “No trade”. Waiting is a position.');
+      if(t.side === 'long' && a.rPos > 75) add(2, 'premium', 'Bought high in the range (premium)', 'Price was at ' + a.rPos + '% of its recent range, so there was more room to fall than to rise.', 'Wait for a pullback into the lower half (discount) before buying.');
+      if(t.side === 'short' && a.rPos < 25) add(2, 'discount', 'Sold low in the range (discount)', 'Price was at ' + a.rPos + '% of its recent range, so there was more room to rise than to fall.', 'Wait for a rally into the upper half (premium) before selling.');
+      const sigOk = a.sigSide && a.sigAgo != null && a.sigAgo <= 3 && (a.sigSide === 'buy') === (t.side === 'long');
+      if(!sigOk) add(2, 'nosignal', 'No signal: entered on impulse', 'There was no Ox ' + (t.side === 'long' ? 'BUY' : 'SELL') + ' signal in the last 3 candles.', 'Wait for the signal to print on a closed candle, then enter.');
+      if(a.soon && a.soon.min <= 45) add(3, 'news', 'Traded into high-impact news', a.soon.title + ' was ' + a.soon.min + ' minutes away. News spikes hit stops in both directions.', 'Be flat 15 minutes before and after FOMC, CPI, NFP and other big releases.');
+      if(a.news && Math.abs(a.news.score) >= 15 && Math.sign(a.news.score) !== dir) add(1, 'newsbias', 'Against the gold news bias', 'The news verdict was ' + a.news.bias.toLowerCase() + ' (' + sgn(a.news.score, 0) + ').', 'When news and your trade disagree, take a smaller size or skip it.');
+      if(a.cot && Math.abs(a.cot.score) >= 15 && Math.sign(a.cot.score) !== dir) add(1, 'cot', 'Against big-player positioning', 'COT was ' + a.cot.verdict.toLowerCase() + ' (' + sgn(a.cot.score, 0) + ').', 'Prefer trades on the same side as the COT verdict.');
+      if(a.atr && t.slDist < 0.6 * a.atr) add(2, 'tight', 'Stop-loss inside normal noise', 'Your stop was ' + (t.slDist / a.atr).toFixed(2) + '× ATR. Ordinary candle wiggles reach that far.', 'Put the stop beyond the last swing, at least about 1× ATR away, and reduce the lot size to keep the same risk.');
+    }
+    if(c.run != null && Math.sign(c.run) === dir && Math.abs(c.run) > 2) add(2, 'chase', 'Chased an extended move', 'Price had already run ' + Math.abs(c.run).toFixed(1) + '× ATR in your direction over the 4 candles before entry.', 'After a big push, wait for the pullback and enter on the retest.');
+    if(c.prev && c.prev.r < 0 && t.openedAt && c.prev.closedAt && t.openedAt - c.prev.closedAt < 15 * 60e3) add(3, 'revenge', 'Revenge trade', (m => 'You re-entered ' + m + (m === 1 ? ' minute' : ' minutes') + ' after a loss.')(Math.max(1, Math.round((t.openedAt - c.prev.closedAt) / 60e3))), 'After a loss, take a 15-minute break. After 2 losses in a row, stop for the session.');
+    if(c.tradesToday >= 5) add(2, 'overtrade', 'Overtrading', 'This was trade number ' + (c.tradesToday + 1) + ' of the day.', 'Set a daily maximum (e.g. 3 trades). Quality setups don\'t come every hour.');
+    if(t.mfe >= 1 && t.r < 0 && !t.trail) add(2, 'giveback', 'Let a winner turn into a loser', 'The trade was up ' + t.mfe.toFixed(1) + 'R before it reversed into a loss.', 'Turn on Auto trailing stop-loss (Settings), or move the stop to break-even at +1R.');
+    if(t.mfe >= 1 && t.r < 0 && t.trail) add(1, 'giveback', 'Gave back an open profit', 'It reached +' + t.mfe.toFixed(1) + 'R, then the trail stop closed it below entry.', 'Consider taking partial profit at +1R.');
+    if(c.session != null && c.session >= 21 || c.session != null && c.session < 1) add(1, 'session', 'Low-liquidity hours', 'Entered at ' + c.session + ':00 UTC, between the New York close and Asia open, when gold moves erratically.', 'Trade London (07–13 UTC) and New York (13–21 UTC).');
+  }
+  if(n.emo && ['FOMO', 'Angry', 'Fearful', 'Rushed'].includes(n.emo)) add(2, 'emotion', 'Traded while feeling “' + n.emo + '”', 'You marked this trade as ' + n.emo.toLowerCase() + '. Those states lead to skipped rules.', 'If you feel ' + n.emo.toLowerCase() + ', write it down and wait 10 minutes before clicking Buy or Sell.');
+  out.sort((x, y) => y.sev - x.sev);
+  const pen = out.reduce((s, m) => s + (m.sev === 3 ? 30 : m.sev === 2 ? 15 : 5), 0);
+  const score = Math.max(0, 100 - pen);
+  let verdict;
+  if(L && !out.length) verdict = 'Good trade, normal loss. You followed the plan; losses like this are the cost of the edge. Change nothing.';
+  else if(L && out.some(m => m.sev === 3)) verdict = 'Avoidable loss: a rule was broken. Fix the first point below.';
+  else if(L) verdict = 'Loss with mistakes you can remove. The first point below matters most.';
+  else if(out.some(m => m.sev >= 2)) verdict = 'Winning trade, but with rule breaks. It worked this time; repeated, these habits cost money.';
+  else verdict = 'Clean win: plan followed.';
+  return { list:out, score, verdict };
+}
+
+/* ---------- rendering ---------- */
+function statsCard(list){
+  if(!list.length){ $('stats').innerHTML = '<div class="empty">No trades yet. Place a practice trade in Charts (Buy / Sell, or the AI agent), or add a real MT5 trade here.</div>'; $('patterns').hidden = true; return; }
+  const w = list.filter(t => t.r > 0), l = list.filter(t => t.r < 0);
+  const netR = list.reduce((s, t) => s + t.r, 0), net$ = list.reduce((s, t) => s + (t.pnl || 0), 0);
+  const gw = w.reduce((s, t) => s + t.r, 0), gl = -l.reduce((s, t) => s + t.r, 0);
+  const disc = Math.round(list.reduce((s, t) => s + review(t).score, 0) / list.length);
+  // equity curve in R, oldest → newest
+  const seq = list.slice().reverse(); let cum = 0; const pts = [0].concat(seq.map(t => (cum += t.r)));
+  const lo = Math.min(...pts), hi = Math.max(...pts), rg = hi - lo || 1, W = 320, H = 90;
+  const xy = pts.map((v, i) => [(i / Math.max(1, pts.length - 1)) * W, H - 8 - (v - lo) / rg * (H - 16)]);
+  const zeroY = H - 8 - (0 - lo) / rg * (H - 16);
+  $('stats').innerHTML = '<div class="lbl">Your results · ' + list.length + ' trades</div>' +
+    '<div class="tiles"><div class="tile"><small>Win rate</small><b>' + Math.round(w.length / list.length * 100) + '%</b></div>' +
+    '<div class="tile"><small>Net R</small><b class="' + (netR >= 0 ? 'up-t' : 'down-t') + '">' + sgn(netR, 1) + '</b></div>' +
+    '<div class="tile"><small>Net $</small><b class="' + (net$ >= 0 ? 'up-t' : 'down-t') + '">' + (net$ >= 0 ? '+' : '−') + Math.abs(net$).toFixed(0) + '</b></div>' +
+    '<div class="tile"><small>Discipline</small><b class="' + (disc >= 75 ? 'up-t' : disc >= 50 ? 'flat-t' : 'down-t') + '">' + disc + '</b></div></div>' +
+    '<svg class="eq" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="Equity curve in R"><line x1="0" x2="' + W + '" y1="' + zeroY + '" y2="' + zeroY + '" stroke="currentColor" opacity=".2" stroke-dasharray="3 3"/><polyline fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke" points="' + xy.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ') + '"/></svg>' +
+    '<div class="note">Profit factor ' + (gl ? (gw / gl).toFixed(2) : '—') + ' · average win ' + (w.length ? sgn(gw / w.length, 2) : '—') + 'R · average loss ' + (l.length ? sgn(-gl / l.length, 2) : '—') + 'R. Discipline is 100 minus points for each rule broken.</div>';
+  // the mistakes that cost the most
+  const agg = {};
+  for(const t of l) for(const m of review(t).list){ const k = m.key; (agg[k] = agg[k] || { n:0, r:0, title:m.title, fix:m.fix }); agg[k].n++; agg[k].r += t.r; }
+  const top = Object.values(agg).sort((x, y) => x.r - y.r).slice(0, 3);
+  $('patterns').hidden = !l.length;
+  $('patterns').innerHTML = '<div class="lbl">What your losses have in common</div>' + (top.length ? top.map((m, i) =>
+    '<div class="mist' + (i ? ' minor' : '') + '"><b>' + (i + 1) + '. ' + esc(m.title) + ': ' + m.n + ' of ' + l.length + ' losses (' + sgn(m.r, 1) + 'R)</b><p class="fix">' + esc(m.fix) + '</p></div>').join('')
+    : '<div class="mist good"><b>No repeating mistake found</b><p>Your losses so far look like normal losses of a plan followed.</p></div>');
+}
+
+function miniChart(t){
+  const store = load('chart.journal-bars', {})[t.id];
+  if(!store || !store.bars || store.bars.length < 3) return '';
+  const b = store.bars, W = 340, H = 150, ys = b.flatMap(x => [x[2], x[3]]).concat([t.sl0, t.exit, t.entry, t.tp0].filter(v => isFinite(v)));
+  const lo = Math.min(...ys), hi = Math.max(...ys), rg = hi - lo || 1, cw = W / b.length;
+  const Y = v => 8 + (hi - v) / rg * (H - 16), X = i => i * cw + cw / 2;
+  const iOf = time => { let k = b.findIndex(x => x[0] >= time); return k < 0 ? b.length - 1 : k; };
+  const ie = iOf(t.entryTime - (t.entryTime % 60)), ix = iOf(t.exitTime);
+  let s = '<svg class="mini" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="Trade on the chart">';
+  s += '<rect x="' + (X(ie) - cw / 2) + '" y="0" width="' + Math.max(cw, X(ix) - X(ie) + cw) + '" height="' + H + '" fill="var(--accent)" opacity=".08"/>';
+  for(let i = 0; i < b.length; i++){ const [, o, h, l, c] = b[i], col = c >= o ? 'var(--up)' : 'var(--down)';
+    s += '<line x1="' + X(i) + '" x2="' + X(i) + '" y1="' + Y(h) + '" y2="' + Y(l) + '" stroke="' + col + '" stroke-width="1"/>' +
+      '<rect x="' + (X(i) - cw * 0.35) + '" y="' + Math.min(Y(o), Y(c)) + '" width="' + Math.max(1, cw * 0.7) + '" height="' + Math.max(1, Math.abs(Y(o) - Y(c))) + '" fill="' + col + '"/>'; }
+  const hl = (v, col, dash) => isFinite(v) ? '<line x1="0" x2="' + W + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="' + col + '" stroke-width="1" stroke-dasharray="' + dash + '"/>' : '';
+  s += hl(t.sl0, 'var(--down)', '4 3') + hl(t.tp0, 'var(--up)', '4 3') + hl(t.entry, 'var(--accent)', '0');
+  s += '<circle cx="' + X(ie) + '" cy="' + Y(t.entry) + '" r="4" fill="var(--accent)"/><circle cx="' + X(ix) + '" cy="' + Y(t.exit) + '" r="4" fill="' + (t.r >= 0 ? 'var(--up)' : 'var(--down)') + '" stroke="var(--surface)" stroke-width="1.5"/>';
+  return s + '</svg><div class="note">' + store.tf + ' candles · gold line = entry, red dashed = first stop, green dashed = target, dot = exit</div>';
+}
+
+function when(t){ const d = new Date(t.entryTime * 1000); return d.toLocaleDateString([], { day:'numeric', month:'short' }) + ' ' + d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }); }
+function render(){
+  const all = allTrades();
+  statsCard(all);
+  let list = all;
+  if(filter === 'loss') list = all.filter(t => t.r < 0);
+  if(filter === 'win') list = all.filter(t => t.r > 0);
+  if(filter === 'practice') list = all.filter(t => t.kind === 'practice');
+  if(filter === 'real') list = all.filter(t => t.kind === 'real');
+  $('sub').textContent = all.length ? all.filter(t => t.r < 0).length + ' losses to learn from · tap a trade for its review' : 'Every trade, and what each loss teaches you';
+  if(!list.length){ $('list').innerHTML = all.length ? '<div class="empty">Nothing matches this filter.</div>' : ''; return; }
+  const N = notes();
+  $('list').innerHTML = list.slice(0, 200).map(t => {
+    const rv = review(t), col = rv.score >= 75 ? 'up-t' : rv.score >= 50 ? 'flat-t' : 'down-t';
+    let h = '<article class="card trade" data-id="' + esc(t.id) + '"><div class="trow"><span class="side ' + t.side + '">' + (t.side === 'long' ? 'BUY' : 'SELL') + '</span>' +
+      '<div class="what"><b>' + esc(t.file || t.market) + (t.tf ? ' · ' + esc(t.tf) : '') + '</b><small>' + when(t) + ' · ' + esc(t.reason || (t.kind === 'real' ? 'Real (MT5)' : '')) + (t.by === 'AI' ? ' · AI agent' : '') + '</small></div>' +
+      '<div class="res ' + (t.r >= 0 ? 'up-t' : 'down-t') + '">' + sgn(t.r, 2) + 'R<small>' + (t.pnl != null ? money(t.pnl) : '') + '</small></div>' +
+      '<span class="score ' + col + '" title="Discipline score">' + rv.score + '</span></div>';
+    if(open === t.id){
+      const n = N[t.id] || {};
+      h += '<div class="detail">' + miniChart(t) +
+        '<div class="verdict ' + (t.r < 0 ? 'down-t' : 'up-t') + '">' + esc(rv.verdict) + '</div>' +
+        '<div class="note">Entry ' + px(t, t.entry) + ' → exit ' + px(t, t.exit) + (isFinite(t.sl0) ? ' · first stop ' + px(t, t.sl0) : '') + (t.mfe != null && t.kind !== 'real' ? ' · best ' + sgn(t.mfe, 1) + 'R, worst ' + sgn(t.mae, 1) + 'R while open' : '') + '</div>' +
+        (rv.list.length ? rv.list.map(m => '<div class="mist' + (m.sev === 1 ? ' minor' : '') + '"><b>' + esc(m.title) + '</b><p>' + esc(m.why) + '</p><p class="fix">' + esc(m.fix) + '</p></div>').join('')
+          : '<div class="mist good"><b>No rule broken</b><p>' + (t.r < 0 ? 'Every check passed. Even a good plan loses sometimes; the edge shows over many trades.' : 'Signal, trend, zone and timing all agreed.') + '</p></div>') +
+        '<div class="lbl">How did you feel?</div><div class="emo">' + EMOS.map(e => '<button class="chip" type="button" data-emo="' + e + '" aria-pressed="' + (n.emo === e) + '">' + e + '</button>').join('') + '</div>' +
+        '<textarea data-note placeholder="Your notes: why you took it, what you saw">' + esc(n.text || t.notes || '') + '</textarea>' +
+        '<div class="trow"><button class="btn small" type="button" data-ai>Ask Claude for a deeper review</button>' + (t.kind === 'real' ? '<button class="btn small" type="button" data-del>Delete</button>' : '') + '</div>' +
+        (n.ai ? '<div class="ai">' + esc(n.ai) + '</div>' : '') + '</div>';
+    }
+    return h + '</article>';
+  }).join('');
+}
+
+/* ---------- Claude deep review (uses the key saved in AI agent settings) ---------- */
+async function claudeReview(t){
+  const pr = load('agent.prefs', {});
+  if(!pr.key){ setNote(t.id, { ai:'Add your Claude API key in Charts → AI agent → Agent settings to get a deeper review. The review above works without it.' }); render(); return; }
+  setNote(t.id, { ai:'Reviewing…' }); render();
+  const bars = (load('chart.journal-bars', {})[t.id] || {}).bars || [];
+  const rv = review(t);
+  const body = { model:pr.model || 'claude-opus-5-5', max_tokens:4000, output_config:{ effort:'low' },
+    system:'You are a trading coach reviewing one trade for a retail gold trader on a phone. Be kind but direct. Use short plain sentences, no markdown tables. Structure: What happened (2 lines). The main mistake (or say none). Why it cost money. One rule to follow next time. If the loss was a normal loss of a good plan, say so clearly.',
+    messages:[{ role:'user', content:'Trade:\n' + JSON.stringify({ market:t.file || t.market, side:t.side, timeframe:t.tf, entry:t.entry, exit:t.exit, first_stop:t.sl0, target:t.tp0, result_R:+t.r.toFixed(2), exit_reason:t.reason, best_R_while_open:t.mfe, worst_R:t.mae, context_at_entry:t.ctx, self_check:t.q, feeling:(notes()[t.id] || {}).emo, notes:(notes()[t.id] || {}).text || t.notes }) +
+      '\n\nRule-based findings:\n' + JSON.stringify(rv.list.map(m => m.title)) + '\n\nCandles around the trade [time, open, high, low, close]:\n' + JSON.stringify(bars.slice(-80)) }] };
+  const headers = { 'content-type':'application/json', 'x-api-key':pr.key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' };
+  if(body.model !== 'claude-haiku-5-5'){ body.fallbacks = 'default'; headers['anthropic-beta'] = 'server-side-fallback-2026-07-01'; }
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers, body:JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    let text;
+    if(!r.ok) text = r.status === 401 ? 'The Claude API key was rejected. Check it in AI agent settings.' : 'Claude review failed: ' + ((j.error && j.error.message) || 'HTTP ' + r.status);
+    else if(j.stop_reason === 'refusal') text = 'Claude declined this review.';
+    else text = (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim() || '(no answer)';
+    setNote(t.id, { ai:text });
+  } catch(e){ setNote(t.id, { ai:'Couldn\'t reach Claude. Check your connection.' }); }
+  render();
+}
+
+/* ---------- wiring ---------- */
+$('list').addEventListener('click', e => {
+  const card = e.target.closest('.trade'); if(!card) return;
+  const id = card.dataset.id, t = allTrades().find(x => x.id === id);
+  const emo = e.target.closest('[data-emo]');
+  if(emo){ const cur = (notes()[id] || {}).emo; setNote(id, { emo:cur === emo.dataset.emo ? '' : emo.dataset.emo }); render(); return; }
+  if(e.target.closest('[data-ai]')){ claudeReview(t); return; }
+  if(e.target.closest('[data-del]')){ save('journal.manual', load('journal.manual', []).filter(x => x.id !== id)); open = null; render(); return; }
+  if(e.target.closest('textarea')) return;
+  open = open === id ? null : id; render();
+  if(open && window.gsap && !matchMedia('(prefers-reduced-motion: reduce)').matches){ const d = document.querySelector('[data-id="' + CSS.escape(id) + '"] .detail'); if(d) gsap.fromTo(d.children, { autoAlpha:0, y:8 }, { autoAlpha:1, y:0, duration:.35, stagger:.05, ease:'power2.out', clearProps:'all' }); }
+});
+$('list').addEventListener('change', e => { if(e.target.matches('textarea[data-note]')){ setNote(e.target.closest('.trade').dataset.id, { text:e.target.value }); } });
+for(const b of document.querySelectorAll('#filters .chip')) b.addEventListener('click', () => {
+  filter = b.dataset.f; for(const x of document.querySelectorAll('#filters .chip')) x.setAttribute('aria-pressed', String(x === b)); render();
+});
+$('addBtn').addEventListener('click', () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); $('mOpen').value = $('mClose').value = d.toISOString().slice(0, 16); $('addDlg').showModal(); });
+for(const b of document.querySelectorAll('[data-close]')) b.addEventListener('click', () => b.closest('dialog').close());
+$('addForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const side = $('mSide').value, dir = side === 'long' ? 1 : -1, entry = +$('mEntry').value, exit = +$('mExit').value, sl = +$('mSl').value;
+  const dist = Math.abs(entry - sl);
+  if(!dist || (entry - sl) * dir <= 0){ alert('The stop-loss must be below the entry for a buy and above it for a sell.'); return; }
+  const op = Date.parse($('mOpen').value), cl = Date.parse($('mClose').value) || op;
+  const t = { id:'real|' + Date.now(), market:$('mMarket').value.trim() || 'XAUUSD', file:$('mMarket').value.trim() || 'XAUUSD', side, entry, exit, sl0:sl, slDist:dist,
+    r:(exit - entry) * dir / dist, pnl:$('mPnl').value === '' ? null : +$('mPnl').value, entryTime:Math.floor(op / 1000), exitTime:Math.floor(cl / 1000), closedAt:cl, openedAt:op,
+    reason:'Real (MT5)', notes:$('mNotes').value.trim(),
+    q:{ setup:$('qSetup').value, trend:$('qTrend').value, news:$('qNews').value, sl:$('qSl').value, size:$('qSize').value, revenge:$('qRevenge').value, fear:$('qFear').value } };
+  const list = load('journal.manual', []); list.push(t); save('journal.manual', list);
+  $('addDlg').close(); $('addForm').reset(); open = t.id; render();
+});
+window.addEventListener('storage', render);
+setInterval(() => { if(!document.hidden && window.innerWidth > 0 && !document.activeElement.matches('textarea')) { const n = allTrades().length; if(n !== render.n){ render.n = n; render(); } } }, 3000);
+render(); render.n = allTrades().length;
+try { if(window.gsap && !matchMedia('(prefers-reduced-motion: reduce)').matches) gsap.from('.wrap > *', { autoAlpha:0, y:12, duration:.4, stagger:.05, ease:'power2.out', clearProps:'all' }); } catch(e){}
+window.JournalTools = { review, allTrades };
+window.appBack = () => { const d = document.querySelector('dialog[open]'); if(d){ d.close(); return true; } if(open){ open = null; render(); return true; } return false; };
+})();
+</script>
+</body>
+</html>

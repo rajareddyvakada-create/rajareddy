@@ -1,0 +1,167 @@
+package com.cot.widget;
+
+import android.content.Context;
+import android.webkit.JavascriptInterface;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+/** Exposed to the app's own pages as window.AppBridge. Only local asset pages are ever loaded. */
+final class AppBridge {
+
+    interface Host {
+        void requestNotificationPermission();
+
+        void openMt5();
+
+        void setLandscape(boolean on);
+
+        void signIn();
+
+        void openTradingView(String path);
+
+        void tvShow(int x, int y, int w, int h, String url);
+
+        void tvHide();
+    }
+
+    private final Context ctx;
+    private final Host host;
+
+    AppBridge(Context ctx, Host host) {
+        this.ctx = ctx.getApplicationContext();
+        this.host = host;
+    }
+
+    @JavascriptInterface
+    public String reportVerdicts(String json) {
+        try {
+            return AlertCenter.process(ctx, new JSONObject(json)).toString();
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    @JavascriptInterface
+    public String getAlerts() {
+        return AlertCenter.prefs(ctx).getString("log", "[]");
+    }
+
+    @JavascriptInterface
+    public void clearAlerts() {
+        AlertCenter.prefs(ctx).edit().putString("log", "[]").apply();
+    }
+
+    @JavascriptInterface
+    public String getPrefs() {
+        try {
+            return new JSONObject()
+                    .put("notify", AlertCenter.notifyOn(ctx))
+                    .put("background", AlertCenter.backgroundOn(ctx))
+                    .put("muted", AlertCenter.muted(ctx))
+                    .put("permission", AlertCenter.canPost(ctx))
+                    .toString();
+        } catch (Exception e) {
+            return "{}";
+        }
+    }
+
+    @JavascriptInterface
+    public void setPref(String key, String value) {
+        switch (key) {
+            case "notify":
+            case "background":
+                AlertCenter.prefs(ctx).edit().putBoolean(key, Boolean.parseBoolean(value)).apply();
+                if ("background".equals(key)) VerdictWorker.sync(ctx);
+                break;
+            case "muted":
+                try {
+                    AlertCenter.prefs(ctx).edit().putString("muted", new JSONArray(value).toString()).apply();
+                } catch (Exception ignored) {
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    @JavascriptInterface
+    public boolean notificationsAllowed() {
+        return AlertCenter.canPost(ctx);
+    }
+
+    @JavascriptInterface
+    public void requestNotificationPermission() {
+        host.requestNotificationPermission();
+    }
+
+    /** Posts a chart BUY / SELL signal as a high-priority notification right away. */
+    @JavascriptInterface
+    public void notifySignal(String title, String body) {
+        AlertCenter.notifySignal(ctx, title, body);
+    }
+
+    /** Opens MetaTrader 5 (used by XM and Octa accounts), or its Play Store page if it is not installed. */
+    @JavascriptInterface
+    public void openMt5() {
+        host.openMt5();
+    }
+
+    @JavascriptInterface
+    public void notifyNews(String title, String body) {
+        AlertCenter.notifyNews(ctx, title, body, (int) (System.currentTimeMillis() & 0x7fffffff));
+    }
+
+    /** @param json [{id, at (epoch ms), title, body}] — replaces all pending reminders */
+    @JavascriptInterface
+    public void scheduleNewsReminders(String json) {
+        NewsReminderWorker.schedule(ctx, json);
+    }
+
+    /** Charts tab full screen: landscape with the system bars hidden, or back to normal. */
+    @JavascriptInterface
+    public void setLandscape(boolean on) {
+        host.setLandscape(on);
+    }
+
+    /** The Google account the user picked on this phone, as {"email","name"}, or "null". */
+    @JavascriptInterface
+    public String getAccount() {
+        String email = ctx.getSharedPreferences("cot_account", Context.MODE_PRIVATE).getString("email", null);
+        if (email == null) return "null";
+        try {
+            String name = email.contains("@") ? email.substring(0, email.indexOf('@')) : email;
+            return new JSONObject().put("email", email).put("name", name).toString();
+        } catch (Exception e) {
+            return "null";
+        }
+    }
+
+    /** Shows Android's own account chooser (with "Add account" to create one). The result calls window.onAccount. */
+    @JavascriptInterface
+    public void signIn() {
+        host.signIn();
+    }
+
+    @JavascriptInterface
+    public void signOut() {
+        ctx.getSharedPreferences("cot_account", Context.MODE_PRIVATE).edit().remove("email").apply();
+    }
+
+    /** Opens TradingView inside the app, e.g. "chart/?symbol=OANDA:XAUUSD". */
+    @JavascriptInterface
+    public void openTradingView(String path) {
+        host.openTradingView(path == null ? "" : path);
+    }
+
+    /** Shows the TradingView chart over the given screen rectangle (CSS pixels) of the app page. */
+    @JavascriptInterface
+    public void tvShow(int x, int y, int w, int h, String url) {
+        host.tvShow(x, y, w, h, url);
+    }
+
+    @JavascriptInterface
+    public void tvHide() {
+        host.tvHide();
+    }
+}

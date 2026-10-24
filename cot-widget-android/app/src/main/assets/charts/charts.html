@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Charts</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap">
+<style>
+/* Same tokens as the Markets tab. --brass is the chart accent (replay position, crosshair, entries). */
+:root{
+  --bg:#060913; --surface:#131C31; --line:#1E293B; --grid:rgba(255,255,255,0.04);
+  --text:#F8FAFC; --muted:#94A3B8;
+  --brass:#FFB300; --brass-ink:#031018; --grad:linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%);
+  --up:#00E5FF; --down:#FF0055; --on-color:#031018;
+  color-scheme:dark;
+  --on-accent:#031018;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#060913; --surface:#131C31; --line:#1E293B; --grid:rgba(255,255,255,0.04);
+    --text:#F8FAFC; --muted:#94A3B8;
+    --brass:#FFB300; --brass-ink:#031018; --grad:linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%);
+    --up:#00E5FF; --down:#FF0055; --on-color:#031018;
+    color-scheme:dark;
+  --on-accent:#031018;
+}
+}
+:root[data-theme="dark"]{
+  --bg:#060913; --surface:#131C31; --line:#1E293B; --grid:rgba(255,255,255,0.04);
+  --text:#F8FAFC; --muted:#94A3B8;
+  --brass:#FFB300; --brass-ink:#031018; --grad:linear-gradient(135deg, #00E5FF 0%, #00B0FF 100%);
+  --up:#00E5FF; --down:#FF0055; --on-color:#031018;
+  color-scheme:dark;
+  --on-accent:#031018;
+}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none !important}
+html,body{height:100%}
+body{
+  margin:0;display:flex;flex-direction:column;overflow:hidden;
+  background:var(--bg);color:var(--text);
+  font-family:'Inter',system-ui,-apple-system,Roboto,sans-serif;
+  font-size:15px;line-height:1.35;font-variant-numeric:tabular-nums;
+  -webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;
+}
+button{
+  font:inherit;font-weight:600;color:inherit;background:var(--surface);
+  border:1px solid var(--line);border-radius:14px;min-height:44px;padding:0 14px;
+  cursor:pointer;touch-action:manipulation;
+}
+button:disabled{opacity:.35;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+svg{width:22px;height:22px;fill:currentColor;display:block}
+svg.stroke{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.c-up{color:var(--up)} .c-down{color:var(--down)}
+
+.top{display:flex;align-items:center;gap:6px;padding:8px 10px 6px}
+.top button{min-height:38px;border-radius:12px}
+.top .icon-sm{width:34px}
+.top{gap:5px}
+.tog.tv{font-weight:800;font-size:.78rem;letter-spacing:.02em}
+.tv-frame{position:absolute;inset:0;width:100%;height:100%;border:0;z-index:5;background:#060913}
+body.tv-on .legend,body.tv-on .ind-panel{visibility:hidden}
+body.tv-on .tfs,body.tv-on .replay-only{display:none !important}
+@media (max-width:380px){ .top .icon-sm{width:32px} .top{gap:4px} }
+.tog[aria-pressed="true"]{background:var(--grad);color:var(--brass-ink);border-color:transparent}
+.tog.ai{font-weight:800;font-size:.8rem;letter-spacing:.02em}
+body.no-replay .replay-only{display:none !important}
+.market{flex:1;min-width:0;display:flex;align-items:center;gap:8px;justify-content:flex-start;text-align:left;padding:0 12px}
+.market .src{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;font-size:1rem}
+.market svg{width:18px;height:18px;flex:none;color:var(--muted)}
+.icon-sm{width:44px;padding:0;display:grid;place-items:center;flex:none}
+
+.notice{display:flex;align-items:flex-start;gap:8px;margin:0 16px 8px;padding:6px 6px 6px 12px;border:1px solid var(--line);border-left:3px solid var(--brass);border-radius:10px;background:var(--surface);font-size:.86rem}
+.notice-body{flex:1;min-width:0;padding-top:3px}
+.notice.err{border-left-color:var(--down)}
+.notice.pick,.notice.info{font-weight:600}
+.notice details{margin-top:2px;color:var(--muted)}
+.notice summary{cursor:pointer;color:var(--text);font-weight:600}
+.notice ul{margin:6px 0 2px;padding-left:18px}
+.dismiss{min-height:30px;width:30px;padding:0;border:0;background:transparent;color:var(--muted);font-size:1.2rem}
+
+.chart-wrap{flex:1;min-height:0;position:relative;margin:0 8px;border:1px solid var(--line);border-radius:20px;overflow:hidden;background:var(--bg)}
+#chart{position:absolute;inset:0}
+.legend{position:absolute;left:8px;top:6px;z-index:3;pointer-events:none;padding:3px 8px;border-radius:8px;background:color-mix(in srgb,var(--bg) 80%,transparent)}
+.rtime{font-weight:700;font-size:.95rem}
+.ohlc{color:var(--muted);font:500 .78rem 'JetBrains Mono',ui-monospace,monospace;white-space:nowrap}
+.ohlc b{font-weight:600;color:var(--text)}
+.ohlc b.c-up{color:var(--up)} .ohlc b.c-down{color:var(--down)}
+.rline{display:flex;align-items:center;gap:8px}
+.live{pointer-events:auto;min-height:0;padding:1px 9px;border-radius:999px;font-size:.72rem;font-weight:700;background:transparent;border:1px solid currentColor}
+.live.on{color:var(--up)} .live.off{color:var(--muted)} .live.replay{color:var(--brass)}
+
+.deck{padding:6px 10px 8px;display:grid;grid-template-columns:minmax(0,1fr);gap:6px}
+.scrub{-webkit-appearance:none;appearance:none;width:100%;height:26px;margin:0;background:transparent;--p:0%}
+.scrub::-webkit-slider-runnable-track{height:8px;border-radius:4px;background:linear-gradient(to right,var(--brass) 0 var(--p),transparent var(--p)),repeating-linear-gradient(135deg,var(--line) 0 4px,transparent 4px 8px)}
+.scrub::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:26px;margin-top:-9px;border-radius:4px;background:var(--brass);border:2px solid var(--bg)}
+.scrub::-moz-range-track{height:8px;border-radius:4px;background:linear-gradient(to right,var(--brass) 0 var(--p),transparent var(--p)),repeating-linear-gradient(135deg,var(--line) 0 4px,transparent 4px 8px)}
+.scrub::-moz-range-thumb{width:12px;height:26px;border-radius:4px;background:var(--brass);border:2px solid var(--bg)}
+.tfs{display:flex;gap:3px;padding:3px;background:var(--surface);border:1px solid var(--line);border-radius:11px}
+.tfs button{flex:1;min-width:0;min-height:28px;padding:0 2px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-size:.8rem}
+.tfs button[aria-pressed="true"]{background:var(--text);color:var(--bg)}
+.transport{display:flex;gap:6px;align-items:center}
+.transport button{min-height:38px}
+.transport .play{min-height:40px}
+.pick-btn{flex:1;min-width:0;white-space:nowrap;padding:0 8px}
+.pick-btn[aria-pressed="true"]{border-color:var(--brass);color:var(--brass)}
+.icon{width:50px;padding:0;display:grid;place-items:center}
+.play{width:62px;min-height:48px;padding:0;display:grid;place-items:center;background:var(--grad);color:var(--brass-ink);border-color:transparent}
+.speed{width:56px;padding:0}
+.trade{display:flex;gap:6px;align-items:stretch}
+.trade button{min-height:40px}
+.agent-bar{display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 10px;text-align:left;border-radius:12px;border-color:color-mix(in srgb,var(--brass) 45%,var(--line))}
+.ag-dot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--muted)}
+.ag-dot.up{background:var(--up);box-shadow:0 0 0 4px color-mix(in srgb,var(--up) 22%,transparent)} .ag-dot.down{background:var(--down);box-shadow:0 0 0 4px color-mix(in srgb,var(--down) 22%,transparent)}
+.ag-txt{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.2}
+.ag-txt b{font-size:.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag-txt small{font-size:.74rem;color:var(--muted);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag-open{font-size:1.3rem;color:var(--muted)}
+.ag-card{border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.ag-card .big{font-size:1.15rem;font-weight:800}
+.ag-meter{height:8px;border-radius:4px;background:linear-gradient(90deg,var(--down),var(--muted),var(--up));position:relative}
+.ag-meter i{position:absolute;top:-4px;width:4px;height:16px;border-radius:2px;background:var(--text);transform:translateX(-2px)}
+.ag-kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:.85rem}
+.ag-kv dt{color:var(--muted)} .ag-kv dd{margin:0;font-weight:600;font-family:'JetBrains Mono',ui-monospace,monospace}
+.ag-row{display:flex;gap:8px}
+.ag-row button{flex:1;min-height:40px;border-color:transparent;color:var(--on-color)}
+.ag-section{margin:14px 0 6px;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ag-guides{margin:0;padding-left:18px;font-size:.88rem;display:flex;flex-direction:column;gap:4px}
+.ag-chips{display:flex;flex-wrap:wrap;gap:6px}
+.ag-chips button{min-height:32px;padding:0 10px;border-radius:999px;font-size:.8rem}
+.ag-log{display:flex;flex-direction:column;gap:6px;margin-top:8px;max-height:240px;overflow:auto}
+.ag-log .m{padding:7px 10px;border-radius:12px;font-size:.86rem;white-space:pre-wrap;max-width:92%}
+.ag-log .m.me{align-self:flex-end;background:var(--grad);color:var(--brass-ink)}
+.ag-log .m.ai{align-self:flex-start;background:var(--bg);border:1px solid var(--line)}
+.ag-log .m.sys{align-self:center;color:var(--muted);font-size:.78rem}
+.ag-form{display:flex;gap:6px;margin-top:8px}
+.ag-form input{flex:1;min-width:0;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text)}
+.ag-form button{width:auto;padding:0 14px}
+.orders{flex:1;display:flex;gap:8px;min-width:0}
+.orders button{flex:1;border-color:transparent;color:var(--on-color);font-size:1rem}
+.sell{background:linear-gradient(135deg,#FF0055,#E6004C);color:#fff !important;box-shadow:0 0 12px rgba(255,0,85,.4);font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:1.1rem !important}
+.buy{background:linear-gradient(135deg,#00E5FF,#00B0FF);color:#031018 !important;box-shadow:0 0 12px rgba(0,225,255,.4);font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:1.1rem !important}
+.pos{flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:0 4px 0 12px;border:1px solid var(--brass);border-radius:12px}
+.pos-info{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.15}
+.pos-info span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#posText{font-size:.85rem;color:var(--muted)}
+#posPnl{font-weight:700}
+.pos button{min-height:36px;padding:0 12px}
+.stats{flex:0 0 auto;max-width:40%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+dialog{border:1px solid var(--line);border-radius:18px;padding:0;background:var(--surface);color:var(--text);width:min(460px,calc(100vw - 20px));max-height:calc(100% - 32px)}
+dialog::backdrop{background:rgba(8,10,16,.5)}
+dialog[open]{display:flex;flex-direction:column}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;padding:8px 8px 8px 16px;border-bottom:1px solid var(--line)}
+.sheet-head h2{margin:0;font-size:1.1rem}
+.sheet-head button{border:0;background:transparent;font-size:1.3rem}
+.sheet-body{padding:12px 16px 16px;overflow:auto}
+fieldset{border:0;padding:0;margin:0 0 14px}
+legend{font-weight:700;font-size:1rem;padding:0;margin-bottom:4px}
+.field{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0;font-size:.92rem}
+.field input[type=number],.field input[type=text],.field input[type=password],.field select{
+  font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}
+.field input[type=number]{width:96px;text-align:right}
+.field input[type=text],.field input[type=password],.field select{width:180px}
+.hint{margin:6px 0 0;color:var(--muted);font-size:.85rem}
+.form-err{color:var(--down);font-weight:600;margin:0 0 10px}
+.primary{width:100%;background:var(--grad);color:var(--brass-ink);border-color:transparent}
+.danger{width:100%;margin-top:12px;color:var(--down)}
+
+/* toggle switch built on a checkbox */
+.switch{position:relative;display:inline-block;width:48px;height:28px;flex:0 0 48px}
+.switch input{appearance:none;-webkit-appearance:none;position:absolute;inset:0;margin:0;width:100%;height:100%;border-radius:14px;background:var(--line);cursor:pointer;transition:background .15s}
+.switch input::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s}
+.switch input:checked{background:var(--grad)}
+.switch input:checked::after{transform:translateX(20px)}
+.ind{border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:10px}
+.ind-head{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer}
+.ind-head b{display:block;font-size:1rem}
+.ind-head small{display:block;color:var(--muted);font-size:.8rem;margin-top:2px}
+.ind-body{margin-top:6px;border-top:1px solid var(--line);padding-top:4px}
+.coming{border-style:dashed;color:var(--muted);font-size:.85rem}
+.ind-sub{margin:12px 0 2px;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ind-panel{position:absolute;left:8px;bottom:30px;z-index:3;cursor:pointer;max-width:calc(100% - 80px);padding:4px 8px;border-radius:8px;background:color-mix(in srgb,var(--surface) 82%,transparent);border:1px solid var(--line);font-size:.68rem;line-height:1.3}
+.ind-panel.mini .prow:not(:first-child){display:none}
+.ind-panel.mini::after{content:"▸ tap for more";color:var(--muted);font-size:.62rem}
+.prow{display:flex;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow b{min-width:26px;color:var(--muted);font-weight:600}
+.prow.up span{color:var(--up)} .prow.down span{color:var(--down)} .prow.flat span{color:var(--text)}
+
+.tscroll{overflow-x:auto;margin-top:8px}
+.tlist{width:100%;border-collapse:collapse;font-size:.9rem}
+.tlist th{text-align:left;color:var(--muted);font-weight:600;padding:4px;border-bottom:1px solid var(--line)}
+.tlist td{padding:6px 4px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tlist th:nth-child(n+4),.tlist td:nth-child(n+4){text-align:right}
+.tlist .empty{white-space:normal;color:var(--muted);text-align:left !important;padding:12px 6px}
+.src-opt{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.src-opt input{margin:3px 0 0;width:18px;height:18px;accent-color:var(--brass)}
+.src-opt small{grid-column:2;color:var(--muted);font-size:.82rem}
+.src-fields{margin:8px 0 12px}
+/* Landscape / full screen: chart on the left at full height, controls in a narrow column on the right. */
+@media (orientation:landscape) and (max-height:560px){
+  body{display:grid;grid-template-columns:minmax(0,1fr) 236px;grid-template-rows:auto auto minmax(0,1fr)}
+  .top{grid-column:2;grid-row:1;flex-wrap:wrap;padding:6px 8px 4px}
+  .top .market{flex:1 0 100%}
+  .notice{grid-column:2;grid-row:2;margin:0 8px 4px}
+  .chart-wrap{grid-column:1;grid-row:1/4;margin:6px 0 6px 6px}
+  .deck{grid-column:2;grid-row:3;overflow:auto;align-content:start;padding:4px 8px 8px}
+  .tfs{flex-wrap:wrap} .tfs button{flex:0 0 calc(25% - 3px)}
+  .transport .pick-btn{font-size:.78rem}
+  .transport .icon{width:40px} .transport .play{width:46px} .speed{width:44px}
+}
+@media (max-height:640px){ .tfs button{min-height:28px} .play{min-height:44px} button{min-height:40px} .deck{gap:6px} }
+@media (prefers-reduced-motion: reduce){ .switch input,.switch input::after{transition:none} }
+
+/* Midnight Cyberpunk layer */
+body{background:#060913}
+button{background:#0F172A;border-color:rgba(0,229,255,.15)}
+.chart-wrap{border-color:rgba(0,229,255,.18);box-shadow:0 0 0 1px rgba(0,229,255,.05),0 0 24px rgba(0,229,255,.06);background:#060913}
+.tog[aria-pressed="true"]{background:rgba(0,229,255,.12);color:#00E5FF;border-color:rgba(0,229,255,.55);box-shadow:0 0 12px rgba(0,225,255,.35)}
+.tfs{background:#0F172A;border-color:rgba(0,229,255,.15)}
+.tfs button[aria-pressed="true"]{background:rgba(0,229,255,.15);color:#00E5FF;box-shadow:0 0 10px rgba(0,225,255,.35)}
+.play{box-shadow:0 0 15px rgba(0,225,255,.35)}
+.live.on{color:#00E5FF;box-shadow:0 0 10px rgba(0,229,255,.35)}
+.market .src,.sheet-head h2,legend{font-family:'Rajdhani',sans-serif;letter-spacing:.05em;text-transform:uppercase}
+.market .src{font-size:1.05rem}
+.ind-panel{background:rgba(15,23,42,.85);border-color:rgba(0,229,255,.2)}
+.agent-bar{background:#131C31;border-color:rgba(0,229,255,.3);box-shadow:0 0 12px rgba(0,225,255,.15)}
+.ag-dot.up{background:#00E5FF;box-shadow:0 0 10px #00E5FF} .ag-dot.down{background:#FF0055;box-shadow:0 0 10px #FF0055}
+dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
+.primary{color:#031018;box-shadow:0 0 15px rgba(0,225,255,.35)}
+</style>
+</head>
+<body>
+<header class="top">
+  <button type="button" class="market" id="dataBtn" aria-label="Change market or data">
+    <span class="src" id="src">Loading…</span>
+    <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+  <button type="button" class="icon-sm tog tv" id="tvBtn" aria-pressed="false" aria-label="TradingView live chart">TV</button>
+  <button type="button" class="icon-sm tog" id="replayBtn" aria-pressed="false" aria-label="Replay mode"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M10 9v6l5-3z"/></svg></button>
+  <button type="button" class="icon-sm tog ai" id="aiBtn" aria-pressed="false" aria-label="AI agent">AI</button>
+  <button type="button" class="icon-sm tog" id="linesBtn" aria-pressed="true" aria-label="Show indicator lines"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 3 5-7 4 4"/></svg></button>
+  <button type="button" class="icon-sm tog" id="rotateBtn" aria-pressed="false" aria-label="Landscape full screen"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 3h4M13 21h4"/></svg></button>
+  <button type="button" class="icon-sm" id="settingsBtn" aria-label="Indicators and settings"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></button>
+  <input type="file" id="file" accept=".csv,.txt,text/csv,text/plain" hidden>
+</header>
+
+<div class="notice" id="notice" hidden>
+  <div class="notice-body" id="noticeBody"></div>
+  <button type="button" class="dismiss" id="dismiss" aria-label="Hide message">×</button>
+</div>
+
+<div class="chart-wrap">
+  <div id="chart" aria-label="Candlestick chart"></div>
+  <div class="ind-panel" id="indPanel" hidden></div>
+  <div class="legend"><div class="rline"><span class="rtime" id="rtime">–</span><button type="button" class="live" id="liveBadge" hidden></button></div><div class="ohlc" id="ohlc"></div></div>
+</div>
+
+<section class="deck">
+  <input class="scrub replay-only" id="scrub" type="range" min="1" max="2" value="1" aria-label="Replay position">
+  <div class="tfs" id="tfs" role="group" aria-label="Timeframe"></div>
+  <div class="transport replay-only">
+    <button type="button" class="pick-btn" id="pick" aria-pressed="false">Pick start</button>
+    <button type="button" class="icon" id="back" aria-label="Back one candle"><svg viewBox="0 0 24 24"><path d="M5 5h2.5v14H5zM19 5v14L9 12z"/></svg></button>
+    <button type="button" class="play" id="play" aria-label="Play"></button>
+    <button type="button" class="icon" id="next" aria-label="Next candle"><svg viewBox="0 0 24 24"><path d="M16.5 5H19v14h-2.5zM5 5v14l10-7z"/></svg></button>
+    <button type="button" class="speed" id="speed" aria-label="Playback speed">4×</button>
+  </div>
+  <button type="button" class="agent-bar" id="agentBar" hidden>
+    <span class="ag-dot" id="agDot"></span>
+    <span class="ag-txt"><b id="agHead">AI agent</b><small id="agSub">Reading the chart…</small></span>
+    <span class="ag-open" aria-hidden="true">›</span>
+  </button>
+  <div class="trade">
+    <div class="orders" id="orders">
+      <button type="button" class="sell" id="sell">Sell</button>
+      <button type="button" class="buy" id="buy">Buy</button>
+    </div>
+    <div class="pos" id="posBox" hidden>
+      <div class="pos-info"><span id="posText"></span><span id="posPnl"></span></div>
+      <button type="button" id="closePos">Close</button>
+    </div>
+    <button type="button" class="stats" id="statsBtn">Trades</button>
+  </div>
+</section>
+
+<dialog id="settings" aria-labelledby="setTitle">
+  <div class="sheet-head"><h2 id="setTitle">Indicators</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
+  <div class="sheet-body">
+    <div id="indList"></div>
+    <section class="ind"><label class="field" style="padding:0"><span><b>Higher-timeframe structure</b><small style="display:block;color:var(--muted);font-size:.8rem">Last 1D, 1W and 1M BOS / CHoCH as levels on the chart (same rules as the Scanner)</small></span><span class="switch"><input type="checkbox" role="switch" id="sHtf"></span></label></section>
+    <section class="ind coming">More indicators appear here once added. Signals are calculated on the timeframe you're viewing and only after each candle closes, so replay never repaints.</section>
+    <fieldset>
+      <legend>Practice trades</legend>
+      <label class="field"><span>Stop-loss distance (price)</span><input type="number" id="sSl" step="0.1" min="0.01" inputmode="decimal"></label>
+      <label class="field"><span>Reward to risk (2 = 1:2)</span><input type="number" id="sRr" step="0.1" min="0.1" inputmode="decimal"></label>
+      <label class="field"><span>Risk per trade ($)</span><input type="number" id="sRisk" step="1" min="1" inputmode="decimal"></label>
+      <label class="field"><span>Contract size (gold = 100)</span><input type="number" id="sContract" step="1" min="1" inputmode="decimal"></label>
+      <label class="field"><span>Auto trailing stop-loss</span><span class="switch"><input type="checkbox" role="switch" id="sTrail"></span></label>
+      <label class="field"><span>Trail mode</span><select id="sTrailMode"><option value="swing">Swing low / high</option><option value="ut">UT trailing stop</option><option value="atr">ATR chandelier</option></select></label>
+      <p class="hint">Orders fill at the close of the last candle shown. If one candle touches both the stop-loss and the target, it counts as a loss. With auto trailing on: break-even at +1R, +0.5R locked at +1.5R, then the stop trails; it exits when a candle closes beyond the stop.</p>
+    </fieldset>
+    <p class="form-err" id="setErr" hidden></p>
+    <button type="button" class="primary" id="saveSettings">Save trade settings</button>
+  </div>
+</dialog>
+
+<dialog id="agentDlg" aria-labelledby="agTitle">
+  <div class="sheet-head"><h2 id="agTitle">AI agent</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
+  <div class="sheet-body">
+    <div class="ag-card" id="agCard"></div>
+    <div class="ag-section">Live guide</div>
+    <ul class="ag-guides" id="agGuides"></ul>
+    <div class="ag-section">Ask or command</div>
+    <div class="ag-chips" id="agChips">
+      <button type="button" data-cmd="What's the trade right now?">Trade now?</button>
+      <button type="button" data-cmd="Market sentiment">Sentiment</button>
+      <button type="button" data-cmd="Latest news for gold">News</button>
+      <button type="button" data-cmd="buy">Buy</button>
+      <button type="button" data-cmd="sell">Sell</button>
+      <button type="button" data-cmd="close">Close</button>
+    </div>
+    <div class="ag-log" id="agLog" aria-live="polite"></div>
+    <form class="ag-form" id="agForm"><input type="text" id="agInput" placeholder="e.g. switch to 15m, buy with SL 4170" autocomplete="off"><button type="submit" class="primary" id="agSend">Send</button></form>
+    <fieldset style="margin-top:14px">
+      <legend>Agent settings</legend>
+      <label class="field"><span>Auto-trade agent setups (practice account)</span><span class="switch"><input type="checkbox" role="switch" id="agAuto"></span></label>
+      <label class="field"><span>Minimum confidence for auto-trade</span><input type="number" id="agMinConf" min="50" max="95" step="5" inputmode="numeric"></label>
+      <label class="field"><span>Agent take-profit (R, 1.5 = 1.5× the risk)</span><input type="number" id="agTpR" min="0.5" max="10" step="0.5" inputmode="decimal"></label>
+      <label class="field"><span>Claude API key (optional)</span><input type="password" id="agKey" autocomplete="off" spellcheck="false" placeholder="sk-ant-…"></label>
+      <label class="field"><span>Claude model</span><select id="agModel"><option value="claude-opus-5-5">Claude Opus 5.5 (smartest)</option><option value="claude-sonnet-5-5">Claude Sonnet 5.5 (faster)</option><option value="claude-haiku-5-5">Claude Haiku 5.5 (fastest)</option></select></label>
+      <p class="hint">Without a key, the built-in agent still analyses the chart, news and COT, gives live guides and follows commands. With a key from console.anthropic.com, Claude answers free-form questions and drives the app through the same tools. The key stays on this phone. Orders go to the practice account here; XM and Octa don't let other apps send real orders, so the agent copies the order to your clipboard and opens MT5 for you to confirm.</p>
+    </fieldset>
+  </div>
+</dialog>
+
+<dialog id="tradesDlg" aria-labelledby="trTitle">
+  <div class="sheet-head"><h2 id="trTitle">Practice trades</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
+  <div class="sheet-body">
+    <p id="trSummary" style="margin:0"></p>
+    <div class="tscroll">
+      <table class="tlist">
+        <thead><tr><th>Side</th><th>Opened</th><th>Result</th><th>R</th><th>$</th></tr></thead>
+        <tbody id="trBody"></tbody>
+      </table>
+    </div>
+    <button type="button" class="danger" id="clearTrades">Clear trades for this chart</button>
+  </div>
+</dialog>
+
+<dialog id="dataDlg" aria-labelledby="dataTitle">
+  <div class="sheet-head"><h2 id="dataTitle">Chart data</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
+  <div class="sheet-body">
+    <button type="button" class="primary tv-btn" id="tvOpen">⚡ Live chart on TradingView (your account)</button>
+    <button type="button" class="primary tv-btn" id="xmOpen" style="margin-top:8px">📈 Live chart from my XM account (MT5)</button>
+    <p class="hint" style="margin:6px 0 12px">Both open inside the app over the chart, with your own login. For XM, sign in with your MT5 account number, password and server (for example XMGlobal-MT5, shown in your XM welcome email) and tick Save password. The TV / XM button switches back to the app's chart. Gold futures from Yahoo below are delayed about 10 minutes.</p>
+    <div role="radiogroup" aria-label="Data source">
+      <label class="src-opt"><input type="radio" name="src" value="yahoo"><b>Markets (live spot gold &amp; silver, futures, Bitcoin)</b><small>Gold and Silver are live spot XAUUSD / XAGUSD (your broker's price, no delay). Other markets are Yahoo Finance futures, about 10 minutes delayed. No key needed.</small></label>
+      <label class="src-opt"><input type="radio" name="src" value="binance"><b>Binance crypto, live tick by tick</b><small>Any Binance pair, for example PAXGUSDT (gold-backed token) or BTCUSDT. Trades 24/7.</small></label>
+      <label class="src-opt"><input type="radio" name="src" value="twelve"><b>XAU/USD, forex and stocks</b><small>Twelve Data, spot gold and forex. Needs a free API key from twelvedata.com (800 requests a day).</small></label>
+      <label class="src-opt"><input type="radio" name="src" value="csv"><b>CSV file</b><small>Bars exported from TradingView (Export chart data) or MT5 (Export Bars).</small></label>
+    </div>
+    <div class="src-fields" id="yahooFields">
+      <label class="field"><span>Market</span><select id="dMarket">
+        <option value="GC=F">Gold (GC=F)</option><option value="SI=F">Silver (SI=F)</option><option value="CL=F">Crude Oil (CL=F)</option>
+        <option value="ES=F">S&amp;P 500 (ES=F)</option><option value="NQ=F">Nasdaq (NQ=F)</option><option value="HG=F">Copper (HG=F)</option>
+        <option value="NG=F">Nat Gas (NG=F)</option><option value="BTC-USD">Bitcoin (BTC-USD)</option><option value="other">Other Yahoo symbol…</option>
+      </select></label>
+      <label class="field" id="otherField" hidden><span>Yahoo symbol</span><input type="text" id="dOther" autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="e.g. EURUSD=X"></label>
+      <label class="field"><span>Bars and history</span><select id="dRes">
+        <option value="1m">1-minute, last 5 days</option><option value="5m">5-minute, last 60 days</option><option value="15m">15-minute, last 60 days</option>
+        <option value="1h">1-hour, last 2 years</option><option value="1d">Daily, last 10 years</option>
+      </select></label>
+      <p class="hint">Smaller bars give finer replay. Bigger timeframes are built from them with the buttons under the chart.</p>
+    </div>
+    <div class="src-fields" id="onlineFields">
+      <label class="field"><span>Symbol</span><input type="text" id="dSym" autocomplete="off" spellcheck="false" autocapitalize="characters"></label>
+      <label class="field" id="keyField"><span>Twelve Data API key</span><input type="password" id="dKey" autocomplete="off" spellcheck="false"></label>
+      <label class="field"><span>History to load</span><select id="dDays"><option value="1">1 day</option><option value="2">2 days</option><option value="3">3 days</option><option value="5">5 days</option><option value="7">7 days</option></select></label>
+    </div>
+    <p class="form-err" id="dataErr" hidden></p>
+    <button type="button" class="primary" id="loadData">Load chart</button>
+  </div>
+</dialog>
+
+<script src="lightweight-charts.standalone.production.js"></script>
+<script src="data.js"></script>
+<script src="indicators.js"></script>
+<script src="replay.js"></script>
+<script src="agent.js"></script>
+</body>
+</html>
