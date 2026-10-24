@@ -353,7 +353,8 @@ dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
   <div class="sheet-head"><h2 id="dataTitle">Chart data</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
   <div class="sheet-body">
     <button type="button" class="primary tv-btn" id="tvOpen">⚡ Live chart on TradingView (your account)</button>
-    <p class="hint" style="margin:6px 0 12px">Real-time spot price with your own TradingView login and indicators, inside the app. Gold futures from Yahoo below are delayed about 10 minutes.</p>
+    <button type="button" class="primary tv-btn" id="xmOpen" style="margin-top:8px">📈 Live chart from my XM account (MT5)</button>
+    <p class="hint" style="margin:6px 0 12px">Both open inside the app over the chart, with your own login. For XM, sign in with your MT5 account number, password and server (for example XMGlobal-MT5, shown in your XM welcome email) and tick Save password. The TV / XM button switches back to the app's chart. Gold futures from Yahoo below are delayed about 10 minutes.</p>
     <div role="radiogroup" aria-label="Data source">
       <label class="src-opt"><input type="radio" name="src" value="yahoo"><b>Markets (live spot gold &amp; silver, futures, Bitcoin)</b><small>Gold and Silver are live spot XAUUSD / XAGUSD (your broker's price, no delay). Other markets are Yahoo Finance futures, about 10 minutes delayed. No key needed.</small></label>
       <label class="src-opt"><input type="radio" name="src" value="binance"><b>Binance crypto, live tick by tick</b><small>Any Binance pair, for example PAXGUSDT (gold-backed token) or BTCUSDT. Trades 24/7.</small></label>

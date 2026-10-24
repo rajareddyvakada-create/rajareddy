@@ -744,16 +744,25 @@
   // TradingView symbols with free real-time data for each market (spot / CFD feeds)
   const TV_SYMBOL={'XAU/USD':'OANDA:XAUUSD','XAG/USD':'OANDA:XAGUSD','GC=F':'OANDA:XAUUSD','SI=F':'OANDA:XAGUSD','CL=F':'OANDA:WTICOUSD','ES=F':'OANDA:SPX500USD','NQ=F':'OANDA:NAS100USD','HG=F':'OANDA:XCUUSD','NG=F':'OANDA:NATGASUSD','BTC-USD':'BITSTAMP:BTCUSD'};
   function openTv(){ const src=loadJSON('bar-replay-source',{}); try{ window.parent.postMessage({type:'openTv',symbol:TV_SYMBOL[src.symbol]||(src.type==='binance'?'BINANCE:'+src.symbol:'OANDA:XAUUSD')},'*'); }catch(e){} }
-  $('tvOpen').addEventListener('click',()=>{ $('dataDlg').close(); setTvMode(true); });
+  $('tvOpen').addEventListener('click',()=>{ $('dataDlg').close(); setFeed('tv'); setTvMode(true); });
+  $('xmOpen').addEventListener('click',()=>{ $('dataDlg').close(); setFeed('xm'); setTvMode(true); });
 
   /* ---------- TradingView in the chart area ----------
      In the app, the user's own TradingView chart (their login, indicators, symbol search) is laid
      natively over .chart-wrap; elsewhere the free TradingView widget is embedded instead. */
   const TV_INTERVAL={60:'1',300:'5',900:'15',1800:'30',3600:'60',14400:'240',86400:'D'};
-  let tvMode=!!loadJSON('tv-mode',false), tvSym='';
+  // In the app, TradingView is the chart the Charts tab opens with (live, with the user's own login);
+  // tapping TV switches to the app's own chart, and that choice is remembered.
+  const tvSaved=loadJSON('tv-mode2',null);
+  let tvMode=tvSaved===null ? !!(window.AppBridge && window.AppBridge.tvShow) : !!tvSaved, tvSym='';
   const nativeTv=()=>!!(window.AppBridge && window.AppBridge.tvShow);
   function tvSymbol(){ const src=loadJSON('bar-replay-source',{}); return TV_SYMBOL[src.symbol]||(src.type==='binance'?'BINANCE:'+src.symbol:'OANDA:XAUUSD'); }
-  function tvUrl(){ return 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent(tvSymbol())+'&interval='+(TV_INTERVAL[tf]||'5'); }
+  // Which live chart the overlay shows: the user's TradingView, or their XM account in the MT5 web terminal.
+  let feed=loadJSON('live-feed','tv');
+  const XM_URL='https://web.metatrader.app/terminal?mode=connect&lang=en';
+  function setFeed(f){ feed=f==='xm'?'xm':'tv'; saveJSON('live-feed',feed); $('tvBtn').textContent=feed==='xm'?'XM':'TV'; tvSym=''; }
+  setFeed(feed);
+  function tvUrl(){ if(feed==='xm') return XM_URL; return 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent(tvSymbol())+'&interval='+(TV_INTERVAL[tf]||'5'); }
   function tvPost(action){
     const r=document.querySelector('.chart-wrap').getBoundingClientRect();
     try{ window.parent.postMessage({type:'tv',action,rect:{x:r.left,y:r.top,w:r.width,h:r.height},url:tvUrl()},'*'); }catch(e){}
@@ -763,17 +772,17 @@
     if(nativeTv()){ tvPost(tvMode && !open ? 'show' : 'hide'); return; }
     let fr=document.querySelector('.tv-frame');
     if(!tvMode){ if(fr) fr.remove(); return; }
-    const sym=tvSymbol();
+    const sym=feed==='xm'?'xm':tvSymbol();
     if(!fr || sym!==tvSym){
       if(fr) fr.remove();
-      fr=document.createElement('iframe'); fr.className='tv-frame'; fr.title='TradingView chart';
-      fr.src='https://s.tradingview.com/widgetembed/?symbol='+encodeURIComponent(sym)+'&interval='+(TV_INTERVAL[tf]||'5')+'&theme=dark&style=1&timezone=exchange&allow_symbol_change=1&saveimage=0&toolbarbg=060913&locale=en';
+      fr=document.createElement('iframe'); fr.className='tv-frame'; fr.title=feed==='xm'?'XM MT5 chart':'TradingView chart';
+      fr.src=feed==='xm'?XM_URL:'https://s.tradingview.com/widgetembed/?symbol='+encodeURIComponent(sym)+'&interval='+(TV_INTERVAL[tf]||'5')+'&theme=dark&style=1&timezone=exchange&allow_symbol_change=1&saveimage=0&toolbarbg=060913&locale=en';
       document.querySelector('.chart-wrap').appendChild(fr);
     }
     tvSym=sym;
   }
   function setTvMode(on){
-    tvMode=!!on; saveJSON('tv-mode',tvMode);
+    tvMode=!!on; saveJSON('tv-mode2',tvMode);
     document.body.classList.toggle('tv-on',tvMode);
     $('tvBtn').setAttribute('aria-pressed',String(tvMode));
     tvSync();

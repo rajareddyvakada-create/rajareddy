@@ -41,6 +41,7 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
     private ActivityResultLauncher<Intent> accountPicker;
     private FrameLayout root;
     private WebView tvView;
+    private WebView mt5View;
     private String tvUrl;
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -212,33 +213,45 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
         });
     }
 
-    /** Lays the user's TradingView chart exactly over the Charts tab's chart area (rect in CSS pixels). */
+    /** Lays the user's live chart (TradingView, or their XM account in the MT5 web terminal) exactly over
+     *  the Charts tab's chart area (rect in CSS pixels). Each service keeps its own view so both stay signed in. */
     @Override
     public void tvShow(int x, int y, int w, int h, String url) {
         runOnUiThread(() -> {
-            if (tvView == null) {
-                tvView = new WebView(this);
-                tvView.setBackgroundColor(Color.parseColor("#060913"));
-                TradingViewActivity.setup(this, tvView, null);
-                root.addView(tvView);
-            }
+            boolean mt5 = url != null && url.startsWith("https://web.metatrader.app/");
+            if (mt5 && mt5View == null) mt5View = newChartView();
+            if (!mt5 && tvView == null) tvView = newChartView();
+            WebView show = mt5 ? mt5View : tvView;
+            WebView other = mt5 ? tvView : mt5View;
+            if (other != null) other.setVisibility(View.GONE);
             float d = getResources().getDisplayMetrics().density;
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Math.round(w * d), Math.round(h * d));
             lp.leftMargin = Math.round(x * d);
             lp.topMargin = Math.round(y * d);
-            tvView.setLayoutParams(lp);
-            if (url != null && url.startsWith("https://") && !url.equals(tvUrl)) {
+            show.setLayoutParams(lp);
+            if (mt5) {
+                if (show.getUrl() == null) show.loadUrl(url);
+            } else if (url != null && url.startsWith("https://") && !url.equals(tvUrl)) {
                 tvUrl = url;
-                tvView.loadUrl(url);
+                show.loadUrl(url);
             }
-            tvView.setVisibility(View.VISIBLE);
+            show.setVisibility(View.VISIBLE);
         });
+    }
+
+    private WebView newChartView() {
+        WebView v = new WebView(this);
+        v.setBackgroundColor(Color.parseColor("#060913"));
+        TradingViewActivity.setup(this, v, null);
+        root.addView(v);
+        return v;
     }
 
     @Override
     public void tvHide() {
         runOnUiThread(() -> {
             if (tvView != null) tvView.setVisibility(View.GONE);
+            if (mt5View != null) mt5View.setVisibility(View.GONE);
         });
     }
 
