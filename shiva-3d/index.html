@@ -154,8 +154,7 @@ try {
   document.getElementById('err').style.display = 'block';
   throw e;
 }
-const MAX_PR = Math.min(devicePixelRatio, 1.5);
-let pixelRatio = MAX_PR;
+const pixelRatio = Math.min(devicePixelRatio, 2);
 renderer.setPixelRatio(pixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.NoToneMapping;   // keep the artwork's colours as painted
@@ -672,7 +671,8 @@ const energy = addEnergy();
 const figure = addFigure(tex);
 
 // ---------- post ----------
-const composer = new EffectComposer(renderer);
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth * pixelRatio, innerHeight * pixelRatio,
+  { type: THREE.HalfFloatType, samples: 4 }));
 composer.setPixelRatio(pixelRatio);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.55, 0.45, 0.72);
@@ -730,13 +730,6 @@ function resize() {
 }
 addEventListener('resize', resize);
 
-// adaptive quality: if frames run slow, render fewer pixels until motion is smooth
-let slowFrames = 0, fastFrames = 0;
-function adaptQuality(dt) {
-  if (dt > 1 / 45) { slowFrames++; fastFrames = 0; } else if (dt < 1 / 58) { fastFrames++; slowFrames = 0; }
-  if (slowFrames > 40 && pixelRatio > 0.6) { pixelRatio = Math.max(0.6, pixelRatio - 0.2); slowFrames = 0; resize(); }
-  else if (fastFrames > 240 && pixelRatio < MAX_PR) { pixelRatio = Math.min(MAX_PR, pixelRatio + 0.1); fastFrames = 0; resize(); }
-}
 
 // ---------- loop ----------
 const clock = new THREE.Clock();
@@ -790,7 +783,6 @@ function frame() {
   if (ro !== lastReadout) { readout.textContent = ro; lastReadout = ro; }
 
   composer.render(dt);
-  adaptQuality(dt);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
