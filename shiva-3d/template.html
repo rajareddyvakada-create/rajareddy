@@ -171,9 +171,9 @@ controls.minDistance = 5;
 controls.maxDistance = 40;
 controls.minPolarAngle = THREE.MathUtils.degToRad(30);
 controls.maxPolarAngle = THREE.MathUtils.degToRad(118);
-controls.rotateSpeed = 0.6;
+controls.rotateSpeed = 0.9;
 controls.autoRotate = !reduceMotion;
-controls.autoRotateSpeed = 0.55;
+controls.autoRotateSpeed = 1.6;   // ~38 s per turn; positive turns him to the viewer's right
 
 // ---------- shared GLSL ----------
 const SIMPLEX3 = /* glsl */`
@@ -686,7 +686,7 @@ function flyTo(p) {
   const off = camera.position.clone().sub(TARGET); sph.setFromVector3(off);
   let from = { az: THREE.MathUtils.radToDeg(sph.theta), el: 90 - THREE.MathUtils.radToDeg(sph.phi), d: sph.radius };
   let toAz = p.az; let dAz = ((toAz - from.az + 540) % 360) - 180;
-  tween = { from, to: { az: from.az + dAz, el: p.el, d: p.d * fit() }, t0: performance.now(), dur: reduceMotion ? 1 : 1400 };
+  tween = { from, to: { az: from.az + dAz, el: p.el, d: p.d * fit() }, t0: performance.now(), dur: reduceMotion ? 1 : 900 };
   controls.minPolarAngle = Math.min(controls.minPolarAngle, THREE.MathUtils.degToRad(90 - p.el));
   controls.maxPolarAngle = Math.max(controls.maxPolarAngle, THREE.MathUtils.degToRad(90 - p.el));
 }
