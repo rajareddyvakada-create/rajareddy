@@ -147,14 +147,16 @@ const stage = document.getElementById('stage');
 
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
   if (!renderer.capabilities.isWebGL2) throw new Error('webgl2');
 } catch (e) {
   document.getElementById('loader').classList.add('done');
   document.getElementById('err').style.display = 'block';
   throw e;
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const MAX_PR = Math.min(devicePixelRatio, 1.5);
+let pixelRatio = MAX_PR;
+renderer.setPixelRatio(pixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.NoToneMapping;   // keep the artwork's colours as painted
 stage.appendChild(renderer.domElement);
@@ -165,7 +167,7 @@ const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 20
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.copy(TARGET);
 controls.enableDamping = true;
-controls.dampingFactor = 0.06;
+controls.dampingFactor = 0.14;
 controls.enablePan = false;
 controls.minDistance = 5;
 controls.maxDistance = 40;
@@ -201,6 +203,7 @@ float snoise(vec3 v){
   return 105.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
 }
 float fbm(vec3 p){float a=0.5,s=0.0;for(int i=0;i<6;i++){s+=a*snoise(p);p=p*2.03+vec3(1.7,9.2,3.1);a*=0.5;}return s;}
+float fbm3(vec3 p){float a=0.5,s=0.0;for(int i=0;i<4;i++){s+=a*snoise(p);p=p*2.03+vec3(1.7,9.2,3.1);a*=0.5;}return s;}
 float ridge(vec3 p){float a=0.5,s=0.0;for(int i=0;i<5;i++){float n=1.0-abs(snoise(p));s+=a*n*n;p=p*2.11+vec3(3.3,1.1,7.7);a*=0.5;}return s;}
 float hash13(vec3 p){p=fract(p*0.1031);p+=dot(p,p.zyx+31.32);return fract((p.x+p.y)*p.z);}
 `;
@@ -543,25 +546,33 @@ function addEnergy() {
 
   const tendrilMat = new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);} `,
+    vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0);} `,
     fragmentShader: SIMPLEX3 + /* glsl */`
       varying vec2 vUv; uniform float uTime;
       void main(){
-        vec2 p=(vUv-0.5)*2.0; float r=length(p); float a=atan(p.y,p.x);
+        vec2 p=(vUv-0.5)*2.0; float r=length(p);
+        float mask=smoothstep(0.95,0.35,r)*smoothstep(0.12,0.36,r);
+        if(mask<=0.001){ gl_FragColor=vec4(0.0); return; }
         float t=uTime*0.18;
         vec3 q=vec3(p*1.8, t);
-        q.xy+=vec2(fbm(q+vec3(0.0,0.0,t)), fbm(q+vec3(5.2,1.3,-t)))*0.55;
+        q.xy+=vec2(fbm3(q*1.3+vec3(0.0,0.0,t)), fbm3(q*1.3+vec3(5.2,1.3,-t)))*0.5;
         q.y-=t*1.5;
-        float l1=pow(1.0-abs(snoise(q*1.7)),28.0);
-        float l2=pow(1.0-abs(snoise(q*3.1+7.0)),34.0)*0.5;
-        float mask=smoothstep(0.95,0.35,r)*smoothstep(0.12,0.36,r);
+        float l1=pow(1.0-abs(snoise(q*1.7)),40.0);
+        float l2=pow(1.0-abs(snoise(q*3.1+7.0)),46.0)*0.5;
         float up=0.65+0.35*smoothstep(-0.6,0.6,p.y);
         vec3 col=mix(vec3(0.25,0.55,1.0),vec3(0.85,0.95,1.0),l1)*l1*1.6 + vec3(0.6,0.3,1.0)*l2;
-        gl_FragColor=vec4(col*mask*up*0.55,1.0);
+        gl_FragColor=vec4(col*mask*up*0.5,1.0);
       }`,
   });
-  const tendrils = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 7.2), tendrilMat);
+  // the electric shader runs into a small fixed-size texture, so its cost doesn't grow with the screen
+  const tendrilRT = new THREE.WebGLRenderTarget(640, 640, { type: THREE.HalfFloatType });
+  const tendrilScene = new THREE.Scene();
+  tendrilScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), tendrilMat));
+  const tendrilCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const tendrils = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 7.2),
+    new THREE.MeshBasicMaterial({ map: tendrilRT.texture, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
   tendrils.position.set(0, SEAT_Y + 1.75, 0); tendrils.renderOrder = 2;
+  const renderTendrils = () => { renderer.setRenderTarget(tendrilRT); renderer.render(tendrilScene, tendrilCam); renderer.setRenderTarget(null); };
   scene.add(tendrils);
 
   const seatTex = radialTexture([[0, 'rgba(200,245,255,0.9)'], [0.3, 'rgba(80,170,255,0.5)'], [0.7, 'rgba(70,60,255,0.12)'], [1, 'rgba(0,0,0,0)']]);
@@ -588,7 +599,7 @@ function addEnergy() {
   });
   const sparks = new THREE.Points(g, sparkMat); sparks.renderOrder = 4;
   scene.add(sparks);
-  return { aura, tendrils, tendrilMat, sparkMat };
+  return { aura, tendrils, tendrilMat, sparkMat, renderTendrils };
 }
 
 // ---------- 6. Shiva: view-dependent blend of the PDF's painted angles ----------
@@ -662,10 +673,12 @@ const figure = addFigure(tex);
 
 // ---------- post ----------
 const composer = new EffectComposer(renderer);
+composer.setPixelRatio(pixelRatio);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.55, 0.45, 0.72);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+bloom.setSize(innerWidth * pixelRatio / 2, innerHeight * pixelRatio / 2);
 
 // ---------- camera presets ----------
 const sph = new THREE.Spherical();
@@ -709,15 +722,26 @@ function markChip(i) { chipEls.forEach((b, k) => b.setAttribute('aria-pressed', 
 const readout = document.getElementById('readout');
 let lastReadout = '';
 
-addEventListener('resize', () => {
+function resize() {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); fitLimits();
+  renderer.setPixelRatio(pixelRatio); composer.setPixelRatio(pixelRatio);
   renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
-  bloom.resolution.set(innerWidth / 2, innerHeight / 2);
-});
+  bloom.setSize(innerWidth * pixelRatio / 2, innerHeight * pixelRatio / 2);
+}
+addEventListener('resize', resize);
+
+// adaptive quality: if frames run slow, render fewer pixels until motion is smooth
+let slowFrames = 0, fastFrames = 0;
+function adaptQuality(dt) {
+  if (dt > 1 / 45) { slowFrames++; fastFrames = 0; } else if (dt < 1 / 58) { fastFrames++; slowFrames = 0; }
+  if (slowFrames > 40 && pixelRatio > 0.6) { pixelRatio = Math.max(0.6, pixelRatio - 0.2); slowFrames = 0; resize(); }
+  else if (fastFrames > 240 && pixelRatio < MAX_PR) { pixelRatio = Math.min(MAX_PR, pixelRatio + 0.1); fastFrames = 0; resize(); }
+}
 
 // ---------- loop ----------
 const clock = new THREE.Clock();
-const camDir = new THREE.Vector3();
+const camDir = new THREE.Vector3(), camOff = new THREE.Vector3();
+let frameCount = 0;
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
 
@@ -739,13 +763,14 @@ function frame() {
   // the painted figure always faces the lens; the painted angle tracks the orbit
   figure.pivot.quaternion.copy(camera.quaternion);
   energy.tendrils.quaternion.copy(camera.quaternion);
-  const off = camera.position.clone().sub(TARGET); sph.setFromVector3(off);
+  sph.setFromVector3(camOff.subVectors(camera.position, TARGET));
   const az = THREE.MathUtils.radToDeg(sph.theta), el = 90 - THREE.MathUtils.radToDeg(sph.phi);
   const [fa, fb, m] = pickFrames(az);
   figure.mat.uniforms.tA.value = tex[fa]; figure.mat.uniforms.tB.value = tex[fb]; figure.mat.uniforms.uMix.value = m;
   figure.mat.uniforms.uTime.value = t;
 
   energy.tendrilMat.uniforms.uTime.value = t;
+  if ((frameCount++ & 1) === 0) energy.renderTendrils();
   energy.sparkMat.uniforms.uTime.value = t;
   energy.aura.material.opacity = 0.42 + 0.06 * Math.sin(t * 1.4);
   cosmos.starMat.uniforms.uTime.value = t;
@@ -765,6 +790,7 @@ function frame() {
   if (ro !== lastReadout) { readout.textContent = ro; lastReadout = ro; }
 
   composer.render(dt);
+  adaptQuality(dt);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
