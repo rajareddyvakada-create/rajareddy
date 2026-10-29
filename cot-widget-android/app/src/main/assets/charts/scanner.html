@@ -93,6 +93,7 @@ h1,.dh h2,.head h1{font-family:'Rajdhani',sans-serif !important;font-weight:700 
   <p class="note">Only confirmed events count: a BOS needs a candle to close beyond the last swing (daily pivots of 3 bars, weekly and monthly of 2), and a sweep needs price to take the level and a candle to close back inside it. Sessions (PSH/PSL) are Asia 00–07, London 07–13 and New York 13–21 UTC. Tap a market to open its chart.</p>
 </div>
 <script src="../vendor/gsap.min.js"></script>
+<script src="core.js"></script>
 <script>
 // Entrance motion shared by the tab pages (skipped with reduced motion or without GSAP)
 window.Motion={stagger(list){ try{ if(!window.gsap || matchMedia('(prefers-reduced-motion: reduce)').matches || !list || !list.length) return; gsap.fromTo(list,{autoAlpha:0,y:12},{autoAlpha:1,y:0,duration:.4,stagger:.04,ease:'power2.out',clearProps:'transform,opacity,visibility'}); }catch(e){} }};
@@ -125,7 +126,9 @@ window.Motion={stagger(list){ try{ if(!window.gsap || matchMedia('(prefers-reduc
           if([o, hi, lo, c].some(v => v == null)) continue;
           out.push({ time:res.timestamp[i], open:o, high:hi, low:lo, close:c });
         }
-        return { bars:out, off:(res.meta && res.meta.gmtoffset) || 0 };
+        const clean = Core.cleanCandles(out);   // sorted, no duplicates, no impossible bars
+        if(clean.bars.length < 20) throw new Error('too few valid candles');
+        return { bars:clean.bars, off:(res.meta && res.meta.gmtoffset) || 0 };
       } catch(e){ lastErr = e; }
     }
     throw lastErr;
@@ -270,7 +273,9 @@ window.Motion={stagger(list){ try{ if(!window.gsap || matchMedia('(prefers-reduc
       }
       box.appendChild(sec);
     }
-    $('stamp').textContent = 'Scanned ' + new Date(last.at).toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' }) + ' · ' + last.ok + '/8 markets';
+    const at = new Date(last.at), today = at.toDateString() === new Date().toDateString(), age = Date.now() - last.at;
+    $('stamp').textContent = 'Scanned ' + (today ? '' : at.toLocaleDateString(undefined, { day:'numeric', month:'short' }) + ' ') + at.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' }) +
+      ' · ' + last.ok + '/8 markets · Yahoo daily + hourly' + (age > 15 * 60000 ? ' · saved result, tap scan to refresh' : '');
   }
 
   let busy = false;

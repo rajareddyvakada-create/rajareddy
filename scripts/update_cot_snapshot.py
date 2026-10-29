@@ -53,11 +53,18 @@ def fetch_cot(code, kind):
         "$limit": "12",
     })
     rows = get_json(f"https://publicreporting.cftc.gov/resource/{ds}.json?{q}")
-    out = [[r["report_date_as_yyyy_mm_dd"][:10],
-            int(float(r.get(al, 0))) - int(float(r.get(ash, 0))),
-            int(float(r.get(ll, 0))) - int(float(r.get(ls, 0))),
-            int(float(r.get("open_interest_all", 0)))] for r in rows]
-    return out[::-1]
+    out, seen = [], set()
+    for r in rows:
+        date = str(r.get("report_date_as_yyyy_mm_dd", ""))[:10]
+        try:   # a missing or non-numeric field drops the row; it is never read as zero
+            v = [int(float(r[k])) for k in (al, ash, ll, ls, "open_interest_all")]
+        except (KeyError, TypeError, ValueError):
+            continue
+        if len(date) != 10 or date in seen or min(v) < 0:
+            continue
+        seen.add(date)
+        out.append([date, v[0] - v[1], v[2] - v[3], v[4]])
+    return sorted(out)
 
 
 def fetch_coinbase(product):

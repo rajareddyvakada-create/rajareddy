@@ -1,6 +1,6 @@
 package com.cot.widget;
 
-/** Same scoring as scoreMarket()/premiumDiscount() in cot-sentiment-widget.html. Keep both in step. */
+/** Same scoring as Core.scoreCot()/premiumDiscount() in assets/charts/core.js. Keep both in step (ScoringTest checks the same cases). */
 final class Scoring {
 
     static final class Result {
@@ -22,8 +22,8 @@ final class Scoring {
 
     /**
      * @param dates COT report dates, oldest first
-     * @param inst  institutional net position (managed money or asset managers)
-     * @param lev   fast-money net position (swap dealers or leveraged funds)
+     * @param inst  group A net position: managed money (commodities) or asset managers (financials)
+     * @param lev   group B net position: swap dealers (commodities) or leveraged funds (financials)
      * @param oi    open interest
      * @param price weekly rows of {high, low, close}, oldest first
      */
@@ -41,6 +41,7 @@ final class Scoring {
         boolean discount = !(pos > 50);
 
         int n = inst.length;
+        if (n < 5 || price.length == 0) throw new IllegalArgumentException("not enough history");
         int cur = n - 1, prev = n - 2, four = n >= 5 ? n - 5 : 0;
         double dLev = lev[cur] - lev[prev];
         double dOi = oi[cur] - oi[prev];
@@ -51,7 +52,7 @@ final class Scoring {
         else score -= tInst <= 0 ? 35 : 20;
 
         if (tInst > 0) score += discount ? 30 : 12;
-        else score -= !discount ? 30 : 12;
+        else if (tInst < 0) score -= !discount ? 30 : 12;   // no change scores 0
 
         double levSum = 0;
         for (double v : lev) levSum += Math.abs(v);

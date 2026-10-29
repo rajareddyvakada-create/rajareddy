@@ -59,6 +59,7 @@ svg.stroke{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;str
 .top .icon-sm{width:34px}
 .top{gap:5px}
 .tog.tv{font-weight:800;font-size:.78rem;letter-spacing:.02em}
+.demo-badge{position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:4;pointer-events:none;font:800 .72rem/1 var(--mono,monospace);letter-spacing:.08em;color:#060913;background:#FFB300;border-radius:999px;padding:6px 12px;box-shadow:0 0 18px rgba(255,179,0,.45)}
 .tv-frame{position:absolute;inset:0;width:100%;height:100%;border:0;z-index:5;background:#060913}
 body.tv-on .legend,body.tv-on .ind-panel{visibility:hidden}
 body.tv-on .tfs,body.tv-on .replay-only{display:none !important}
@@ -253,6 +254,7 @@ dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
 
 <div class="chart-wrap">
   <div id="chart" aria-label="Candlestick chart"></div>
+  <div class="demo-badge" id="demoBadge" hidden>DEMO DATA · random prices, not market history</div>
   <div class="ind-panel" id="indPanel" hidden></div>
   <div class="legend"><div class="rline"><span class="rtime" id="rtime">–</span><button type="button" class="live" id="liveBadge" hidden></button></div><div class="ohlc" id="ohlc"></div></div>
 </div>
@@ -296,7 +298,8 @@ dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
       <label class="field"><span>Stop-loss distance (price)</span><input type="number" id="sSl" step="0.1" min="0.01" inputmode="decimal"></label>
       <label class="field"><span>Reward to risk (2 = 1:2)</span><input type="number" id="sRr" step="0.1" min="0.1" inputmode="decimal"></label>
       <label class="field"><span>Risk per trade ($)</span><input type="number" id="sRisk" step="1" min="1" inputmode="decimal"></label>
-      <label class="field"><span>Contract size (gold = 100)</span><input type="number" id="sContract" step="1" min="1" inputmode="decimal"></label>
+      <label class="field"><span>Contract size for CSV files (built-in markets use their real size)</span><input type="number" id="sContract" step="1" min="1" inputmode="decimal"></label>
+      <label class="field"><span>Spread + commission per trade (price)</span><input type="number" id="sCost" step="0.01" min="0" inputmode="decimal"></label>
       <label class="field"><span>Auto trailing stop-loss</span><span class="switch"><input type="checkbox" role="switch" id="sTrail"></span></label>
       <label class="field"><span>Trail mode</span><select id="sTrailMode"><option value="swing">Swing low / high</option><option value="ut">UT trailing stop</option><option value="atr">ATR chandelier</option></select></label>
       <p class="hint">Orders fill at the close of the last candle shown. If one candle touches both the stop-loss and the target, it counts as a loss. With auto trailing on: break-even at +1R, +0.5R locked at +1.5R, then the stop trails; it exits when a candle closes beyond the stop.</p>
@@ -326,11 +329,11 @@ dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
     <fieldset style="margin-top:14px">
       <legend>Agent settings</legend>
       <label class="field"><span>Auto-trade agent setups (practice account)</span><span class="switch"><input type="checkbox" role="switch" id="agAuto"></span></label>
-      <label class="field"><span>Minimum confidence for auto-trade</span><input type="number" id="agMinConf" min="50" max="95" step="5" inputmode="numeric"></label>
+      <label class="field"><span>Minimum confluence for auto-trade (50–95, not a win probability)</span><input type="number" id="agMinConf" min="50" max="95" step="5" inputmode="numeric"></label>
       <label class="field"><span>Agent take-profit (R, 1.5 = 1.5× the risk)</span><input type="number" id="agTpR" min="0.5" max="10" step="0.5" inputmode="decimal"></label>
-      <label class="field"><span>Claude API key (optional)</span><input type="password" id="agKey" autocomplete="off" spellcheck="false" placeholder="sk-ant-…"></label>
+      <label class="field"><span>Claude API key (optional, saved encrypted)</span><input type="password" id="agKey" autocomplete="off" spellcheck="false" placeholder="sk-ant-…"></label>
       <label class="field"><span>Claude model</span><select id="agModel"><option value="claude-opus-5-5">Claude Opus 5.5 (smartest)</option><option value="claude-sonnet-5-5">Claude Sonnet 5.5 (faster)</option><option value="claude-haiku-5-5">Claude Haiku 5.5 (fastest)</option></select></label>
-      <p class="hint">Without a key, the built-in agent still analyses the chart, news and COT, gives live guides and follows commands. With a key from console.anthropic.com, Claude answers free-form questions and drives the app through the same tools. The key stays on this phone. Orders go to the practice account here; XM and Octa don't let other apps send real orders, so the agent copies the order to your clipboard and opens MT5 for you to confirm.</p>
+      <p class="hint">Without a key, the built-in agent still analyses the chart, news and COT, gives live guides and follows commands. With a key from console.anthropic.com, Claude answers free-form questions and drives the app through the same tools. The key is stored encrypted by Android (Keystore) and sent only to api.anthropic.com by the app itself; page scripts can't read it, and the app allows at most 30 Claude requests per 10 minutes. Orders go to the practice account here; XM and Octa don't let other apps send real orders, so the agent copies the order to your clipboard and opens MT5 for you to confirm.</p>
     </fieldset>
   </div>
 </dialog>
@@ -385,6 +388,7 @@ dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
 </dialog>
 
 <script src="lightweight-charts.standalone.production.js"></script>
+<script src="core.js"></script>
 <script src="data.js"></script>
 <script src="indicators.js"></script>
 <script src="replay.js"></script>

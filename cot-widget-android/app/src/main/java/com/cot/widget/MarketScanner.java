@@ -71,16 +71,32 @@ final class MarketScanner {
                 + "&$order=" + enc("report_date_as_yyyy_mm_dd DESC")
                 + "&$limit=12";
         JSONArray rows = new JSONArray(get(url));
-        int n = rows.length();
+        // Newest first from the API. A row with a missing or non-numeric field is skipped, never read as zero.
+        List<Object[]> ok = new ArrayList<>();
+        String lastDate = null;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject r = rows.optJSONObject(i);
+            if (r == null) continue;
+            String date = r.optString("report_date_as_yyyy_mm_dd", "");
+            double[] v = {r.optDouble(fl, Double.NaN), r.optDouble(fs, Double.NaN), r.optDouble(ll, Double.NaN),
+                    r.optDouble(ls, Double.NaN), r.optDouble("open_interest_all", Double.NaN)};
+            boolean valid = date.length() >= 10;
+            for (double x : v) if (Double.isNaN(x) || Double.isInfinite(x) || x < 0) valid = false;
+            if (!valid || date.substring(0, 10).equals(lastDate)) continue;
+            lastDate = date.substring(0, 10);
+            ok.add(new Object[]{lastDate, v});
+        }
+        int n = ok.size();
         if (n < 5) throw new IOException("not enough COT history");
         String[] dates = new String[n];
         double[] inst = new double[n], lev = new double[n], oi = new double[n];
         for (int i = 0; i < n; i++) {
-            JSONObject r = rows.getJSONObject(n - 1 - i);
-            dates[i] = r.optString("report_date_as_yyyy_mm_dd", "").substring(0, 10);
-            inst[i] = r.optDouble(fl, 0) - r.optDouble(fs, 0);
-            lev[i] = r.optDouble(ll, 0) - r.optDouble(ls, 0);
-            oi[i] = r.optDouble("open_interest_all", 0);
+            Object[] e = ok.get(n - 1 - i);
+            double[] v = (double[]) e[1];
+            dates[i] = (String) e[0];
+            inst[i] = v[0] - v[1];
+            lev[i] = v[2] - v[3];
+            oi[i] = v[4];
         }
         double[][] price = m.ticker.equals("BTC-USD") ? coinbaseWeekly() : yahooWeekly(m.ticker);
         if (price.length < 10) throw new IOException("not enough price history");
@@ -99,7 +115,9 @@ final class MarketScanner {
                 List<double[]> rows = new ArrayList<>();
                 for (int i = 0; i < c.length(); i++) {
                     if (h.isNull(i) || l.isNull(i) || c.isNull(i)) continue;
-                    rows.add(new double[]{h.getDouble(i), l.getDouble(i), c.getDouble(i)});
+                    double hi = h.getDouble(i), lo = l.getDouble(i), cl = c.getDouble(i);
+                    if (hi < lo || cl > hi || cl < lo || lo <= 0) continue;   // impossible bar
+                    rows.add(new double[]{hi, lo, cl});
                 }
                 return rows.toArray(new double[0][]);
             } catch (IOException e) {

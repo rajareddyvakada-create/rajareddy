@@ -164,4 +164,26 @@ final class AppBridge {
     public void tvHide() {
         host.tvHide();
     }
+
+    /** Saves (or with "" clears) the Claude API key in encrypted storage. Pages can never read it back. */
+    @JavascriptInterface
+    public void setApiKey(String key) {
+        SecretStore.put(ctx, key == null ? "" : key.trim());
+    }
+
+    @JavascriptInterface
+    public boolean hasApiKey() {
+        return SecretStore.has(ctx);
+    }
+
+    /** Starts a Claude Messages request using the saved key; poll claudeResult(id) for the answer. */
+    @JavascriptInterface
+    public String claudeStart(String body, String beta) {
+        return ClaudeProxy.start(ctx, body, beta);
+    }
+
+    @JavascriptInterface
+    public String claudeResult(String id) {
+        return ClaudeProxy.result(id);
+    }
 }

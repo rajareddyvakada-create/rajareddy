@@ -105,6 +105,7 @@ h1,.dh h2,.head h1{font-family:'Rajdhani',sans-serif !important;font-weight:700 
 .pill.up,.side.long,.dir.up{box-shadow:0 0 10px rgba(0,229,255,.3)} .pill.down,.side.short,.dir.down{box-shadow:0 0 10px rgba(255,0,85,.3)}
 .icon-btn,.refresh,.chip,.btn{background:#0F172A;border-color:rgba(0,229,255,.15)}
 .chip[aria-pressed="true"],.btn.primary{background:var(--grad)}
+.demo-tag{font:800 .62rem monospace;letter-spacing:.06em;color:#060913;background:#FFB300;border-radius:6px;padding:1px 5px;vertical-align:1px}
 </style>
 </head>
 <body>
@@ -123,6 +124,7 @@ h1,.dh h2,.head h1{font-family:'Rajdhani',sans-serif !important;font-weight:700 
     <button class="chip" type="button" data-f="win" aria-pressed="false">Wins</button>
     <button class="chip" type="button" data-f="practice" aria-pressed="false">Practice</button>
     <button class="chip" type="button" data-f="real" aria-pressed="false">Real (MT5)</button>
+    <button class="chip" type="button" data-f="demo" aria-pressed="false">Demo data</button>
   </div>
   <div id="list" style="display:flex;flex-direction:column;gap:10px"></div>
   <p class="note">Practice trades from Charts (yours and the AI agent's) are logged automatically with what the market looked like at entry. Add real MT5 trades with “+ Real trade”. The review is rule-based and works offline; with a Claude key in the AI agent settings you can also ask Claude for a deeper review.</p>
@@ -155,12 +157,13 @@ h1,.dh h2,.head h1{font-family:'Rajdhani',sans-serif !important;font-weight:700 
 </dialog>
 
 <script src="../vendor/gsap.min.js"></script>
+<script src="core.js"></script>
 <script>
 (function(){
 'use strict';
 const $ = id => document.getElementById(id);
 const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch(e){ return d; } };
-const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch(e){ console.warn('Journal save failed: ' + e.message); return false; } };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const sgn = (v, d) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d);
 const money = v => (v >= 0 ? '+' : '−') + '$' + Math.abs(v).toFixed(2);
@@ -171,8 +174,10 @@ let filter = 'all', open = null;
 /* ---------- data ---------- */
 function allTrades(){
   const book = load('chart.bar-replay-trades', { trades:[] });
-  const practice = (book.trades || []).map(t => ({ ...t, id:t.id || (t.file + '|' + t.entryTime + '|' + t.side), kind:'practice' }));
-  const real = load('journal.manual', []).map(t => ({ ...t, kind:'real' }));
+  // Older records have no demo flag: trades on the random demo chart are recognised by its name. Nothing is rewritten.
+  const practice = (book.trades || []).filter(t => t && isFinite(t.r) && isFinite(t.entry))
+    .map(t => ({ ...t, id:t.id || (t.file + '|' + t.entryTime + '|' + t.side), kind:t.demo || t.file === 'Demo data' ? 'demo' : 'practice' }));
+  const real = load('journal.manual', []).filter(t => t && isFinite(t.r) && isFinite(t.entry)).map(t => ({ ...t, kind:'real' }));
   return practice.concat(real).sort((a, b) => (b.closedAt || b.exitTime * 1000) - (a.closedAt || a.exitTime * 1000));
 }
 const notes = () => load('journal.notes', {});
@@ -237,7 +242,7 @@ function statsCard(list){
   const lo = Math.min(...pts), hi = Math.max(...pts), rg = hi - lo || 1, W = 320, H = 90;
   const xy = pts.map((v, i) => [(i / Math.max(1, pts.length - 1)) * W, H - 8 - (v - lo) / rg * (H - 16)]);
   const zeroY = H - 8 - (0 - lo) / rg * (H - 16);
-  $('stats').innerHTML = '<div class="lbl">Your results · ' + list.length + ' trades</div>' +
+  $('stats').innerHTML = '<div class="lbl">Your results · ' + list.length + ' trades (demo-data trades not counted)</div>' +
     '<div class="tiles"><div class="tile"><small>Win rate</small><b>' + Math.round(w.length / list.length * 100) + '%</b></div>' +
     '<div class="tile"><small>Net R</small><b class="' + (netR >= 0 ? 'up-t' : 'down-t') + '">' + sgn(netR, 1) + '</b></div>' +
     '<div class="tile"><small>Net $</small><b class="' + (net$ >= 0 ? 'up-t' : 'down-t') + '">' + (net$ >= 0 ? '+' : '−') + Math.abs(net$).toFixed(0) + '</b></div>' +
@@ -276,19 +281,20 @@ function miniChart(t){
 function when(t){ const d = new Date(t.entryTime * 1000); return d.toLocaleDateString([], { day:'numeric', month:'short' }) + ' ' + d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }); }
 function render(){
   const all = allTrades();
-  statsCard(all);
+  statsCard(all.filter(t => t.kind !== 'demo'));   // random demo prices never count in your results
   let list = all;
   if(filter === 'loss') list = all.filter(t => t.r < 0);
   if(filter === 'win') list = all.filter(t => t.r > 0);
   if(filter === 'practice') list = all.filter(t => t.kind === 'practice');
   if(filter === 'real') list = all.filter(t => t.kind === 'real');
+  if(filter === 'demo') list = all.filter(t => t.kind === 'demo');
   $('sub').textContent = all.length ? all.filter(t => t.r < 0).length + ' losses to learn from · tap a trade for its review' : 'Every trade, and what each loss teaches you';
   if(!list.length){ $('list').innerHTML = all.length ? '<div class="empty">Nothing matches this filter.</div>' : ''; return; }
   const N = notes();
   $('list').innerHTML = list.slice(0, 200).map(t => {
     const rv = review(t), col = rv.score >= 75 ? 'up-t' : rv.score >= 50 ? 'flat-t' : 'down-t';
     let h = '<article class="card trade" data-id="' + esc(t.id) + '"><div class="trow"><span class="side ' + t.side + '">' + (t.side === 'long' ? 'BUY' : 'SELL') + '</span>' +
-      '<div class="what"><b>' + esc(t.file || t.market) + (t.tf ? ' · ' + esc(t.tf) : '') + '</b><small>' + when(t) + ' · ' + esc(t.reason || (t.kind === 'real' ? 'Real (MT5)' : '')) + (t.by === 'AI' ? ' · AI agent' : '') + '</small></div>' +
+      '<div class="what"><b>' + (t.kind === 'demo' ? '<span class="demo-tag">DEMO</span> ' : '') + esc(t.file || t.market) + (t.tf ? ' · ' + esc(t.tf) : '') + '</b><small>' + when(t) + ' · ' + esc(t.reason || (t.kind === 'real' ? 'Real (MT5)' : '')) + (t.by === 'AI' ? ' · AI agent' : '') + '</small></div>' +
       '<div class="res ' + (t.r >= 0 ? 'up-t' : 'down-t') + '">' + sgn(t.r, 2) + 'R<small>' + (t.pnl != null ? money(t.pnl) : '') + '</small></div>' +
       '<span class="score ' + col + '" title="Discipline score">' + rv.score + '</span></div>';
     if(open === t.id){
@@ -309,8 +315,8 @@ function render(){
 
 /* ---------- Claude deep review (uses the key saved in AI agent settings) ---------- */
 async function claudeReview(t){
-  const pr = load('agent.prefs', {});
-  if(!pr.key){ setNote(t.id, { ai:'Add your Claude API key in Charts → AI agent → Agent settings to get a deeper review. The review above works without it.' }); render(); return; }
+  const pr = load('agent.prefs', {}), B = window.AppBridge;
+  if(!B || !B.hasApiKey || !B.hasApiKey()){ setNote(t.id, { ai:'Add your Claude API key in Charts → AI agent → Agent settings to get a deeper review. The review above works without it.' }); render(); return; }
   setNote(t.id, { ai:'Reviewing…' }); render();
   const bars = (load('chart.journal-bars', {})[t.id] || {}).bars || [];
   const rv = review(t);
@@ -318,17 +324,16 @@ async function claudeReview(t){
     system:'You are a trading coach reviewing one trade for a retail gold trader on a phone. Be kind but direct. Use short plain sentences, no markdown tables. Structure: What happened (2 lines). The main mistake (or say none). Why it cost money. One rule to follow next time. If the loss was a normal loss of a good plan, say so clearly.',
     messages:[{ role:'user', content:'Trade:\n' + JSON.stringify({ market:t.file || t.market, side:t.side, timeframe:t.tf, entry:t.entry, exit:t.exit, first_stop:t.sl0, target:t.tp0, result_R:+t.r.toFixed(2), exit_reason:t.reason, best_R_while_open:t.mfe, worst_R:t.mae, context_at_entry:t.ctx, self_check:t.q, feeling:(notes()[t.id] || {}).emo, notes:(notes()[t.id] || {}).text || t.notes }) +
       '\n\nRule-based findings:\n' + JSON.stringify(rv.list.map(m => m.title)) + '\n\nCandles around the trade [time, open, high, low, close]:\n' + JSON.stringify(bars.slice(-80)) }] };
-  const headers = { 'content-type':'application/json', 'x-api-key':pr.key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' };
-  if(body.model !== 'claude-haiku-5-5'){ body.fallbacks = 'default'; headers['anthropic-beta'] = 'server-side-fallback-2026-07-01'; }
+  let beta = '';
+  if(body.model !== 'claude-haiku-5-5'){ body.fallbacks = 'default'; beta = 'server-side-fallback-2026-07-01'; }
   try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers, body:JSON.stringify(body) });
-    const j = await r.json().catch(() => ({}));
+    const res = await Core.claude(body, beta), j = res.json;
     let text;
-    if(!r.ok) text = r.status === 401 ? 'The Claude API key was rejected. Check it in AI agent settings.' : 'Claude review failed: ' + ((j.error && j.error.message) || 'HTTP ' + r.status);
+    if(!res.ok) text = res.status === 401 ? 'The Claude API key was rejected (or none is saved). Check it in AI agent settings.' : 'Claude review failed: ' + ((j.error && j.error.message) || 'HTTP ' + res.status);
     else if(j.stop_reason === 'refusal') text = 'Claude declined this review.';
-    else text = (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim() || '(no answer)';
+    else text = Core.claudeText(j) || '(no answer)';
     setNote(t.id, { ai:text });
-  } catch(e){ setNote(t.id, { ai:'Couldn\'t reach Claude. Check your connection.' }); }
+  } catch(e){ setNote(t.id, { ai:e.message || 'Couldn\'t reach Claude. Check your connection.' }); }
   render();
 }
 
@@ -339,7 +344,11 @@ $('list').addEventListener('click', e => {
   const emo = e.target.closest('[data-emo]');
   if(emo){ const cur = (notes()[id] || {}).emo; setNote(id, { emo:cur === emo.dataset.emo ? '' : emo.dataset.emo }); render(); return; }
   if(e.target.closest('[data-ai]')){ claudeReview(t); return; }
-  if(e.target.closest('[data-del]')){ save('journal.manual', load('journal.manual', []).filter(x => x.id !== id)); open = null; render(); return; }
+  if(e.target.closest('[data-del]')){
+    if(!confirm('Delete this real trade from the journal?')) return;
+    if(!save('journal.manual', load('journal.manual', []).filter(x => x.id !== id))) alert('Couldn\'t delete: storage is blocked.');
+    open = null; render(); return;
+  }
   if(e.target.closest('textarea')) return;
   open = open === id ? null : id; render();
   if(open && window.gsap && !matchMedia('(prefers-reduced-motion: reduce)').matches){ const d = document.querySelector('[data-id="' + CSS.escape(id) + '"] .detail'); if(d) gsap.fromTo(d.children, { autoAlpha:0, y:8 }, { autoAlpha:1, y:0, duration:.35, stagger:.05, ease:'power2.out', clearProps:'all' }); }
@@ -354,13 +363,19 @@ $('addForm').addEventListener('submit', e => {
   e.preventDefault();
   const side = $('mSide').value, dir = side === 'long' ? 1 : -1, entry = +$('mEntry').value, exit = +$('mExit').value, sl = +$('mSl').value;
   const dist = Math.abs(entry - sl);
+  if(!(entry > 0) || !(exit > 0) || !(sl > 0)){ alert('Entry, exit and stop-loss must be prices above zero.'); return; }
   if(!dist || (entry - sl) * dir <= 0){ alert('The stop-loss must be below the entry for a buy and above it for a sell.'); return; }
   const op = Date.parse($('mOpen').value), cl = Date.parse($('mClose').value) || op;
+  if(!isFinite(op)){ alert('Enter when the trade was opened.'); return; }
+  if(cl < op){ alert('The close time is before the open time.'); return; }
+  const dup = load('journal.manual', []).some(x => x.side === side && x.entry === entry && x.exit === exit && x.openedAt === op);
+  if(dup){ alert('This trade is already in your journal.'); return; }
   const t = { id:'real|' + Date.now(), market:$('mMarket').value.trim() || 'XAUUSD', file:$('mMarket').value.trim() || 'XAUUSD', side, entry, exit, sl0:sl, slDist:dist,
     r:(exit - entry) * dir / dist, pnl:$('mPnl').value === '' ? null : +$('mPnl').value, entryTime:Math.floor(op / 1000), exitTime:Math.floor(cl / 1000), closedAt:cl, openedAt:op,
     reason:'Real (MT5)', notes:$('mNotes').value.trim(),
     q:{ setup:$('qSetup').value, trend:$('qTrend').value, news:$('qNews').value, sl:$('qSl').value, size:$('qSize').value, revenge:$('qRevenge').value, fear:$('qFear').value } };
-  const list = load('journal.manual', []); list.push(t); save('journal.manual', list);
+  const list = load('journal.manual', []); list.push(t);
+  if(!save('journal.manual', list)){ alert('Couldn\'t save the trade (phone storage full or blocked). Nothing was changed.'); return; }
   $('addDlg').close(); $('addForm').reset(); open = t.id; render();
 });
 window.addEventListener('storage', render);

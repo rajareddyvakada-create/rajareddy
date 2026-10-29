@@ -15,7 +15,7 @@
   const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const MONS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const DEMO_NAME='Demo data';
-  const DEFAULTS={sl:6.5,rr:2,risk:30,contract:100,trail:true,trailMode:'swing'};
+  const DEFAULTS={sl:6.5,rr:2,risk:30,contract:100,cost:0,trail:true,trailMode:'swing'};
 
   const PFX='chart.';
   const loadJSON=(k,f)=>{ try{ const v=JSON.parse(localStorage.getItem(PFX+k)); return v==null?f:v; }catch(e){ return f; } };
@@ -27,7 +27,9 @@
   let raf=0, lastTs=0, acc=0;
   let cfg=Object.assign({},DEFAULTS), book={trades:[],pos:null};
   let trades=book.trades, pos=null, posLines=[];
-  let isOnline=false, liveState='off', session=0, stopStream=null;
+  let isOnline=false, liveState='off', session=0, stopStream=null, lastTickMs=0;
+  // live / stale / off / history (see Core.feedStatus): signals and agent setups need 'live'
+  const feedState=()=>Core.feedStatus({online:isOnline,state:liveState,lastTickMs,tfSec:tf});
   const DEFAULT_SOURCE={type:'spot',symbol:'XAU/USD',fut:'GC=F',label:'Gold spot',res:'1m',days:2,key:''};
   // Gold and silver open as live spot (XAUUSD / XAGUSD) instead of the 10-minute-delayed COMEX futures.
   const SPOT={'GC=F':{symbol:'XAU/USD',label:'Gold spot'},'SI=F':{symbol:'XAG/USD',label:'Silver spot'}};
@@ -116,7 +118,7 @@
   $('linesBtn').setAttribute('aria-pressed',String(linesOn));
   function announceSignal(candles){
     if(!candles.length) return;
-    const lastT=candles[candles.length-1].time, live=isOnline && idx===bars.length && !picking;
+    const lastT=candles[candles.length-1].time, live=isOnline && idx===bars.length && !picking && feedState()==='live' && !isDemo;
     const s=indMarkers.filter(m=>m.time===lastT && (m.side==='buy'||m.side==='sell'));
     const key=srcName+'|'+tf+'|'+lastT;
     if(!live || !sigArmed){ sigArmed=live; sigSeen=key; return; }
@@ -255,9 +257,10 @@
     if(!bars.length) return;
     const live=idx===bars.length && !picking;
     let changed=false;
-    for(const b of list){
+    for(const b of Core.cleanCandles(list).bars){
       const last=bars[bars.length-1];
       if(b.time<last.time) continue;
+      lastTickMs=Date.now();
       if(b.time===last.time) bars[bars.length-1]=b; else bars.push(b);
       changed=true;
       if(live){ idx=bars.length; syncLastCandle(); checkTick(b); }
@@ -275,7 +278,11 @@
     const res=await window.BRData.load(src); // keep the current chart live until the new data arrives
     if(req!==loadSeq) return;
     spotBasis=src.type==='spot'?res.basis||0:0;
-    stopLive();
+    const cleaned=Core.cleanCandles(res.bars);
+    if(cleaned.bars.length<2) throw new Error('The data source returned no usable candles.');
+    if(cleaned.dropped) console.warn('Dropped '+cleaned.dropped+' invalid or duplicate candle(s) from '+(src.label||src.symbol));
+    res.bars=cleaned.bars;
+    stopLive(); lastTickMs=0;
     const my=session;
     setData(res,res.name,false,st||loadJSON('bar-replay-state',null),true);
     saveJSON('bar-replay-source',src);
@@ -343,13 +350,16 @@
   function openPos(side,o){
     if(pos || picking || idx<1) return false;
     const b=bars[idx-1], dir=side==='long'?1:-1;
-    let d=cfg.sl;
-    if(o && isFinite(o.sl) && (b.close-o.sl)*dir>0) d=Math.abs(b.close-o.sl);
-    const tp=o && isFinite(o.tp) && (o.tp-b.close)*dir>0 ? o.tp : b.close+dir*d*cfg.rr;
+    // Levels given by the agent must be valid; they are never silently swapped for the default distance.
+    if(o && (o.sl!=null || o.tp!=null) && !Core.checkLevels(side,b.close,o.sl!=null?+o.sl:null,o.tp!=null?+o.tp:null).ok) return false;
+    const d=o && o.sl!=null ? Math.abs(b.close-o.sl) : cfg.sl;
+    const tp=o && o.tp!=null ? +o.tp : b.close+dir*d*cfg.rr;
+    const srcNow=loadJSON('bar-replay-source',{}), sym=srcNow.type==='csv' ? null : srcNow.symbol;
+    const size=sym ? Core.positionSize(cfg.risk,b.close,b.close-dir*d,sym) : { lots:cfg.contract>0?cfg.risk/(d*cfg.contract):null };
     pos={file:srcName,side,entryIdx:idx-1,entryTime:b.time,entry:b.close,by:o&&o.by||'',
          id:srcName+'|'+b.time+'|'+side+'|'+Date.now(),tf:tfLabel(tf),openedAt:Date.now(),mfe:0,mae:0,ctx:entryContext(side),
          sl:b.close-dir*d,tp,slDist:d,risk:cfg.risk,
-         lots:cfg.contract>0?cfg.risk/(d*cfg.contract):0,trail:!!cfg.trail,stage:0,ext:b.close,doneK:-1};
+         lots:size.lots,lotsNote:size.reason||'',cost:cfg.cost||0,demo:!!isDemo,trail:!!cfg.trail,stage:0,ext:b.close,doneK:-1};
     pos.sl0=pos.sl; pos.tp0=pos.tp;
     drawPosLines(); updateMarkers(); refresh(); saveBook();
     return true;
@@ -379,20 +389,15 @@
     const dir=pos.side==='long'?1:-1, fav=((dir>0?b.high:b.low)-pos.entry)*dir/pos.slDist, adv=((dir>0?b.low:b.high)-pos.entry)*dir/pos.slDist;
     if(fav>pos.mfe) pos.mfe=fav; if(adv<pos.mae) pos.mae=adv;
   }
+  // Stops (trailing ones too) fill when price touches them, like a broker's stop order; a gap fills at the open.
+  // If one candle reaches both the stop and the target the order is unknown, so the stop is assumed first.
   function checkTrade(b){
     if(!pos || b.time<=pos.entryTime) return;
     trackExcursion(b);
-    if(pos.trail){
-      if(pos.side==='long' ? b.high>=pos.tp : b.low<=pos.tp) closePos(pos.side==='long' ? (b.open>pos.tp?b.open:pos.tp) : (b.open<pos.tp?b.open:pos.tp),'Target',b.time);
-      return;
-    }
-    if(pos.side==='long'){
-      if(b.low<=pos.sl) closePos(b.open<pos.sl?b.open:pos.sl,'Stop-loss',b.time);
-      else if(b.high>=pos.tp) closePos(b.open>pos.tp?b.open:pos.tp,'Target',b.time);
-    } else {
-      if(b.high>=pos.sl) closePos(b.open>pos.sl?b.open:pos.sl,'Stop-loss',b.time);
-      else if(b.low<=pos.tp) closePos(b.open<pos.tp?b.open:pos.tp,'Target',b.time);
-    }
+    const ex=Core.barExit(pos,b);
+    if(!ex) return;
+    const stopName=pos.trail && pos.stage>=2 ? 'Trailing stop' : pos.trail && pos.stage===1 ? 'Break-even' : 'Stop-loss';
+    closePos(ex.price, ex.reason.replace(/^Stop-loss/,stopName), b.time);
   }
   // Live updates: a bar that started after the entry can use its full range; the entry bar only its latest price
   function checkTick(b){
@@ -404,8 +409,8 @@
   }
   function closePos(price,reason,time){
     if(!pos) return;
-    const dir=pos.side==='long'?1:-1, r=(price-pos.entry)*dir/pos.slDist;
-    const t={file:pos.file,side:pos.side,entryTime:pos.entryTime,entry:pos.entry,exitTime:time,exit:price,reason,r,pnl:r*pos.risk,
+    const dir=pos.side==='long'?1:-1, r=Core.rMultiple(pos.side,pos.entry,price,pos.slDist,pos.cost);
+    const t={demo:!!pos.demo,cost:pos.cost||0,file:pos.file,side:pos.side,entryTime:pos.entryTime,entry:pos.entry,exitTime:time,exit:price,reason,r,pnl:r*pos.risk,
       id:pos.id||(pos.file+'|'+pos.entryTime+'|'+pos.side),tf:pos.tf||tfLabel(tf),by:pos.by||'',sl0:pos.sl0!=null?pos.sl0:pos.entry-dir*pos.slDist,tp0:pos.tp0!=null?pos.tp0:pos.tp,
       slFinal:pos.sl,slDist:pos.slDist,risk:pos.risk,lots:pos.lots,trail:!!pos.trail,mfe:Math.max(pos.mfe||0,r),mae:Math.min(pos.mae||0,r),
       openedAt:pos.openedAt||0,closedAt:Date.now(),ctx:pos.ctx||null,precision};
@@ -481,13 +486,14 @@
       if(idx<n){ lb.textContent='Replay, go live'; lb.className='live replay'; }
       else {
         const srcNow=loadJSON('bar-replay-source',{}), delayed=srcNow.type==='yahoo' && /=F$/.test(srcNow.symbol||'');
-        const txt=liveState==='on' && delayed ? 'Live · 10 min delay ⚡' : ({on:'Live',connecting:'Connecting…',off:'Offline, retrying',limit:'API limit reached'}[liveState]||'Live');
-        lb.textContent=txt; lb.className='live '+(liveState==='on'?'on':'off');
+        const f=feedState();
+        const txt=f==='stale' ? 'No new price: market closed or feed stalled' : liveState==='on' && delayed ? 'Live · 10 min delay ⚡' : ({on:'Live',connecting:'Connecting…',off:'Offline, retrying',limit:'API limit reached'}[liveState]||'Live');
+        lb.textContent=txt; lb.className='live '+(f==='live'?'on':'off');
       }
     }
     if(pos && idx>0){
-      const cur=bars[idx-1].close, dir=pos.side==='long'?1:-1, r=(cur-pos.entry)*dir/pos.slDist, pnl=r*pos.risk;
-      $('posText').textContent=`${pos.side==='long'?'Long':'Short'} ${pos.lots.toFixed(2)} @ ${px(pos.entry)} · SL ${px(pos.sl)}${pos.trail?(pos.stage>=2?' trailing':pos.stage===1?' BE':''):''}`;
+      const cur=bars[idx-1].close, r=Core.rMultiple(pos.side,pos.entry,cur,pos.slDist,pos.cost), pnl=r*pos.risk;
+      $('posText').textContent=`${pos.side==='long'?'Long':'Short'} ${pos.lots!=null?pos.lots.toFixed(2)+' lot':'size n/a'} @ ${px(pos.entry)} · SL ${px(pos.sl)}${pos.trail?(pos.stage>=2?' trailing':pos.stage===1?' BE':''):''}`;
       const el=$('posPnl');
       el.textContent=`${money(pnl)} (${sgn(r,2)}R)`;
       el.className=pnl>=0?'c-up':'c-down';
@@ -533,6 +539,7 @@
     const savedPos=book.pos;
     clearPosLines(); pos=null;
     bars=parsed.bars; precision=parsed.precision; srcName=name; isDemo=demo;
+    $('demoBadge').hidden=!demo;   // stays on screen for as long as random prices are shown
     $('src').textContent=name;
     for(const id in lineSeries){ chart.removeSeries(lineSeries[id]); delete lineSeries[id]; }
     let minDiff=Infinity;
@@ -732,6 +739,7 @@
   });
   // The Markets tab opens a chart here through postMessage.
   window.addEventListener('message',async e=>{
+    if(e.source!==window.parent) return;   // only the app shell sends commands
     const d=e.data||{};
     if(d.type==='exitFull'){ if(document.body.classList.contains('wide')) $('rotateBtn').click(); return; }
     if(d.type!=='openMarket' || !d.ticker) return;
@@ -792,7 +800,7 @@
   window.addEventListener('resize',()=>{ if(tvMode) setTimeout(tvSync,120); });
   // A native view sits above the page, so step aside while any sheet is open.
   for(const d of document.querySelectorAll('dialog')) new MutationObserver(()=>{ if(tvMode) tvSync(); }).observe(d,{attributes:true,attributeFilter:['open']});
-  window.addEventListener('message',e=>{ const d=e.data||{}; if(d.type==='tvRefresh' && tvMode) tvSync(); });
+  window.addEventListener('message',e=>{ if(e.source!==window.parent) return; const d=e.data||{}; if(d.type==='tvRefresh' && tvMode) tvSync(); });
   setTimeout(()=>setTvMode(tvMode),300);
   $('liveBadge').addEventListener('click',()=>{
     if(idx<bars.length){ setPlaying(false); jumpTo(bars.length); showRecent(); save(); return; }
@@ -855,11 +863,13 @@
     computeIndicators(true); updateMarkers();
   }
   const fields={sSl:'sl',sRr:'rr',sRisk:'risk',sContract:'contract'};
+  $('sCost').value=cfg.cost||0;
   const boolFields={sTrail:'trail'};
   $('settingsBtn').addEventListener('click',()=>{
     setPlaying(false);
     renderIndicators();
     for(const id in fields) $(id).value=cfg[fields[id]];
+    $('sCost').value=cfg.cost||0;
     $('sTrail').checked=!!cfg.trail; $('sTrailMode').value=cfg.trailMode||'swing';
     $('setErr').hidden=true;
     $('settings').showModal();
@@ -870,6 +880,8 @@
     if(Object.keys(fields).some(id=>!(v[fields[id]]>0))){
       $('setErr').textContent='Every number must be above zero.'; $('setErr').hidden=false; return;
     }
+    v.cost=parseFloat($('sCost').value)||0;
+    if(v.cost<0){ $('setErr').textContent='Costs can\'t be negative.'; $('setErr').hidden=false; return; }
     v.trail=$('sTrail').checked; v.trailMode=$('sTrailMode').value;
     cfg=v; saveJSON('bar-replay-settings',cfg);
     $('settings').close();
@@ -1005,7 +1017,8 @@
   window.ChartAPI={
     state(){
       const n=closedCount();
-      return { name:srcName, tf, tfLabel:tfLabel(tf), tfs:tfOptions().map(tfLabel), precision, online:isOnline, live:idx===bars.length,
+      const srcNow=loadJSON('bar-replay-source',{});
+      return { name:srcName, symbol:srcNow.symbol||'', demo:!!isDemo, feed:feedState(), tf, tfLabel:tfLabel(tf), tfs:tfOptions().map(tfLabel), precision, online:isOnline, live:idx===bars.length,
         candles:agg.slice(0,n), forming:agg[n]||null, price:idx>0?bars[idx-1].close:null, time:idx>0?bars[idx-1].time:null,
         markers:indMarkers.slice(), panel:lastPanel.slice(), pos:pos?{...pos}:null, cfg:{...cfg},
         trades:fileTrades().slice(-50) };

@@ -6,6 +6,7 @@ on:
       - 'cot-widget-android/**'
       - 'scripts/**'
       - 'cot-sentiment-widget.html'
+      - 'tests/**'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
@@ -31,6 +32,10 @@ jobs:
         working-directory: .
         run: python3 scripts/build_android_asset.py
 
+      - name: Unit tests (calculations)
+        working-directory: .
+        run: node --test tests/*.test.js
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -52,6 +57,9 @@ jobs:
             gradle wrapper --gradle-version 8.2
           fi
           chmod +x gradlew
+
+      - name: Unit tests (Java scoring)
+        run: ./gradlew testDebugUnitTest
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug

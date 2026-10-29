@@ -152,6 +152,7 @@ button { font: inherit; color: inherit; }
 .reasons li.pos::before { background: var(--bull); }
 .reasons li.neg::before { background: var(--bear); }
 .reasons li.warn::before { background: var(--flat); }
+.stale-tag { color: var(--bear); font-weight: 600; }
 .card-foot { margin-top: auto; font: 500 0.7rem var(--font-mono); color: var(--muted); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 
 /* Pager */
@@ -421,17 +422,18 @@ body { background: #060913; }
     <p>Each market gets a score from &minus;100 (bearish) to +100 (bullish), built from the latest weekly CFTC Commitments of Traders report and the 20-week price range.</p>
     <table class="rules">
       <tr><td>Price position: discount (lower half of the 20-week range) or premium (upper half)</td><td>35 pts</td></tr>
-      <tr><td>Institutions over 4 weeks: Managed Money for commodities, Asset Managers for financials</td><td>30 pts</td></tr>
-      <tr><td>Fast money this week: Swap Dealers for commodities, Leveraged Funds for financials; positions at an extreme count against the trend</td><td>20 pts</td></tr>
-      <tr><td>Open interest change, read together with institutional flow</td><td>15 pts</td></tr>
+      <tr><td>4-week change in Managed Money (commodities) or Asset Managers (financials). No change scores 0.</td><td>30 pts</td></tr>
+      <tr><td>This week’s change in Swap Dealers (commodities) or Leveraged Funds (financials). A position above 1.2× its 12-week average size counts against the move.</td><td>20 pts</td></tr>
+      <tr><td>Open interest change, read together with the 4-week group change</td><td>15 pts</td></tr>
     </table>
     <p>Verdict: +40 and above Bullish, +15 Lean Bullish, &minus;15 to +15 Neutral, &minus;40 Lean Bearish, below that Bearish.</p>
-    <p id="sheetData">Data: CFTC Disaggregated and Traders in Financial Futures reports, Yahoo Finance and Coinbase prices. COT data is released every Friday for the prior Tuesday.</p>
+    <p id="sheetData">Data: CFTC Disaggregated and Traders in Financial Futures reports (futures only), Yahoo Finance and Coinbase weekly prices. COT data is as of Tuesday and released the following Friday; a card warns when a weekly report is missing. The score is a positioning heuristic, not a forecast or a probability.</p>
     <button class="close-sheet" type="button" id="sheetClose">Done</button>
   </section>
 </div>
 
 <script src="vendor/gsap.min.js"></script>
+<script src="charts/core.js"></script>
 <script>
 var MARKETS = [
   { name: "Gold",      cftcCode: "088691", ticker: "GC=F",    icon: "Au", iconBg: "#b8860b", decimals: 2, type: "commodity" },
@@ -443,10 +445,7 @@ var MARKETS = [
   { name: "Nat Gas",   cftcCode: "023651", ticker: "NG=F",    icon: "NG", iconBg: "#0e7490", decimals: 3, type: "commodity" },
   { name: "Bitcoin",   cftcCode: "133741", ticker: "BTC-USD", icon: "₿",  iconBg: "#ea580c", decimals: 2, type: "financial" }
 ];
-var CFTC_DATASETS = {
-  commodity: { url: "https://publicreporting.cftc.gov/resource/72hh-3qpy.json", long: "m_money_positions_long_all", short: "m_money_positions_short_all", levLong: "swap_positions_long_all", levShort: "swap__positions_short_all" },
-  financial: { url: "https://publicreporting.cftc.gov/resource/gpe5-46if.json", long: "asset_mgr_positions_long", short: "asset_mgr_positions_short", levLong: "lev_money_positions_long", levShort: "lev_money_positions_short" }
-};
+var CFTC_DATASETS = Core.COT_DATASETS;   // trader groups and field names, shared with the tests
 var YAHOO_HOSTS = ["https://query1.finance.yahoo.com/v8/finance/chart/", "https://query2.finance.yahoo.com/v8/finance/chart/"];
 var CACHE_KEY = "cot.cache.v1";
 var IS_APP = document.documentElement.getAttribute("data-app") === "android";
@@ -467,21 +466,15 @@ async function fetchJSON(url, ms) {
 async function fetchCOT(code, type) {
   var ds = CFTC_DATASETS[type];
   var params = new URLSearchParams({
-    "$select": "report_date_as_yyyy_mm_dd," + ds.long + "," + ds.short + "," + ds.levLong + "," + ds.levShort + ",open_interest_all",
+    "$select": "report_date_as_yyyy_mm_dd," + ds.a.long + "," + ds.a.short + "," + ds.b.long + "," + ds.b.short + ",open_interest_all",
     "$where": "cftc_contract_market_code='" + code + "'",
     "$order": "report_date_as_yyyy_mm_dd DESC",
     "$limit": "12"
   });
-  var data = await fetchJSON(ds.url + "?" + params);
-  if (!Array.isArray(data)) throw new Error((data && data.message) || "unexpected CFTC response");
-  return data.map(function(row) {
-    return [
-      String(row.report_date_as_yyyy_mm_dd || "").slice(0, 10),
-      (Number(row[ds.long]) || 0) - (Number(row[ds.short]) || 0),
-      (Number(row[ds.levLong]) || 0) - (Number(row[ds.levShort]) || 0),
-      Number(row.open_interest_all) || 0
-    ];
-  }).reverse();
+  // Rows with a missing or non-numeric field are dropped instead of being read as zero.
+  var parsed = Core.parseCot(await fetchJSON(ds.url + "?" + params), type);
+  if (parsed.dropped) console.warn("CFTC " + code + ": dropped " + parsed.dropped + " incomplete row(s)");
+  return parsed.rows;
 }
 
 function parseYahoo(data) {
@@ -489,7 +482,9 @@ function parseYahoo(data) {
   if (!result || !result.timestamp) throw new Error("no price data");
   var q = result.indicators.quote[0], rows = [];
   for (var i = 0; i < result.timestamp.length; i++) {
-    if (q.high[i] != null && q.low[i] != null && q.close[i] != null) rows.push([q.high[i], q.low[i], q.close[i]]);
+    var h = q.high[i], l = q.low[i], c = q.close[i];
+    // skip empty weeks and impossible bars (high below low, close outside the range)
+    if (h != null && l != null && c != null && h >= l && c <= h && c >= l && l > 0) rows.push([h, l, c]);
   }
   return rows;
 }
@@ -544,51 +539,15 @@ function storedFor(ticker, cache) {
 }
 
 /* ---------- scoring ---------- */
-function premiumDiscount(rows) {
-  var w = rows.slice(-20);
-  var high = Math.max.apply(null, w.map(function(r){ return r[0]; }));
-  var low = Math.min.apply(null, w.map(function(r){ return r[1]; }));
-  var price = rows[rows.length - 1][2];
-  var rng = high - low;
-  var pos = rng === 0 ? 50 : Math.max(0, Math.min(100, ((price - low) / rng) * 100));
-  return { price: price, pos: Math.round(pos), zone: pos > 50 ? "PREMIUM" : "DISCOUNT", hi: high, lo: low, closes: w.map(function(r){ return r[2]; }) };
-}
+function premiumDiscount(rows) { return Core.premiumDiscount(rows); }
 
 function fmtInt(n) { return (n > 0 ? "+" : "") + n.toLocaleString(); }
 
-function scoreMarket(cotRows, pd) {
-  var cot = cotRows.map(function(r){ return { date: r[0], inst: r[1], lev: r[2], oi: r[3] }; });
-  var cur = cot[cot.length - 1], prev = cot[cot.length - 2];
-  var fourAgo = cot.length >= 5 ? cot[cot.length - 5] : cot[0];
-  var dInst = cur.inst - prev.inst, dLev = cur.lev - prev.lev, dOi = cur.oi - prev.oi, tInst = cur.inst - fourAgo.inst;
-  var score = 0, notes = [];
-
-  if (pd.zone === "DISCOUNT") { score += tInst >= 0 ? 35 : 20; notes.push(["pos", "Price in discount: lower half of its 20-week range"]); }
-  else { score -= tInst <= 0 ? 35 : 20; notes.push(["neg", "Price in premium: upper half of its 20-week range"]); }
-
-  if (tInst > 0) { score += pd.zone === "DISCOUNT" ? 30 : 12; notes.push(["pos", "Institutions added " + tInst.toLocaleString() + " net longs over 4 weeks"]); }
-  else { score -= pd.zone === "PREMIUM" ? 30 : 12; notes.push(["neg", "Institutions cut " + Math.abs(tInst).toLocaleString() + " net longs over 4 weeks"]); }
-
-  var levMean = cot.reduce(function(s, r){ return s + Math.abs(r.lev); }, 0) / cot.length;
-  var levExtreme = Math.abs(cur.lev) > 1.2 * levMean;
-  if (dLev > 0 && !levExtreme) { score += 20; notes.push(["pos", "Fast money added " + dLev.toLocaleString() + " net longs this week"]); }
-  else if (dLev < 0 && !levExtreme) { score -= 20; notes.push(["neg", "Fast money cut " + Math.abs(dLev).toLocaleString() + " net longs this week"]); }
-  else if (dLev > 0 && levExtreme) { score -= 10; notes.push(["warn", "Fast-money longs at an extreme: unwind risk"]); }
-  else if (dLev < 0 && levExtreme) { score += 10; notes.push(["warn", "Fast-money shorts at an extreme: squeeze risk"]); }
-  else { notes.push(["", "Fast money unchanged this week"]); }
-
-  if (dOi > 0 && tInst > 0) { score += 15; notes.push(["pos", "Open interest rising with institutional buying"]); }
-  else if (dOi > 0 && tInst < 0) { score -= 15; notes.push(["neg", "Open interest rising while institutions sell"]); }
-  else { notes.push(["", "Open interest flat or falling: positions unwinding"]); }
-
-  score = Math.max(-100, Math.min(100, score));
-  var verdict, vClass;
-  if (score >= 40) { verdict = "Bullish"; vClass = "v-bull"; }
-  else if (score >= 15) { verdict = "Lean bullish"; vClass = "v-bull"; }
-  else if (score > -15) { verdict = "Neutral"; vClass = "v-flat"; }
-  else if (score > -40) { verdict = "Lean bearish"; vClass = "v-bear"; }
-  else { verdict = "Bearish"; vClass = "v-bear"; }
-  return { inst: cur.inst, dInst: dInst, lev: cur.lev, dLev: dLev, oi: cur.oi, dOi: dOi, score: score, verdict: verdict, vClass: vClass, notes: notes, cotDate: cur.date };
+// Formula and its history are documented on Core.scoreCot (charts/core.js) and covered by tests/core.test.js.
+function scoreMarket(cotRows, pd, type) {
+  var s = Core.scoreCot(cotRows, pd, type);
+  s.vClass = s.score >= 15 ? "v-bull" : s.score > -15 ? "v-flat" : "v-bear";
+  return s;
 }
 
 /* ---------- rendering ---------- */
@@ -619,8 +578,8 @@ function sparkSVG(closes) {
 }
 
 function renderCard(d) {
-  var instLabel = d.type === "commodity" ? "Managed money" : "Asset managers";
-  var levLabel = d.type === "commodity" ? "Swap dealers" : "Leveraged funds";
+  var instLabel = d.aName, levLabel = d.bName;
+  var cotAge = Core.cotFreshness(d.cotDate);
   var srcLabel = { live: "Live", partial: "Partly live", saved: "Saved" }[d.source];
   var zoneColor = d.zone === "DISCOUNT" ? "var(--bull)" : "var(--bear)";
   var sc = d.score, scColor = tone(sc);
@@ -651,7 +610,9 @@ function renderCard(d) {
       '<div class="metric"><div class="metric-label">Open interest</div><div class="metric-val">' + d.oi.toLocaleString() + '</div>' + delta(d.dOi) + '</div>' +
     '</div>' +
     '<ul class="reasons">' + d.notes.map(function(n){ return '<li class="' + n[0] + '">' + n[1] + '</li>'; }).join("") + '</ul>' +
-    '<div class="card-foot"><span>COT report ' + fmtDate(d.cotDate) + ' · net contracts</span>' +
+    '<div class="card-foot"><span>COT ' + fmtDate(d.cotDate) + (cotAge.ageDays != null ? ' (' + cotAge.ageDays + ' days old)' : '') + ' · ' + d.report + ' · net contracts' +
+      (cotAge.stale ? '<br><b class="stale-tag">⚠ COT data is stale: a weekly report is missing</b>' : '') +
+      (d.source === "saved" && d.savedAt ? '<br>Prices saved ' + fmtWhen(d.savedAt) + ', not live' : '') + '</span>' +
       (IS_APP ? '<button type="button" class="chart-link" data-ticker="' + d.ticker + '" data-name="' + d.name + '">Open chart ›</button>' : '') + '</div>';
 
   attachSparkHover(card.querySelector(".spark"), spark.pts, d);
@@ -777,7 +738,7 @@ function showNotice(msg, isError) {
 
 /* ---------- loading ---------- */
 function assemble(m, cot, price, source, savedAt) {
-  var pd = premiumDiscount(price), s = scoreMarket(cot, pd);
+  var pd = premiumDiscount(price), s = scoreMarket(cot, pd, m.type);
   return Object.assign({ name: m.name, ticker: m.ticker, icon: m.icon, iconBg: m.iconBg, decimals: m.decimals, type: m.type,
     source: source, savedAt: savedAt, price: pd.price, pos: pd.pos, zone: pd.zone, lo: pd.lo, hi: pd.hi, closes: pd.closes }, s);
 }
@@ -789,7 +750,7 @@ function renderStored() {
   MARKETS.forEach(function(m) {
     var st = storedFor(m.ticker, cache);
     if (!st) return;
-    out.push(assemble(m, st.cot, st.price, "saved", st.savedAt));
+    try { out.push(assemble(m, st.cot, st.price, "saved", st.savedAt)); } catch (e) { return; }   // too little stored history
     if (!oldest || st.savedAt < oldest) oldest = st.savedAt;
   });
   if (out.length) {
@@ -800,11 +761,11 @@ function renderStored() {
 
 async function buildMarket(m, cache) {
   var res = await Promise.allSettled([fetchCOT(m.cftcCode, m.type), fetchPrice(m.ticker)]);
-  var cotLive = res[0].status === "fulfilled" && res[0].value.length >= 5 ? res[0].value : null;
+  var cotLive = res[0].status === "fulfilled" && res[0].value.length >= Core.COT_MIN_WEEKS ? res[0].value : null;
   var priceLive = res[1].status === "fulfilled" && res[1].value.length >= 10 ? res[1].value : null;
   var st = storedFor(m.ticker, cache);
   var cot = cotLive || (st && st.cot), price = priceLive || (st && st.price);
-  if (!cot || cot.length < 2 || !price || price.length < 2) return null;
+  if (!cot || cot.length < Core.COT_MIN_WEEKS || !price || price.length < 2) return null;
   if (cotLive && priceLive) cache.markets[m.ticker] = { cot: cotLive, price: priceLive.slice(-20), savedAt: new Date().toISOString() };
   var source = cotLive && priceLive ? "live" : (cotLive || priceLive ? "partial" : "saved");
   return assemble(m, cot, price, source, source === "saved" ? st.savedAt : null);
@@ -1161,7 +1122,11 @@ window.appBack = function() {
   document.getElementById("toastView").addEventListener("click", function() { document.getElementById("toast").hidden = true; openTab(toastTarget); });
   // Messages from the Charts and Scanner tabs
   window.addEventListener("message", function(e) {
-    var d = e.data || {};
+    // Only the app's own tab pages may talk to the shell. They are local files (opaque "null" origin), so the
+    // sender is checked by window identity instead of origin, and the message must be a typed object.
+    var ours = Array.prototype.some.call(document.querySelectorAll("iframe"), function(f) { return f.contentWindow === e.source; });
+    if (!ours || !e.data || typeof e.data !== "object" || typeof e.data.type !== "string") return;
+    var d = e.data;
     if (d.type === "openChart" && d.ticker) openTab("charts", { ticker: d.ticker, name: d.name });
     if (d.type === "signal" && (d.side === "buy" || d.side === "sell")) {
       var title = (d.side === "buy" ? "BUY " : "SELL ") + d.name;

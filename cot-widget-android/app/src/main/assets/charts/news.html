@@ -1184,6 +1184,7 @@ $('prefAlerts').addEventListener('change', function(){ State.prefs.alerts = this
 $('prefRemind').addEventListener('change', function(){ State.prefs.remind = this.checked; lsSet('news.prefs', State.prefs); State.remSig = null; scheduleReminders(); });
 $('prefFinnhub').addEventListener('change', function(){ State.prefs.finnhub = this.value.trim(); lsSet('news.prefs', State.prefs); });
 window.addEventListener('message', e => {
+  if(e.source !== window.parent) return;   // only the app shell sends data here
   const d = e.data || {};
   if(d.type === 'cot' && d.cot){ State.cot = d.cot; lsSet('news.cot', d.cot); render(); }
   if(d.type === 'newsView' && d.view) setView(d.view);
