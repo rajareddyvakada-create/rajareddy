@@ -19,6 +19,9 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -39,8 +42,8 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
     private String pendingTab;
     private ActivityResultLauncher<Intent> accountPicker;
     private FrameLayout root;
-    private WebView tvView;
-    private WebView mt5View;
+    // Live chart views over the Charts tab, one per service so each keeps its own login: "tv", "xm", "octa".
+    private final Map<String, WebView> chartViews = new HashMap<>();
     private String tvUrl;
     private long lastChartCrash;
 
@@ -125,12 +128,15 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                WebView chart = tvView != null && tvView.getVisibility() == View.VISIBLE ? tvView
-                        : mt5View != null && mt5View.getVisibility() == View.VISIBLE ? mt5View : null;
-                String home = chart == tvView ? "/chart" : "/terminal";
-                if (chart != null && chart.canGoBack() && chart.getUrl() != null && !chart.getUrl().contains(home)) {
-                    chart.goBack();
-                    return;
+                for (Map.Entry<String, WebView> e : chartViews.entrySet()) {
+                    WebView chart = e.getValue();
+                    if (chart.getVisibility() != View.VISIBLE || !chart.canGoBack() || chart.getUrl() == null) continue;
+                    // Back inside the service's own pages, but never off its chart / terminal screen.
+                    String home = "tv".equals(e.getKey()) ? "/chart" : "xm".equals(e.getKey()) ? "/terminal" : null;
+                    if (home == null || !chart.getUrl().contains(home)) {
+                        chart.goBack();
+                        return;
+                    }
                 }
                 webView.evaluateJavascript("window.appBack ? window.appBack() : false", value -> {
                     if (!"true".equals(value)) {
@@ -212,26 +218,45 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
         });
     }
 
-    /** Lays the user's live chart (TradingView, or their XM account in the MT5 web terminal) exactly over
-     *  the Charts tab's chart area (rect in CSS pixels). Each service keeps its own view so both stay signed in. */
+    /** Which service a chart URL belongs to, or null for anything else (never shown). */
+    static String chartKind(String url) {
+        if (url == null || !url.startsWith("https://")) return null;
+        String host = Uri.parse(url).getHost();
+        if (host == null) return null;
+        if (host.equals("www.tradingview.com") || host.equals("tradingview.com")) return "tv";
+        if (host.equals("web.metatrader.app")) return "xm";
+        if (host.equals("my.octabroker.com")) return "octa";
+        return null;
+    }
+
+    /** Lays the user's live chart (TradingView, their XM account in the MT5 web terminal, or their Octa profile)
+     *  exactly over the Charts tab's chart area (rect in CSS pixels). Each service keeps its own view and login. */
     @Override
     public void tvShow(int x, int y, int w, int h, String url) {
         runOnUiThread(() -> {
-            boolean mt5 = url != null && url.startsWith("https://web.metatrader.app/");
-            if (mt5 && mt5View == null) mt5View = newChartView();
-            if (!mt5 && tvView == null) tvView = newChartView();
-            WebView show = mt5 ? mt5View : tvView;
-            WebView other = mt5 ? tvView : mt5View;
-            if (other != null) other.setVisibility(View.GONE);
+            String kind = chartKind(url);
+            if (kind == null) return;
+            WebView show = chartViews.get(kind);
+            boolean fresh = show == null;
+            if (fresh) {
+                show = newChartView();
+                chartViews.put(kind, show);
+            }
+            for (WebView other : chartViews.values()) {
+                if (other != show && other.getVisibility() == View.VISIBLE) {
+                    other.setVisibility(View.GONE);
+                    other.onPause();
+                }
+            }
             float d = getResources().getDisplayMetrics().density;
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Math.round(w * d), Math.round(h * d));
             lp.leftMargin = Math.round(x * d);
             lp.topMargin = Math.round(y * d);
             show.setLayoutParams(lp);
-            if (mt5) {
-                if (show.getUrl() == null) show.loadUrl(url);
-            } else if (url != null && url.startsWith("https://") && !url.equals(tvUrl)) {
-                tvUrl = url;
+            if (!"tv".equals(kind)) {
+                if (fresh) show.loadUrl(url);   // broker pages keep their own state; never reloaded
+            } else if (fresh || !url.equals(tvUrl)) {
+                tvUrl = url;                    // TradingView follows the app's symbol and timeframe
                 show.loadUrl(url);
             }
             show.onResume();
@@ -250,16 +275,18 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
     @Override
     public void tvHide() {
         runOnUiThread(() -> {
-            if (tvView != null) { tvView.setVisibility(View.GONE); tvView.onPause(); }
-            if (mt5View != null) { mt5View.setVisibility(View.GONE); mt5View.onPause(); }
+            for (WebView v : chartViews.values()) {
+                v.setVisibility(View.GONE);
+                v.onPause();
+            }
         });
     }
 
     /** A TradingView / XM page crashed and was removed. Re-open it once; if it crashes again
      *  within a minute, leave the app's own chart showing (tap TV to try again). */
     void chartViewGone(WebView v) {
-        if (v == tvView) { tvView = null; tvUrl = null; }
-        if (v == mt5View) mt5View = null;
+        if (v == chartViews.get("tv")) tvUrl = null;
+        chartViews.values().remove(v);
         long now = System.currentTimeMillis();
         boolean retry = now - lastChartCrash > 60_000;
         lastChartCrash = now;
@@ -322,23 +349,21 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
     protected void onResume() {
         super.onResume();
         webView.onResume();
-        if (tvView != null && tvView.getVisibility() == View.VISIBLE) tvView.onResume();
-        if (mt5View != null && mt5View.getVisibility() == View.VISIBLE) mt5View.onResume();
+        for (WebView v : chartViews.values()) if (v.getVisibility() == View.VISIBLE) v.onResume();
     }
 
     @Override
     protected void onPause() {
         android.webkit.CookieManager.getInstance().flush();
         webView.onPause();
-        if (tvView != null) tvView.onPause();
-        if (mt5View != null) mt5View.onPause();
+        for (WebView v : chartViews.values()) v.onPause();
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
-        if (tvView != null) { tvView.destroy(); tvView = null; }
-        if (mt5View != null) { mt5View.destroy(); mt5View = null; }
+        for (WebView v : chartViews.values()) v.destroy();
+        chartViews.clear();
         if (webView != null) {
             webView.destroy();
             webView = null;

@@ -58,6 +58,10 @@ svg.stroke{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;str
 .top button{min-height:38px;border-radius:12px}
 .top .icon-sm{width:34px}
 .top{gap:5px}
+.tog.bot{font-weight:800;font-size:.7rem;letter-spacing:.02em}
+.tog.bot[aria-pressed="true"]{color:#060913;background:#FFB300;border-color:#FFB300}
+.script-row{display:flex;justify-content:flex-end;margin-top:6px}
+.hint.err{color:var(--down,#FF0055)}
 .tog.tv{font-weight:800;font-size:.78rem;letter-spacing:.02em}
 .demo-badge{position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:4;pointer-events:none;font:800 .72rem/1 var(--mono,monospace);letter-spacing:.08em;color:#060913;background:#FFB300;border-radius:999px;padding:6px 12px;box-shadow:0 0 18px rgba(255,179,0,.45)}
 .tv-frame{position:absolute;inset:0;width:100%;height:100%;border:0;z-index:5;background:#060913}
@@ -241,6 +245,7 @@ dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
   <button type="button" class="icon-sm tog tv" id="tvBtn" aria-pressed="false" aria-label="TradingView live chart">TV</button>
   <button type="button" class="icon-sm tog" id="replayBtn" aria-pressed="false" aria-label="Replay mode"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M10 9v6l5-3z"/></svg></button>
   <button type="button" class="icon-sm tog ai" id="aiBtn" aria-pressed="false" aria-label="AI agent">AI</button>
+  <button type="button" class="icon-sm tog bot" id="botBtn" aria-pressed="false" aria-label="Ox Alpha bot">BOT</button>
   <button type="button" class="icon-sm tog" id="linesBtn" aria-pressed="true" aria-label="Show indicator lines"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 3 5-7 4 4"/></svg></button>
   <button type="button" class="icon-sm tog" id="rotateBtn" aria-pressed="false" aria-label="Landscape full screen"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 3h4M13 21h4"/></svg></button>
   <button type="button" class="icon-sm" id="settingsBtn" aria-label="Indicators and settings"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></button>
@@ -291,6 +296,8 @@ dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
   <div class="sheet-head"><h2 id="setTitle">Indicators</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
   <div class="sheet-body">
     <div id="indList"></div>
+    <section class="ind"><button type="button" class="primary" id="addScript" style="width:100%">+ Add indicator script</button>
+      <p class="hint" style="margin:6px 0 0">Ox Alpha SMC Pro (your Pine script) is already built in above and gives BUY / SELL on every symbol. Add more indicators as scripts: JavaScript with Pine-style helpers (ta.ema, ta.crossover…). A Pine script itself only runs on TradingView: add it there in the TV chart. Scripts run sandboxed, with no access to your account or keys.</p></section>
     <section class="ind"><label class="field" style="padding:0"><span><b>Higher-timeframe structure</b><small style="display:block;color:var(--muted);font-size:.8rem">Last 1D, 1W and 1M BOS / CHoCH as levels on the chart (same rules as the Scanner)</small></span><span class="switch"><input type="checkbox" role="switch" id="sHtf"></span></label></section>
     <section class="ind coming">More indicators appear here once added. Signals are calculated on the timeframe you're viewing and only after each candle closes, so replay never repaints.</section>
     <fieldset>
@@ -352,12 +359,49 @@ dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
   </div>
 </dialog>
 
+<dialog id="scriptDlg" aria-labelledby="scTitle">
+  <div class="sheet-head"><h2 id="scTitle">Indicator script</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
+  <div class="sheet-body">
+    <label class="field"><span>Name</span><input id="scName" maxlength="40" autocomplete="off"></label>
+    <textarea id="scCode" spellcheck="false" autocapitalize="off" autocomplete="off" style="width:100%;min-height:46vh;font:12px/1.45 var(--mono,monospace);background:#0F172A;color:#F8FAFC;border:1px solid #1E293B;border-radius:12px;padding:10px;box-sizing:border-box"></textarea>
+    <p class="hint">Return <code>{ buy, sell }</code> arrays (true on a signal candle). Optional: <code>sl</code> / <code>tp</code> price arrays for the bot, and up to 6 <code>plots</code> lines. Only closed candles are passed, so signals never repaint.</p>
+    <p id="scMsg" class="hint" hidden></p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="scTest">Test on this chart</button><button type="button" class="primary" id="scSave">Save</button><button type="button" id="scDelete" hidden>Delete</button></div>
+  </div>
+</dialog>
+
+<dialog id="botDlg" aria-labelledby="botTitle">
+  <div class="sheet-head"><h2 id="botTitle">Ox Alpha bot</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
+  <div class="sheet-body">
+    <p class="hint" style="margin-top:0">Takes a trade by itself when the indicator below fires BUY or SELL on a closed candle, with a fixed stop-loss and target, like an Expert Advisor in MT5 desktop. Trades go to the practice account and the journal. XM and Octa don't let other apps place real orders, so on the live chart you get a notification with the exact levels to place in MT5.</p>
+    <p id="botState" class="hint" style="color:var(--amber,#FFB300)"></p>
+    <label class="field"><span><b>Bot on</b></span><span class="switch"><input type="checkbox" role="switch" id="botOn"></span></label>
+    <label class="field"><span>Signals from</span><select id="botSource"></select></label>
+    <label class="field"><span>When</span><select id="botWhen"><option value="live">Live chart only</option><option value="all">Live chart and replay (practice)</option></select></label>
+    <label class="field"><span>Stop-loss</span><select id="botSlMode"><option value="indicator">Indicator's stop (Ox Alpha: UT stop)</option><option value="atr">ATR(14) × multiple</option><option value="fixed">Fixed price distance</option></select></label>
+    <label class="field"><span>ATR multiple</span><input type="number" id="botSlAtr" step="0.1" min="0.1" inputmode="decimal"></label>
+    <label class="field"><span>Fixed stop distance (price, e.g. 5 = $5 on gold)</span><input type="number" id="botSlFixed" step="0.01" min="0" inputmode="decimal"></label>
+    <label class="field"><span>Target (R, 1.5 = 1.5 × the stop distance)</span><input type="number" id="botTpR" step="0.1" min="0.2" inputmode="decimal"></label>
+    <label class="field"><span>Trailing stop (off = fixed SL and TP)</span><span class="switch"><input type="checkbox" role="switch" id="botTrail"></span></label>
+    <label class="field"><span>Reverse on the opposite signal</span><span class="switch"><input type="checkbox" role="switch" id="botReverse"></span></label>
+    <label class="field"><span>Maximum bot trades per day</span><input type="number" id="botMaxDay" step="1" min="1" inputmode="numeric"></label>
+    <p id="botErr" class="hint err" hidden></p>
+    <button type="button" class="primary" id="botSave" style="width:100%">Save</button>
+    <div class="ind-sub" style="margin-top:14px">Bot activity</div>
+    <ul id="botLog" class="hint" style="padding-left:18px;margin:4px 0"></ul>
+  </div>
+</dialog>
+
 <dialog id="dataDlg" aria-labelledby="dataTitle">
   <div class="sheet-head"><h2 id="dataTitle">Chart data</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
   <div class="sheet-body">
     <button type="button" class="primary tv-btn" id="tvOpen">⚡ Live chart on TradingView (your account)</button>
-    <button type="button" class="primary tv-btn" id="xmOpen" style="margin-top:8px">📈 Live chart from my XM account (MT5)</button>
-    <p class="hint" style="margin:6px 0 12px">Both open inside the app over the chart, with your own login. For XM, sign in with your MT5 account number, password and server (for example XMGlobal-MT5, shown in your XM welcome email) and tick Save password. The TV / XM button switches back to the app's chart. Gold futures from Yahoo below are delayed about 10 minutes.</p>
+    <button type="button" class="primary tv-btn" id="xmOpen" style="margin-top:8px">📈 My XM account (MT5 web terminal)</button>
+    <button type="button" class="primary tv-btn" id="octaOpen" style="margin-top:8px">📈 My Octa account (Octa login)</button>
+    <p class="hint" style="margin:6px 0 12px">Each opens inside the app over the chart with your own login, and stays signed in separately. These are the brokers' live prices with no delay.<br>
+    <b>XM:</b> sign in with your MT5 account number, password and server (for example XMGlobal-MT5, in your XM welcome email) and tick Save password.<br>
+    <b>Octa:</b> sign in with your Octa email and password, then open Trade from your profile.<br>
+    The TV / XM / OCTA button at the top switches between that chart and the app's own chart. Gold futures from Yahoo below are delayed about 10 minutes.</p>
     <div role="radiogroup" aria-label="Data source">
       <label class="src-opt"><input type="radio" name="src" value="yahoo"><b>Markets (live spot gold &amp; silver, futures, Bitcoin)</b><small>Gold and Silver are live spot XAUUSD / XAGUSD (your broker's price, no delay). Other markets are Yahoo Finance futures, about 10 minutes delayed. No key needed.</small></label>
       <label class="src-opt"><input type="radio" name="src" value="binance"><b>Binance crypto, live tick by tick</b><small>Any Binance pair, for example PAXGUSDT (gold-backed token) or BTCUSDT. Trades 24/7.</small></label>
@@ -391,7 +435,9 @@ dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
 <script src="core.js"></script>
 <script src="data.js"></script>
 <script src="indicators.js"></script>
+<script src="scripts.js"></script>
 <script src="replay.js"></script>
 <script src="agent.js"></script>
+<script src="bot.js"></script>
 </body>
 </html>

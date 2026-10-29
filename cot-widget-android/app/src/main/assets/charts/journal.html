@@ -106,6 +106,7 @@ h1,.dh h2,.head h1{font-family:'Rajdhani',sans-serif !important;font-weight:700 
 .icon-btn,.refresh,.chip,.btn{background:#0F172A;border-color:rgba(0,229,255,.15)}
 .chip[aria-pressed="true"],.btn.primary{background:var(--grad)}
 .demo-tag{font:800 .62rem monospace;letter-spacing:.06em;color:#060913;background:#FFB300;border-radius:6px;padding:1px 5px;vertical-align:1px}
+.open-now{border-color:rgba(255,179,0,.45)}
 </style>
 </head>
 <body>
@@ -124,6 +125,7 @@ h1,.dh h2,.head h1{font-family:'Rajdhani',sans-serif !important;font-weight:700 
     <button class="chip" type="button" data-f="win" aria-pressed="false">Wins</button>
     <button class="chip" type="button" data-f="practice" aria-pressed="false">Practice</button>
     <button class="chip" type="button" data-f="real" aria-pressed="false">Real (MT5)</button>
+    <button class="chip" type="button" data-f="bot" aria-pressed="false">Bot</button>
     <button class="chip" type="button" data-f="demo" aria-pressed="false">Demo data</button>
   </div>
   <div id="list" style="display:flex;flex-direction:column;gap:10px"></div>
@@ -288,13 +290,20 @@ function render(){
   if(filter === 'practice') list = all.filter(t => t.kind === 'practice');
   if(filter === 'real') list = all.filter(t => t.kind === 'real');
   if(filter === 'demo') list = all.filter(t => t.kind === 'demo');
+  if(filter === 'bot') list = all.filter(t => t.by === 'Bot');
   $('sub').textContent = all.length ? all.filter(t => t.r < 0).length + ' losses to learn from · tap a trade for its review' : 'Every trade, and what each loss teaches you';
-  if(!list.length){ $('list').innerHTML = all.length ? '<div class="empty">Nothing matches this filter.</div>' : ''; return; }
+  // The trade that is open right now on the chart (every entry is recorded, not only closed ones).
+  const book = load('chart.bar-replay-trades', {}), op = book.pos && isFinite(book.pos.entry) ? book.pos : null;
+  const openHtml = op ? '<article class="card trade open-now"><div class="trow"><span class="side ' + op.side + '">' + (op.side === 'long' ? 'BUY' : 'SELL') + '</span>' +
+    '<div class="what"><b>' + (op.demo ? '<span class="demo-tag">DEMO</span> ' : '') + esc(op.file || '') + (op.tf ? ' · ' + esc(op.tf) : '') + '</b><small>Open since ' + when(op) + (op.by === 'Bot' ? ' · Ox Alpha bot' : op.by === 'AI' ? ' · AI agent' : '') + '</small></div>' +
+    '<div class="res">OPEN<small>' + px(op, op.entry) + '</small></div></div>' +
+    '<div class="note">Entry ' + px(op, op.entry) + ' · SL ' + px(op, op.sl) + ' · TP ' + px(op, op.tp) + (op.lots != null ? ' · ' + (+op.lots).toFixed(2) + ' lot' : '') + '. It moves to the list below when it closes.</div></article>' : '';
+  if(!list.length){ $('list').innerHTML = openHtml + (all.length ? '<div class="empty">Nothing matches this filter.</div>' : ''); return; }
   const N = notes();
-  $('list').innerHTML = list.slice(0, 200).map(t => {
+  $('list').innerHTML = openHtml + list.slice(0, 200).map(t => {
     const rv = review(t), col = rv.score >= 75 ? 'up-t' : rv.score >= 50 ? 'flat-t' : 'down-t';
     let h = '<article class="card trade" data-id="' + esc(t.id) + '"><div class="trow"><span class="side ' + t.side + '">' + (t.side === 'long' ? 'BUY' : 'SELL') + '</span>' +
-      '<div class="what"><b>' + (t.kind === 'demo' ? '<span class="demo-tag">DEMO</span> ' : '') + esc(t.file || t.market) + (t.tf ? ' · ' + esc(t.tf) : '') + '</b><small>' + when(t) + ' · ' + esc(t.reason || (t.kind === 'real' ? 'Real (MT5)' : '')) + (t.by === 'AI' ? ' · AI agent' : '') + '</small></div>' +
+      '<div class="what"><b>' + (t.kind === 'demo' ? '<span class="demo-tag">DEMO</span> ' : '') + esc(t.file || t.market) + (t.tf ? ' · ' + esc(t.tf) : '') + '</b><small>' + when(t) + ' · ' + esc(t.reason || (t.kind === 'real' ? 'Real (MT5)' : '')) + (t.by === 'AI' ? ' · AI agent' : t.by === 'Bot' ? ' · Ox Alpha bot' : '') + '</small></div>' +
       '<div class="res ' + (t.r >= 0 ? 'up-t' : 'down-t') + '">' + sgn(t.r, 2) + 'R<small>' + (t.pnl != null ? money(t.pnl) : '') + '</small></div>' +
       '<span class="score ' + col + '" title="Discipline score">' + rv.score + '</span></div>';
     if(open === t.id){

@@ -237,6 +237,13 @@
         }
       }
 
+      // Every signal with the indicator's own initial stop (same rule as the trade manager), for the Ox Alpha bot
+      out.signals = sigs.filter(x => !isNaN(atrC[x.i])).map(({ i, dir }) => {
+        const e = c[i].close, u = utStop[i];
+        const sl = s.slInit === 'ut' && !isNaN(u) && (dir === 1 ? u < e : u > e) ? u : e - dir * 1.5 * atrC[i];
+        return { time:c[i].time, side:dir === 1 ? 'buy' : 'sell', entry:e, sl, tp1R:s.tp1R, tp3R:s.tp3R };
+      });
+
       // lines
       if(s.showStop){
         const d = [];

@@ -96,8 +96,11 @@
   }
 
   /* ---------- indicators (indicators.js) ---------- */
-  const IND=window.ChartIndicators||[];
-  let indCfg={}, indN=-1, indMarkers=[], lineSeries={};
+  // Built-in indicators plus the user's own scripts (scripts.js); rebuilt when scripts are added or changed.
+  let IND=[];
+  const refreshInd=()=>{ IND=(window.ChartIndicators||[]).concat(window.ChartScripts?window.ChartScripts.indicators():[]); };
+  refreshInd();
+  let indCfg={}, indN=-1, indMarkers=[], indSignals=[], lineSeries={};
   function indSettings(ind){
     const s={on:ind.defaultOn!==false};
     for(const f of ind.inputs) s[f.key]=f.def;
@@ -147,7 +150,7 @@
     const n=closedCount();
     if(!force && n===indN) return false;
     indN=n;
-    const candles=agg.slice(0,n), markers=[], seen={}, panel=[], ctx={tf,tick:Math.pow(10,-precision)};
+    const candles=agg.slice(0,n), markers=[], seen={}, panel=[], signals=[], ctx={tf,tick:Math.pow(10,-precision)};
     const candleTimes=new Set(agg.map(c=>c.time));
     for(const ind of IND){
       const s=indSettings(ind);
@@ -155,6 +158,8 @@
       let out={};
       try{ out=ind.compute(candles,s,pal,ctx)||{}; }catch(e){ console.error(ind.id,e); }
       for(const mk of out.markers||[]) markers.push(mk);
+      // BUY / SELL signals for the bot: the indicator's own list (with stops) or its BUY / SELL markers
+      for(const x of out.signals||(out.markers||[]).filter(m=>m.side==='buy'||m.side==='sell').map(m=>({time:m.time,side:m.side}))) signals.push(Object.assign({src:ind.id},x));
       for(const r of out.panel||[]) panel.push(r);
       for(const ln of out.lines||[]){
         seen[ln.id]=1;
@@ -167,7 +172,7 @@
       }
     }
     for(const id in lineSeries) if(!seen[id]){ chart.removeSeries(lineSeries[id]); delete lineSeries[id]; }
-    indMarkers=markers;
+    indMarkers=markers; indSignals=signals;
     const allRows=(typeof htfRows==='function'?htfRows():[]).concat(panel);
     renderPanel(allRows);
     lastPanel=panel;
@@ -359,7 +364,7 @@
     pos={file:srcName,side,entryIdx:idx-1,entryTime:b.time,entry:b.close,by:o&&o.by||'',
          id:srcName+'|'+b.time+'|'+side+'|'+Date.now(),tf:tfLabel(tf),openedAt:Date.now(),mfe:0,mae:0,ctx:entryContext(side),
          sl:b.close-dir*d,tp,slDist:d,risk:cfg.risk,
-         lots:size.lots,lotsNote:size.reason||'',cost:cfg.cost||0,demo:!!isDemo,trail:!!cfg.trail,stage:0,ext:b.close,doneK:-1};
+         lots:size.lots,lotsNote:size.reason||'',cost:cfg.cost||0,demo:!!isDemo,trail:o&&o.trail!=null?!!o.trail:!!cfg.trail,stage:0,ext:b.close,doneK:-1};
     pos.sl0=pos.sl; pos.tp0=pos.tp;
     drawPosLines(); updateMarkers(); refresh(); saveBook();
     return true;
@@ -754,6 +759,7 @@
   function openTv(){ const src=loadJSON('bar-replay-source',{}); try{ window.parent.postMessage({type:'openTv',symbol:TV_SYMBOL[src.symbol]||(src.type==='binance'?'BINANCE:'+src.symbol:'OANDA:XAUUSD')},'*'); }catch(e){} }
   $('tvOpen').addEventListener('click',()=>{ $('dataDlg').close(); setFeed('tv'); setTvMode(true); });
   $('xmOpen').addEventListener('click',()=>{ $('dataDlg').close(); setFeed('xm'); setTvMode(true); });
+  $('octaOpen').addEventListener('click',()=>{ $('dataDlg').close(); setFeed('octa'); setTvMode(true); });
 
   /* ---------- TradingView in the chart area ----------
      In the app, the user's own TradingView chart (their login, indicators, symbol search) is laid
@@ -767,10 +773,12 @@
   function tvSymbol(){ const src=loadJSON('bar-replay-source',{}); return TV_SYMBOL[src.symbol]||(src.type==='binance'?'BINANCE:'+src.symbol:'OANDA:XAUUSD'); }
   // Which live chart the overlay shows: the user's TradingView, or their XM account in the MT5 web terminal.
   let feed=loadJSON('live-feed','tv');
-  const XM_URL='https://web.metatrader.app/terminal?mode=connect&lang=en';
-  function setFeed(f){ feed=f==='xm'?'xm':'tv'; saveJSON('live-feed',feed); $('tvBtn').textContent=feed==='xm'?'XM':'TV'; tvSym=''; }
+  // Broker pages open as they are, with the user's own login (kept per broker by the app).
+  const BROKER_URL={ xm:'https://web.metatrader.app/terminal?mode=connect&lang=en', octa:'https://my.octabroker.com/login/?back=%2F' };
+  const FEED_LABEL={ tv:'TV', xm:'XM', octa:'OCTA' };
+  function setFeed(f){ feed=BROKER_URL[f]?f:'tv'; saveJSON('live-feed',feed); $('tvBtn').textContent=FEED_LABEL[feed]; tvSym=''; }
   setFeed(feed);
-  function tvUrl(){ if(feed==='xm') return XM_URL; return 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent(tvSymbol())+'&interval='+(TV_INTERVAL[tf]||'5'); }
+  function tvUrl(){ if(BROKER_URL[feed]) return BROKER_URL[feed]; return 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent(tvSymbol())+'&interval='+(TV_INTERVAL[tf]||'5'); }
   function tvPost(action){
     const r=document.querySelector('.chart-wrap').getBoundingClientRect();
     try{ window.parent.postMessage({type:'tv',action,rect:{x:r.left,y:r.top,w:r.width,h:r.height},url:tvUrl()},'*'); }catch(e){}
@@ -780,11 +788,11 @@
     if(nativeTv()){ tvPost(tvMode && !open ? 'show' : 'hide'); return; }
     let fr=document.querySelector('.tv-frame');
     if(!tvMode){ if(fr) fr.remove(); return; }
-    const sym=feed==='xm'?'xm':tvSymbol();
+    const sym=BROKER_URL[feed]?feed:tvSymbol();
     if(!fr || sym!==tvSym){
       if(fr) fr.remove();
-      fr=document.createElement('iframe'); fr.className='tv-frame'; fr.title=feed==='xm'?'XM MT5 chart':'TradingView chart';
-      fr.src=feed==='xm'?XM_URL:'https://s.tradingview.com/widgetembed/?symbol='+encodeURIComponent(sym)+'&interval='+(TV_INTERVAL[tf]||'5')+'&theme=dark&style=1&timezone=exchange&allow_symbol_change=1&saveimage=0&toolbarbg=060913&locale=en';
+      fr=document.createElement('iframe'); fr.className='tv-frame'; fr.title=feed==='tv'?'TradingView chart':FEED_LABEL[feed]+' chart';
+      fr.src=BROKER_URL[feed]||'https://s.tradingview.com/widgetembed/?symbol='+encodeURIComponent(sym)+'&interval='+(TV_INTERVAL[tf]||'5')+'&theme=dark&style=1&timezone=exchange&allow_symbol_change=1&saveimage=0&toolbarbg=060913&locale=en';
       document.querySelector('.chart-wrap').appendChild(fr);
     }
     tvSym=sym;
@@ -824,7 +832,8 @@
       sec.className='ind';
       const head=document.createElement('label');
       head.className='ind-head';
-      head.innerHTML=`<span><b>${ind.name}</b><small>${ind.about||''}</small></span><span class="switch"><input type="checkbox" role="switch"></span>`;
+      const esc=t=>String(t).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+      head.innerHTML=`<span><b>${esc(ind.name)}</b><small>${esc(ind.about||'')}</small></span><span class="switch"><input type="checkbox" role="switch"></span>`;
       const main=head.querySelector('input'); main.checked=s.on;
       const body=document.createElement('div'); body.className='ind-body'; body.hidden=!s.on;
       main.addEventListener('change',()=>{ setInd(ind,'on',main.checked); body.hidden=!main.checked; });
@@ -854,9 +863,46 @@
         }
         body.appendChild(row);
       }
+      if(ind.user){
+        const row=document.createElement('div'); row.className='script-row';
+        const ed=document.createElement('button'); ed.type='button'; ed.textContent='Edit script'; ed.addEventListener('click',()=>openScript(ind.id.slice(3)));
+        row.appendChild(ed); body.appendChild(row);
+      }
       sec.append(head,body); box.appendChild(sec);
     }
   }
+  /* ---------- the user's own indicator scripts ---------- */
+  let editing=null;
+  function openScript(id){
+    const sc=id ? window.ChartScripts.list().find(x=>x.id===id) : null;
+    editing=sc ? sc.id : null;
+    $('scName').value=sc ? sc.name : 'My indicator';
+    $('scCode').value=sc ? sc.code : window.ChartScripts.TEMPLATE;
+    $('scDelete').hidden=!sc; $('scMsg').hidden=true;
+    $('scriptDlg').showModal();
+  }
+  function scriptMsg(text,err){ const m=$('scMsg'); m.textContent=text; m.className='hint'+(err?' err':''); m.hidden=false; }
+  $('addScript').addEventListener('click',()=>openScript(null));
+  $('scTest').addEventListener('click',async()=>{
+    const n=closedCount(); if(n<30){ scriptMsg('Load a chart with at least 30 candles first.',true); return; }
+    scriptMsg('Running on '+n+' candles…');
+    const res=await window.ChartScripts.run($('scCode').value,agg.slice(0,n));
+    if(res.error) scriptMsg('Error: '+res.error,true);
+    else { const b=res.out.buy.filter(Boolean).length, s2=res.out.sell.filter(Boolean).length; scriptMsg('OK: '+b+' BUY and '+s2+' SELL signals on this chart, '+Object.keys(res.out.plots).length+' plot line(s).'); }
+  });
+  $('scSave').addEventListener('click',()=>{
+    const err=window.ChartScripts.upsert({id:editing,name:$('scName').value,code:$('scCode').value});
+    if(err){ scriptMsg(err,true); return; }
+    $('scriptDlg').close(); refreshInd(); renderIndicators(); computeIndicators(true); updateMarkers();
+  });
+  $('scDelete').addEventListener('click',e=>{
+    const b=e.currentTarget;
+    if(!b.dataset.armed){ b.dataset.armed='1'; b.textContent='Tap again to delete'; return; }
+    b.dataset.armed=''; b.textContent='Delete';
+    window.ChartScripts.remove(editing); $('scriptDlg').close(); refreshInd(); renderIndicators(); computeIndicators(true); updateMarkers();
+  });
+  // A script finished running in its worker: redraw with its result.
+  window.onChartScriptsUpdated=()=>{ if(agg.length){ computeIndicators(true); updateMarkers(); } };
   function setInd(ind,key,val){
     indCfg[ind.id]=Object.assign({},indCfg[ind.id]||{},{[key]:val});
     saveJSON('indicators',indCfg);
@@ -1020,7 +1066,8 @@
       const srcNow=loadJSON('bar-replay-source',{});
       return { name:srcName, symbol:srcNow.symbol||'', demo:!!isDemo, feed:feedState(), tf, tfLabel:tfLabel(tf), tfs:tfOptions().map(tfLabel), precision, online:isOnline, live:idx===bars.length,
         candles:agg.slice(0,n), forming:agg[n]||null, price:idx>0?bars[idx-1].close:null, time:idx>0?bars[idx-1].time:null,
-        markers:indMarkers.slice(), panel:lastPanel.slice(), pos:pos?{...pos}:null, cfg:{...cfg},
+        markers:indMarkers.slice(), signals:indSignals.slice(-300), panel:lastPanel.slice(),
+        indicators:IND.filter(i=>indSettings(i).on).map(i=>({id:i.id,name:i.name})), pos:pos?{...pos}:null, cfg:{...cfg},
         trades:fileTrades().slice(-50) };
     },
     buy:o=>openPos('long',o), sell:o=>openPos('short',o),
