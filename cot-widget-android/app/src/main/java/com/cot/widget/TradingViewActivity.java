@@ -10,6 +10,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -134,6 +135,20 @@ public class TradingViewActivity extends AppCompatActivity {
                 }
                 // Everything web stays in this view; app links (intent://, market://) are ignored.
                 return !("https".equals(scheme) || "http".equals(scheme));
+            }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                // TradingView / XM ran out of memory: drop only that page and keep the app running.
+                if (act instanceof MainActivity) {
+                    ViewGroup parent = (ViewGroup) view.getParent();
+                    if (parent != null) parent.removeView(view);
+                    view.destroy();
+                    ((MainActivity) act).chartViewGone(view);
+                } else {
+                    act.finish();
+                }
+                return true;
             }
         });
     }

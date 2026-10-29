@@ -215,7 +215,7 @@
     const tf = /\b(1m|5m|15m|30m|1h|4h|1d|daily)\b/.exec(s);
     if(tf) return Actions.setTf(tf[1] === 'daily' ? '1D' : tf[1].replace('d', 'D'));
     for(const m of MARKETS) if(m[2].test(s) && /\b(open|show|load|switch|chart|go to)\b/.test(s)) return Actions.market(m[0]);
-    if(/\bopen\b.*\b(news|scanner|markets|alerts|brokers)\b/.test(s)) return Actions.tab(/\b(news|scanner|markets|alerts|brokers)\b/.exec(s)[1]);
+    if(/\bopen\b.*\b(news|scanner|markets|journal|alerts|brokers|me)\b/.test(s)) return Actions.tab(/\b(news|scanner|markets|journal|alerts|brokers|me)\b/.exec(s)[1]);
     if(/\breplay\b/.test(s)){ const on = !/\b(off|hide|stop)\b/.test(s); API().setReplay(on); return 'Replay mode ' + (on ? 'on.' : 'off.'); }
     if(/\b(landscape|full ?screen|rotate)\b/.test(s)){ $('rotateBtn').click(); return 'Toggled landscape.'; }
     if(/\bauto\b/.test(s)){ prefs.auto = !/\b(off|stop|disable)\b/.test(s); savePrefs(); $('agAuto').checked = prefs.auto; render(); return 'Auto-trade ' + (prefs.auto ? 'on (practice account, setups with ≥' + prefs.minConf + '% confidence).' : 'off.'); }
@@ -232,7 +232,7 @@
     { name:'close_position', description:'Close the open practice position at the current price.', input_schema:{ type:'object', properties:{}, additionalProperties:false } },
     { name:'set_timeframe', description:'Change the chart timeframe.', input_schema:{ type:'object', properties:{ timeframe:{ type:'string', enum:['1m','5m','15m','30m','1h','4h','1D'] } }, required:['timeframe'], additionalProperties:false } },
     { name:'open_market', description:'Load another market on the chart.', input_schema:{ type:'object', properties:{ ticker:{ type:'string', enum:MARKETS.map(m => m[0]) } }, required:['ticker'], additionalProperties:false } },
-    { name:'open_app_tab', description:'Switch the app to another tab.', input_schema:{ type:'object', properties:{ tab:{ type:'string', enum:['markets','scanner','news','alerts','brokers'] } }, required:['tab'], additionalProperties:false } },
+    { name:'open_app_tab', description:'Switch the app to another tab.', input_schema:{ type:'object', properties:{ tab:{ type:'string', enum:['markets','scanner','news','journal','alerts','brokers','me'] } }, required:['tab'], additionalProperties:false } },
     { name:'prepare_real_order', description:'For the user\'s real XM / Octa account: copy the order text to the clipboard and open MT5 so the user can place and confirm it there. The app cannot send real orders itself.', input_schema:{ type:'object', properties:{ side:{ type:'string', enum:['buy','sell'] }, stop_loss:{ type:'number' }, take_profit:{ type:'number' } }, required:['side'], additionalProperties:false } },
   ];
   const SYSTEM = 'You are the trading agent inside the COT Sentiment Android app (gold-first). You can read the chart, the gold news engine and COT positioning, and control the app with tools. ' +
@@ -264,34 +264,36 @@
   async function claude(q){
     if(convo.length > 30) convo = [];   // start fresh rather than editing history
     convo.push({ role:'user', content:q });
-    for(let turn = 0; turn < 6; turn++){
-      const body = { model:prefs.model, max_tokens:16000, system:SYSTEM, tools:TOOLS, messages:convo, output_config:{ effort:'low' } };
-      const headers = { 'content-type':'application/json', 'x-api-key':prefs.key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' };
-      if(prefs.model !== 'claude-haiku-5-5'){ body.fallbacks = 'default'; headers['anthropic-beta'] = 'server-side-fallback-2026-07-01'; }
-      const r = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers, body:JSON.stringify(body) });
-      const j = await r.json().catch(() => ({}));
-      if(!r.ok){
-        convo.pop();
-        const msg = (j.error && j.error.message) || ('HTTP ' + r.status);
-        if(r.status === 401) throw new Error('The API key was rejected. Check it in Agent settings.');
-        if(r.status === 429) throw new Error('Rate limited by the API. Try again in a moment.');
-        throw new Error(msg);
+    const start = convo.length - 1;   // where this question began; restored on any failure
+    try {
+      for(let turn = 0; turn < 6; turn++){
+        const body = { model:prefs.model, max_tokens:16000, system:SYSTEM, tools:TOOLS, messages:convo, output_config:{ effort:'low' } };
+        const headers = { 'content-type':'application/json', 'x-api-key':prefs.key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' };
+        if(prefs.model !== 'claude-haiku-5-5'){ body.fallbacks = 'default'; headers['anthropic-beta'] = 'server-side-fallback-2026-07-01'; }
+        const r = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers, body:JSON.stringify(body) });
+        const j = await r.json().catch(() => ({}));
+        if(!r.ok){
+          const msg = (j.error && j.error.message) || ('HTTP ' + r.status);
+          if(r.status === 401) throw new Error('The API key was rejected. Check it in Agent settings.');
+          if(r.status === 429) throw new Error('Rate limited by the API. Try again in a moment.');
+          throw new Error(msg);
+        }
+        if(j.stop_reason === 'refusal'){ convo.length = start; return 'Claude declined that request.'; }
+        convo.push({ role:'assistant', content:j.content });   // keep every block (thinking included) unchanged
+        const uses = j.content.filter(b => b.type === 'tool_use');
+        const text = j.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+        if(j.stop_reason !== 'tool_use' || !uses.length) return text || '(no answer)';
+        if(text) say(text, 'ai');
+        const results = [];
+        for(const u of uses){
+          let out, err = false;
+          try { out = await runTool(u.name, u.input || {}); } catch(e){ out = e.message; err = true; }
+          if(u.name !== 'get_chart_analysis' && u.name !== 'get_gold_news') say('▸ ' + out, 'sys');
+          results.push({ type:'tool_result', tool_use_id:u.id, content:String(out), is_error:err });
+        }
+        convo.push({ role:'user', content:results });
       }
-      if(j.stop_reason === 'refusal'){ convo.pop(); return 'Claude declined that request.'; }
-      convo.push({ role:'assistant', content:j.content });   // keep every block (thinking included) unchanged
-      const uses = j.content.filter(b => b.type === 'tool_use');
-      const text = j.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
-      if(j.stop_reason !== 'tool_use' || !uses.length) return text || '(no answer)';
-      if(text) say(text, 'ai');
-      const results = [];
-      for(const u of uses){
-        let out, err = false;
-        try { out = await runTool(u.name, u.input || {}); } catch(e){ out = e.message; err = true; }
-        if(u.name !== 'get_chart_analysis' && u.name !== 'get_gold_news') say('▸ ' + out, 'sys');
-        results.push({ type:'tool_result', tool_use_id:u.id, content:String(out), is_error:err });
-      }
-      convo.push({ role:'user', content:results });
-    }
+    } catch(e){ convo.length = start; throw e; }
     return 'Stopped after several steps. Ask again to continue.';
   }
 

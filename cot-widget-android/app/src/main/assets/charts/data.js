@@ -159,13 +159,28 @@
     return { price:(best.s.bid + best.s.ask) / 2, ts:best.p.ts || Date.now() };
   }
   async function loadSpot(src){
-    const R = YRES[src.res] || YRES['1m'];
-    const [res, q] = await Promise.all([yhGet(src.fut, R.interval, R.range), sqQuote(src.symbol)]);
+    const R = YRES[src.res] || YRES['1m'], gold = src.symbol.startsWith('XAU') && R.sec < 86400;
+    // For gold, PAXG (a gold-backed token trading live on Binance) fills the futures feed's missing last ~10 minutes
+    // and gives the futures-to-spot shift at the same minute. Without it, the shift is approximate and those minutes stay empty.
+    const [res, q, pk] = await Promise.all([yhGet(src.fut, R.interval, R.range), sqQuote(src.symbol),
+      gold ? binJSON(`/api/v3/klines?symbol=PAXGUSDT&interval=${R.interval === '60m' ? '1h' : R.interval}&limit=60`).catch(() => null) : null]);
     const fut = yhBars(res, R.sec);
     if(fut.length < 2) throw new Error('No history for ' + src.label + '.');
-    const basis = fut[fut.length - 1].close - q.price;   // futures premium over spot (approximate: the futures bar is ~10 min old)
-    const dp = src.symbol.startsWith('XAG') ? 3 : 2, k = Math.pow(10, dp), r2 = v => Math.round((v - basis) * k) / k;
-    const bars = fut.map(b => ({ time:b.time, open:r2(b.open), high:r2(b.high), low:r2(b.low), close:r2(b.close), volume:b.volume }));
+    const last = fut[fut.length - 1];
+    let basis = last.close - q.price, gap = [];   // futures premium over spot (approximate: the futures bar is ~10 min old)
+    if(Array.isArray(pk) && pk.length){
+      const px = pk.map(binBar), same = px.find(b => b.time === last.time);
+      const tokenPrem = px[px.length - 1].close - q.price;   // PAXG premium over spot now
+      const sec = Math.floor(q.ts / 1000), nowT = toLocalWall(sec - (sec % R.sec));
+      if(same){
+        basis = last.close - (same.close - tokenPrem);       // futures premium at the same minute
+        gap = px.filter(b => b.time > last.time && b.time < nowT)
+                .map(b => ({ time:b.time, open:b.open - tokenPrem, high:b.high - tokenPrem, low:b.low - tokenPrem, close:b.close - tokenPrem }));
+      }
+    }
+    const dp = src.symbol.startsWith('XAG') ? 3 : 2, k = Math.pow(10, dp), rd = v => Math.round(v * k) / k, r2 = v => rd(v - basis);
+    const bars = fut.map(b => ({ time:b.time, open:r2(b.open), high:r2(b.high), low:r2(b.low), close:r2(b.close), volume:b.volume }))
+      .concat(gap.map(b => ({ time:b.time, open:rd(b.open), high:rd(b.high), low:rd(b.low), close:rd(b.close), volume:0 })));
     return { bars, precision:dp, name:`${src.label} · LIVE`, basis };
   }
   function streamSpot(src, info, onBars, onState){

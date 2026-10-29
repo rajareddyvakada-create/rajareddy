@@ -6,7 +6,6 @@ import android.accounts.AccountManager;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
-import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -43,16 +42,14 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
     private WebView tvView;
     private WebView mt5View;
     private String tvUrl;
+    private long lastChartCrash;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        boolean night = (getResources().getConfiguration().uiMode
-                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
         // The Midnight Cyberpunk theme is dark in both system modes.
-        night = true;
         int bg = Color.parseColor("#060913");
 
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
@@ -60,8 +57,8 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
         getWindow().setNavigationBarColor(bg);
         WindowInsetsControllerCompat bars =
                 WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-        bars.setAppearanceLightStatusBars(!night);
-        bars.setAppearanceLightNavigationBars(!night);
+        bars.setAppearanceLightStatusBars(false);
+        bars.setAppearanceLightNavigationBars(false);
 
         root = new FrameLayout(this);
         root.setBackgroundColor(bg);
@@ -128,9 +125,11 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (tvView != null && tvView.getVisibility() == View.VISIBLE && tvView.canGoBack()
-                        && tvView.getUrl() != null && !tvView.getUrl().contains("/chart")) {
-                    tvView.goBack();
+                WebView chart = tvView != null && tvView.getVisibility() == View.VISIBLE ? tvView
+                        : mt5View != null && mt5View.getVisibility() == View.VISIBLE ? mt5View : null;
+                String home = chart == tvView ? "/chart" : "/terminal";
+                if (chart != null && chart.canGoBack() && chart.getUrl() != null && !chart.getUrl().contains(home)) {
+                    chart.goBack();
                     return;
                 }
                 webView.evaluateJavascript("window.appBack ? window.appBack() : false", value -> {
@@ -235,6 +234,7 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
                 tvUrl = url;
                 show.loadUrl(url);
             }
+            show.onResume();
             show.setVisibility(View.VISIBLE);
         });
     }
@@ -250,9 +250,22 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
     @Override
     public void tvHide() {
         runOnUiThread(() -> {
-            if (tvView != null) tvView.setVisibility(View.GONE);
-            if (mt5View != null) mt5View.setVisibility(View.GONE);
+            if (tvView != null) { tvView.setVisibility(View.GONE); tvView.onPause(); }
+            if (mt5View != null) { mt5View.setVisibility(View.GONE); mt5View.onPause(); }
         });
+    }
+
+    /** A TradingView / XM page crashed and was removed. Re-open it once; if it crashes again
+     *  within a minute, leave the app's own chart showing (tap TV to try again). */
+    void chartViewGone(WebView v) {
+        if (v == tvView) { tvView = null; tvUrl = null; }
+        if (v == mt5View) mt5View = null;
+        long now = System.currentTimeMillis();
+        boolean retry = now - lastChartCrash > 60_000;
+        lastChartCrash = now;
+        if (retry && webView != null) webView.postDelayed(() -> {
+            if (webView != null) webView.evaluateJavascript("(function(f){f&&f.contentWindow.postMessage({type:'tvRefresh'},'*')})(document.querySelector('#viewCharts iframe'))", null);
+        }, 800);
     }
 
     @Override
@@ -309,17 +322,23 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
     protected void onResume() {
         super.onResume();
         webView.onResume();
+        if (tvView != null && tvView.getVisibility() == View.VISIBLE) tvView.onResume();
+        if (mt5View != null && mt5View.getVisibility() == View.VISIBLE) mt5View.onResume();
     }
 
     @Override
     protected void onPause() {
         android.webkit.CookieManager.getInstance().flush();
         webView.onPause();
+        if (tvView != null) tvView.onPause();
+        if (mt5View != null) mt5View.onPause();
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
+        if (tvView != null) { tvView.destroy(); tvView = null; }
+        if (mt5View != null) { mt5View.destroy(); mt5View = null; }
         if (webView != null) {
             webView.destroy();
             webView = null;

@@ -273,8 +273,8 @@
     src=liveSource(src);
     if(src.type==='spot' && window.__SNAP) src={type:'yahoo',symbol:src.fut,label:src.label.replace(' spot',''),res:src.res};
     const res=await window.BRData.load(src); // keep the current chart live until the new data arrives
-    spotBasis=src.type==='spot'?res.basis||0:0;
     if(req!==loadSeq) return;
+    spotBasis=src.type==='spot'?res.basis||0:0;
     stopLive();
     const my=session;
     setData(res,res.name,false,st||loadJSON('bar-replay-state',null),true);

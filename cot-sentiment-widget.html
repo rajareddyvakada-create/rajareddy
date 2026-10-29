@@ -1187,7 +1187,7 @@ window.appBack = function() {
         Bridge.tvShow(Math.round(fr.left + d.rect.x), Math.round(fr.top + d.rect.y), Math.round(d.rect.w), Math.round(d.rect.h), String(d.url || ""));
       } else Bridge.tvHide();
     }
-    if (d.type === "openTab" && /^(markets|scanner|news|alerts|brokers|charts)$/.test(d.tab || "")) openTab(d.tab);
+    if (d.type === "openTab" && /^(markets|scanner|news|journal|me|alerts|brokers|charts)$/.test(d.tab || "")) openTab(d.tab);
     if (d.type === "openMt5" && Bridge && Bridge.openMt5) Bridge.openMt5();
     if (d.type === "openTv" && Bridge && Bridge.openTradingView) Bridge.openTradingView("chart/?symbol=" + encodeURIComponent(d.symbol || "OANDA:XAUUSD"));
     if (d.type === "agentTrade" && d.title) {

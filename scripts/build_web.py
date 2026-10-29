@@ -12,6 +12,7 @@ OUT = ROOT / 'web'
 
 # "What's built" panel shown on top of the web version: every feature the app has, newest first.
 WORK = [
+    ('v2.2', 'Fixes: app no longer closes if TradingView or XM crashes; AI agent recovers after a failed request; no 10-minute hole on live gold; Back works on XM; TradingView and XM pause in the background; agent opens Journal and Me'),
     ('v2.1', 'Live chart from your XM account (MT5 web terminal) beside TradingView; TradingView opens as the default chart'),
     ('v2.0', 'Live spot gold and silver on the app chart, no 10-minute delay (Swissquote ticks every 2 s)'),
     ('v1.9', '1D / 1W / 1M BOS and CHoCH levels listed and drawn on the chart; blank-chart fix'),
@@ -31,10 +32,10 @@ WORK_PANEL = (
     'width:min(560px,calc(100vw - 32px));font:500 13px Inter,system-ui,sans-serif;color:#F8FAFC;background:rgba(15,23,42,.96);'
     'border:1px solid rgba(0,229,255,.35);border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.5)">'
     '<summary style="cursor:pointer;list-style:none;padding:8px 14px;font:700 13px Rajdhani,Inter,sans-serif;letter-spacing:.04em;color:#00E5FF">'
-    '\u2713 Complete work so far \u00b7 v2.1 (tap to open)</summary>'
+    '\u2713 Complete work so far \u00b7 v2.2 (tap to open)</summary>'
     '<ol style="margin:0;padding:4px 16px 12px 34px;max-height:60vh;overflow:auto;line-height:1.45">'
     + ''.join(f'<li style="margin:5px 0"><b style="color:#FFB300;font-family:JetBrains Mono,monospace;font-size:11px">{v}</b> {t}</li>' for v, t in WORK)
-    + '<li style="margin:5px 0;list-style:none;color:#94A3B8">Android APK: github.com/rajareddyvakada-create/rajareddy/releases (v2.1)</li>'
+    + '<li style="margin:5px 0;list-style:none;color:#94A3B8">Android APK: github.com/rajareddyvakada-create/rajareddy/releases (v2.2)</li>'
     '</ol></details>\n')
 
 def main():

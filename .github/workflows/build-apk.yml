@@ -82,6 +82,6 @@ jobs:
             --latest \
             --notes "Android app for the COT Sentiment Widget: weekly CFTC positioning plus 20-week price range, scored into a bullish/bearish verdict for Gold, Silver, Crude Oil, S&P 500, Nasdaq, Copper, Nat Gas and Bitcoin.
 
-          Install: download COT-Sentiment-Widget.apk on your Android phone, open it, and allow installs from unknown apps if asked. Uninstall any older version first.
+          Install: download COT-Sentiment-Widget.apk on your Android phone, open it, and allow installs from unknown apps if asked. It installs over the previous version and keeps your settings and trades.
 
           Permanent link to the newest version: https://github.com/$GITHUB_REPOSITORY/releases/latest/download/COT-Sentiment-Widget.apk"
