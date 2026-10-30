@@ -62,6 +62,11 @@ MAX_LOT=1.0
 
 ## 5. Run
 
+**Easiest:** double-click **`start.bat`** in the `xm-bridge` folder. It sets Python up the first time,
+starts the server, and prints the addresses to use.
+
+Or by hand:
+
 ```bat
 cd xm-bridge\backend
 .venv\Scripts\activate
@@ -83,6 +88,12 @@ The page asks once for the API key and remembers it on that device.
 
 **First time on Windows:** allow Python through the firewall for **Private networks** when prompted, or the
 phone cannot reach the PC.
+
+### Why the page must come from your own PC
+
+The chart is real only when the page is served by this server. A copy of the page opened from anywhere
+else (a preview link, a file on the phone) cannot reach your PC: it is on your home network, and browsers
+block a page on one site from calling a different one. So always open `http://<PC-IP>:8000`.
 
 ## 6. Using it
 
