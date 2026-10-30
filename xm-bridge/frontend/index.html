@@ -93,6 +93,13 @@
   .dlg p{margin:0 0 14px; color:var(--muted); font-size:13px}
   .dlg input{width:100%; background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:10px; font:14px var(--mono)}
   .dlg button{width:100%; background:var(--accent); border:0; border-radius:8px; padding:12px; color:#061018; font-weight:700}
+  .sym-list{max-height:48vh; overflow:auto; margin-bottom:10px; border:1px solid var(--line); border-radius:8px}
+  .sym-row{display:flex; gap:10px; align-items:baseline; width:100%; background:none; border:0; border-bottom:1px solid var(--line); padding:10px 12px; text-align:left; color:var(--text)}
+  .sym-row:last-child{border-bottom:0}
+  .sym-row:hover,.sym-row:focus-visible{background:var(--surface-2)}
+  .sym-row b{font:600 14px var(--mono); min-width:92px}
+  .sym-row span{color:var(--muted); font-size:12px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .sym-empty{padding:12px; color:var(--muted); font-size:13px}
   @media (max-width:420px){
     .px b{font-size:17px}
     .order{flex-wrap:wrap}
@@ -113,7 +120,8 @@
 </div>
 
 <div class="bar">
-  <input type="text" id="symbolInput" value="XAUUSD" spellcheck="false" autocapitalize="characters" aria-label="Symbol">
+  <input type="text" id="symbolInput" value="XAUUSD" spellcheck="false" autocapitalize="off" autocorrect="off" aria-label="Symbol">
+  <button class="ghost" id="pickSymbol" aria-label="Browse symbols">Browse</button>
   <button class="ghost" id="applySymbol">Apply</button>
   <div class="tfs" id="tfs" role="group" aria-label="Timeframe"></div>
 </div>
@@ -145,6 +153,16 @@
 </div>
 
 <div id="toasts"></div>
+
+<dialog id="symDlg">
+  <div class="dlg">
+    <h2>Choose a symbol</h2>
+    <p id="symNote">Names come from your own MT5 account.</p>
+    <input type="text" id="symSearch" placeholder="Search, e.g. gold, XAU, US30" autocomplete="off" spellcheck="false">
+    <div id="symList" class="sym-list"></div>
+    <button type="button" id="symClose">Close</button>
+  </div>
+</dialog>
 
 <dialog id="keyDlg">
   <form method="dialog" class="dlg" id="keyForm">
@@ -221,8 +239,75 @@
   });
   new ResizeObserver(() => chart.applyOptions({ width: $("chart").clientWidth, height: $("chart").clientHeight })).observe($("chart"));
 
+  /* ------------------------------------------------------------------ symbols */
+  const escHtml = t => String(t == null ? "" : t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  let symbolCache = null;
+
+  // Market Watch first: that is the short list the account actually trades.
+  async function loadSymbols(query) {
+    const path = query ? "/api/symbols?all=true&search=" + encodeURIComponent(query) : "/api/symbols";
+    const data = await api(path);
+    if (!query) symbolCache = data.symbols;
+    return data.symbols;
+  }
+
+  function renderSymbols(list) {
+    const box = $("symList");
+    if (!list.length) { box.innerHTML = '<div class="sym-empty">Nothing matches. Try fewer letters.</div>'; return; }
+    box.innerHTML = list.slice(0, 200).map(s =>
+      '<button type="button" class="sym-row" data-sym="' + escHtml(s.name) + '"><b>' + escHtml(s.name) + "</b><span>" + escHtml(s.description) + "</span></button>"
+    ).join("");
+  }
+
+  async function openPicker() {
+    $("symSearch").value = "";
+    $("symList").innerHTML = '<div class="sym-empty">Loading your symbols…</div>';
+    $("symDlg").showModal();
+    try {
+      const list = symbolCache || await loadSymbols("");
+      $("symNote").textContent = list.length + " symbols in your MT5 Market Watch. Search to look through every symbol the broker offers.";
+      renderSymbols(list);
+    } catch (e) {
+      $("symList").innerHTML = '<div class="sym-empty">' + escHtml(e.message) + "</div>";
+    }
+  }
+
+  let searchTimer = 0;
+  $("symSearch").addEventListener("input", function () {
+    const q = this.value.trim();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(async () => {
+      const local = (symbolCache || []).filter(s =>
+        s.name.toLowerCase().includes(q.toLowerCase()) || (s.description || "").toLowerCase().includes(q.toLowerCase()));
+      if (!q) { renderSymbols(symbolCache || []); return; }
+      if (local.length) { renderSymbols(local); return; }
+      try { renderSymbols(await loadSymbols(q)); } catch (e) { /* keep what is shown */ }
+    }, 250);
+  });
+  $("symList").addEventListener("click", e => {
+    const b = e.target.closest("[data-sym]");
+    if (!b) return;
+    $("symDlg").close();
+    state.symbol = b.dataset.sym;
+    $("symbolInput").value = state.symbol;
+    loadCandles();
+  });
+  $("symClose").addEventListener("click", () => $("symDlg").close());
+  $("pickSymbol").addEventListener("click", openPicker);
+
   /* ------------------------------------------------------------------ data */
-  async function loadCandles() {
+  // XM names gold differently between account types (XAUUSD, GOLD, sometimes with a suffix). On the
+  // first load the saved name may be wrong through no fault of the user, so pick one the account has.
+  // A name the user typed is never swapped: they get the error and the real names instead.
+  async function fallbackSymbol() {
+    try {
+      const list = symbolCache || await loadSymbols("");
+      if (!list.length) return null;
+      return (list.find(s => /^(xauusd|gold)/i.test(s.name)) || list[0]).name;
+    } catch (e) { return null; }
+  }
+
+  async function loadCandles(firstLoad) {
     $("chartMsg").textContent = "Loading " + state.symbol + " " + state.tf + "…";
     $("chartMsg").style.display = "grid";
     try {
@@ -239,8 +324,21 @@
       localStorage.setItem("xm.tf", state.tf);
       openSocket();
     } catch (e) {
+      if (e.status === 401) { $("chartMsg").textContent = e.message; askForKey(); return; }
+      if (e.status === 404) {
+        const better = firstLoad ? await fallbackSymbol() : null;
+        if (better && better !== state.symbol) {
+          toast("No symbol called " + state.symbol + " in your account. Showing " + better + " instead.", "", "Tap Browse to pick another.");
+          state.symbol = better;
+          $("symbolInput").value = better;
+          return loadCandles();
+        }
+        const names = (symbolCache || []).slice(0, 10).map(s => s.name).join(", ");
+        $("chartMsg").textContent = e.message + (names ? "\n\nIn your account: " + names : "") + "\n\nTap Browse to pick one.";
+        $("chartMsg").style.whiteSpace = "pre-line";
+        return;
+      }
       $("chartMsg").textContent = e.message;
-      if (e.status === 401) askForKey();
     }
   }
 
@@ -392,10 +490,11 @@
   });
 
   $("applySymbol").addEventListener("click", () => {
-    const v = $("symbolInput").value.trim().toUpperCase();
+    const v = $("symbolInput").value.trim();
     if (v) { state.symbol = v; loadCandles(); }
   });
   $("symbolInput").addEventListener("keydown", e => { if (e.key === "Enter") $("applySymbol").click(); });
+  $("symbolInput").addEventListener("focus", function () { this.select(); });
 
   const stepLot = delta => {
     const el = $("lot");
@@ -427,7 +526,8 @@
 
   /* ------------------------------------------------------------------ start */
   function start() {
-    loadCandles();
+    loadSymbols("").catch(() => {});   // warms the list used by Browse and by the fallback
+    loadCandles(true);
     refreshAccount();
     refreshPositions();
   }
