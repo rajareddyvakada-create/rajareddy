@@ -56,6 +56,11 @@
   #chart{flex:1; min-height:220px; position:relative}
   #chartMsg{position:absolute; inset:0; display:grid; place-items:center; color:var(--muted); pointer-events:none; text-align:center; padding:20px}
 
+  .strip{display:flex; gap:8px; padding:6px 12px; border-top:1px solid var(--line); background:var(--surface-2); font-size:11.5px}
+  .strip button{flex:1; min-width:0; background:none; border:1px solid var(--line); border-radius:7px; padding:6px 8px; color:var(--muted); font:inherit; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .strip button:disabled{opacity:.55}
+  .strip button b{color:var(--text); font-weight:600; font-family:var(--mono)}
+
   /* order panel */
   .order{display:flex; gap:8px; align-items:stretch; padding:10px 12px; border-top:1px solid var(--line); background:var(--surface-2)}
   .lot{display:flex; flex-direction:column; justify-content:center; min-width:96px}
@@ -134,6 +139,11 @@
 
 <div id="chart"><div id="chartMsg">Loading chart…</div></div>
 
+<div class="strip">
+  <button type="button" id="moreBtn">—</button>
+  <button type="button" id="timeBtn">—</button>
+</div>
+
 <div class="order">
   <div class="lot">
     <small>Lot size</small>
@@ -184,8 +194,61 @@
     key: localStorage.getItem("xm.key") || "",
     symbol: localStorage.getItem("xm.symbol") || "XAUUSD",
     tf: localStorage.getItem("xm.tf") || "M5",
-    digits: 2, lastCandle: null, ws: null, wsTimer: 0, bid: null, ask: null, closed: false,
+    timeMode: localStorage.getItem("xm.timeMode") || "local",   // "local" = this device, "server" = MT5
+    digits: 2, ws: null, wsTimer: 0, bid: null, ask: null, closed: false,
+    raw: [],              // candles exactly as MT5 gave them: times are the broker's wall clock
+    serverOffset: null,   // seconds the broker clock is ahead of UTC; null until measured
+    hasMore: false, maxBars: 0, loadingOlder: false,
   };
+
+  /* --------------------------------------------------------------- time
+     Every time MT5 reports is the broker's wall clock (XM runs UTC+2 in winter, UTC+3 in summer),
+     so a raw timestamp reads two or three hours out on your own clock. server_utc_offset from the
+     bridge is what lets us put it back on the real line and show it in whichever zone you pick. */
+  function zoneLabel(offsetSec) {
+    const sign = offsetSec < 0 ? "-" : "+";
+    const m = Math.abs(Math.round(offsetSec / 60));
+    return "UTC" + sign + Math.floor(m / 60) + (m % 60 ? ":" + String(m % 60).padStart(2, "0") : "");
+  }
+
+  // Lightweight Charts renders a timestamp as if it were UTC, so feed it the wall clock we want shown.
+  function toChart(serverSec) {
+    if (state.timeMode === "server" || state.serverOffset == null) return serverSec;
+    const utcSec = serverSec - state.serverOffset;
+    return utcSec - new Date(utcSec * 1000).getTimezoneOffset() * 60;   // per-candle, so DST is right
+  }
+
+  const asCandle = c => ({ time: toChart(c.time), open: c.open, high: c.high, low: c.low, close: c.close });
+
+  function redraw(keepView) {
+    const before = keepView ? chart.timeScale().getVisibleLogicalRange() : null;
+    series.setData(state.raw.map(asCandle));
+    if (before) chart.timeScale().setVisibleLogicalRange(before);
+    else chart.timeScale().fitContent();
+  }
+
+  function updateStrip() {
+    const bars = state.raw.length;
+    const more = $("moreBtn");
+    more.disabled = state.loadingOlder || !state.hasMore || !bars;
+    more.innerHTML = !bars ? "—"
+      : state.loadingOlder ? "Loading older candles…"
+      : "<b>" + bars.toLocaleString() + "</b> candles" + (state.maxBars ? " of " + state.maxBars.toLocaleString() + " kept" : "") +
+        (state.hasMore ? " · tap for older" : " · all loaded");
+    const t = $("timeBtn");
+    if (state.serverOffset == null) {
+      t.textContent = "Times: MT5 server";
+      t.disabled = true;
+      t.title = "The broker clock can only be measured while a market is open.";
+    } else {
+      t.disabled = false;
+      const localOff = -new Date().getTimezoneOffset() * 60;
+      t.innerHTML = state.timeMode === "local"
+        ? "Times: <b>your clock</b> (" + zoneLabel(localOff) + ")"
+        : "Times: <b>MT5 server</b> (" + zoneLabel(state.serverOffset) + ")";
+      t.title = "Tap to switch between your own clock and the broker's.";
+    }
+  }
 
   /* ------------------------------------------------------------------ helpers */
   function toast(message, kind, detail) {
@@ -326,11 +389,14 @@
       if (seq !== loadSeq) return;
       state.digits = data.digits;
       state.symbol = data.symbol;
+      state.raw = data.candles;
+      state.hasMore = data.has_more;
+      state.maxBars = data.max_bars || 0;
+      if (data.server_utc_offset != null) state.serverOffset = data.server_utc_offset;
       $("symbolInput").value = data.symbol;
       series.applyOptions({ priceFormat: { type: "price", precision: data.digits, minMove: Math.pow(10, -data.digits) } });
-      series.setData(data.candles.map(c => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close })));
-      state.lastCandle = data.candles.length ? Object.assign({}, data.candles[data.candles.length - 1]) : null;
-      chart.timeScale().fitContent();
+      redraw(false);
+      updateStrip();
       $("chartMsg").style.display = "none";
       try { localStorage.setItem("xm.symbol", state.symbol); localStorage.setItem("xm.tf", state.tf); } catch (err) {}
       openSocket();
@@ -356,23 +422,56 @@
     }
   }
 
-  // A tick either extends the candle that is forming or starts the next one.
-  function applyTick(bid, ask, timeSec) {
-    const step = TF[state.tf], price = bid;
-    if (!state.lastCandle || !step) return;
-    const bucket = Math.floor(timeSec / step) * step;
-    const c = state.lastCandle;
-    if (bucket === c.time) {
-      c.high = Math.max(c.high, price);
-      c.low = Math.min(c.low, price);
-      c.close = price;
-    } else if (bucket > c.time) {
-      state.lastCandle = { time: bucket, open: price, high: price, low: price, close: price };
-    } else {
-      return;   // a tick older than the current candle: ignore
+  // Older candles, a page at a time, either by tapping the strip or by scrolling off the left edge.
+  async function loadOlder() {
+    if (state.loadingOlder || !state.hasMore || !state.raw.length) return;
+    state.loadingOlder = true;
+    updateStrip();
+    const seq = loadSeq;
+    try {
+      const data = await api("/api/candles?symbol=" + encodeURIComponent(state.symbol) +
+        "&timeframe=" + state.tf + "&count=500&offset=" + state.raw.length);
+      if (seq !== loadSeq) return;                     // the symbol or timeframe changed meanwhile
+      const older = data.candles.filter(c => c.time < state.raw[0].time);
+      if (!older.length) { state.hasMore = false; return; }
+      const before = chart.timeScale().getVisibleLogicalRange();
+      state.raw = older.concat(state.raw);
+      state.hasMore = data.has_more;
+      series.setData(state.raw.map(asCandle));
+      // keep the same candles on screen: every index moved right by however many were added
+      if (before) chart.timeScale().setVisibleLogicalRange({ from: before.from + older.length, to: before.to + older.length });
+    } catch (e) {
+      toast("Couldn't load older candles: " + e.message, "err");
+    } finally {
+      state.loadingOlder = false;
+      updateStrip();
     }
-    const b = state.lastCandle;
-    series.update({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close });
+  }
+
+  chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+    // Only once the newest candle has been scrolled off to the right: when everything fits on screen
+    // the left edge is already candle zero, which would otherwise pull in the whole history at once.
+    if (range && range.from < 8 && range.to < state.raw.length - 2) loadOlder();
+  });
+
+  // A tick either extends the candle that is forming or starts the next one. Candles are bucketed on
+  // the broker's clock, so a new bar opens when MT5 opens one, not at midnight on this device.
+  function applyTick(bid, ask, serverSec) {
+    const step = TF[state.tf], price = bid;
+    if (!state.raw.length || !step) return;
+    const bucket = Math.floor(serverSec / step) * step;
+    const last = state.raw[state.raw.length - 1];
+    if (bucket === last.time) {
+      last.high = Math.max(last.high, price);
+      last.low = Math.min(last.low, price);
+      last.close = price;
+    } else if (bucket > last.time) {
+      state.raw.push({ time: bucket, open: price, high: price, low: price, close: price, volume: 0 });
+      updateStrip();
+    } else {
+      return;   // a tick older than the candle on screen: ignore
+    }
+    series.update(asCandle(state.raw[state.raw.length - 1]));
   }
 
   function flash(box, isUp) {
@@ -408,6 +507,12 @@
       if (d.error) { setConnected(false, d.error); return; }
       setConnected(true);
       if (d.digits != null) state.digits = d.digits;
+      if (d.server_utc_offset != null && d.server_utc_offset !== state.serverOffset) {
+        const first = state.serverOffset == null;
+        state.serverOffset = d.server_utc_offset;
+        if (first) { redraw(true); }       // measured for the first time: put the candles on your clock
+        updateStrip();
+      }
       if (d.changed === false) return;          // same tick as last time: nothing to redraw
       showPrices(d.bid, d.ask);
       applyTick(d.bid, d.ask, d.time);
@@ -518,6 +623,14 @@
   $("lotMinus").addEventListener("click", () => stepLot(-0.01));
   $("lotPlus").addEventListener("click", () => stepLot(0.01));
 
+  $("moreBtn").addEventListener("click", loadOlder);
+  $("timeBtn").addEventListener("click", () => {
+    state.timeMode = state.timeMode === "local" ? "server" : "local";
+    try { localStorage.setItem("xm.timeMode", state.timeMode); } catch (e) {}
+    redraw(true);
+    updateStrip();
+  });
+
   $("buyBtn").addEventListener("click", () => sendOrder("buy"));
   $("sellBtn").addEventListener("click", () => sendOrder("sell"));
   $("positions").addEventListener("click", e => {
@@ -549,6 +662,7 @@
   setInterval(refreshPositions, 5000);
   setInterval(refreshAccount, 5000);
 
+  updateStrip();
   if (!state.key) askForKey(); else start();
 })();
 </script>

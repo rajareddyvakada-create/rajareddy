@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import json
 import logging
 import os
 import threading
@@ -67,6 +68,63 @@ _last_connect_attempt = 0.0
 _connected = False
 _rest_busy = 0                   # chart and order requests in flight; tick polls stand back for them
 _rest_busy_lock = threading.Lock()
+
+
+_OFFSET_FILE = BASE_DIR / ".server_offset.json"
+_server_offset: int | None = None
+_server_offset_at = 0.0
+
+
+def server_utc_offset() -> int | None:
+    """
+    Seconds the broker's clock runs ahead of UTC (XM is +2 in winter, +3 in summer). Every time MT5
+    reports is the server's wall clock, so this is what lets the page show any other timezone.
+
+    It is measured by comparing a live tick with real UTC, which only works while a market is open,
+    so the last good value is kept on disk for weekends and restarts. None means never measured.
+    """
+    global _server_offset, _server_offset_at
+    now = time.monotonic()
+    if _server_offset is not None and now - _server_offset_at < 900:
+        return _server_offset
+    if _server_offset is None and _OFFSET_FILE.is_file():
+        try:
+            _server_offset = int(json.loads(_OFFSET_FILE.read_text())["offset"])
+        except Exception:
+            pass
+    try:
+        with _LOCK:
+            watch = mt5.symbols_get()
+        fresh_tick = None
+        for sym in (watch or [])[:40]:
+            if not sym.visible:
+                continue
+            tick = mt5_call(mt5.symbol_info_tick, sym.name)
+            # a tick older than a minute is a closed market: its clock says nothing about now
+            if tick is not None and tick.time and abs(tick.time - time.time()) < 13 * 3600:
+                if fresh_tick is None or tick.time > fresh_tick:
+                    fresh_tick = tick.time
+        if fresh_tick is not None:
+            # timezone offsets come in 15-minute steps; the rounding absorbs tick latency
+            offset = int(round((fresh_tick - time.time()) / 900.0) * 900)
+            if _server_offset != offset:
+                log.info("Broker clock is UTC%+.2g hours", offset / 3600)
+            _server_offset = offset
+            try:
+                _OFFSET_FILE.write_text(json.dumps({"offset": offset}))
+            except OSError:
+                pass
+    except Mt5Error:
+        pass
+    _server_offset_at = now
+    return _server_offset
+
+
+def max_bars() -> int:
+    """How many candles the terminal keeps per chart (Tools - Options - Charts - Max bars)."""
+    with _LOCK:
+        term = mt5.terminal_info()
+    return int(getattr(term, "maxbars", 0)) if term else 0
 
 
 @contextmanager
@@ -158,7 +216,7 @@ def select_symbol(symbol: str) -> tuple[Any, bool]:
         return info, fresh
 
 
-def rates_with_warmup(name: str, tf: int, count: int, fresh: bool) -> Any:
+def rates_with_warmup(name: str, tf: int, count: int, fresh: bool, offset: int = 0) -> Any:
     """
     The first request for a symbol MT5 has just subscribed to returns little or nothing while the
     terminal downloads its history. Retry briefly instead of drawing a stub chart. The sleeps are
@@ -168,7 +226,7 @@ def rates_with_warmup(name: str, tf: int, count: int, fresh: bool) -> Any:
     want = min(count, 120)
     best = None
     while True:
-        rates = mt5_call(mt5.copy_rates_from_pos, name, tf, 0, count)
+        rates = mt5_call(mt5.copy_rates_from_pos, name, tf, offset, count)
         if rates is not None and len(rates) >= want:
             return rates
         if rates is not None and (best is None or len(rates) > len(best)):
@@ -279,6 +337,8 @@ def health() -> dict[str, Any]:
         "algo_trading_enabled": bool(term.trade_allowed) if term else False,
         "login": acc.login if acc else None,
         "broker_server": acc.server if acc else None,
+        "server_utc_offset": server_utc_offset() if (term and acc) else None,
+        "max_bars": max_bars() if term else 0,
     }
 
 
@@ -315,8 +375,13 @@ def symbols(all: bool = Query(default=False, description="true = every symbol th
 @app.get("/api/candles", dependencies=[Depends(require_key)])
 def candles(symbol: str = Query(min_length=1, max_length=32),
             timeframe: str = Query(default="M5"),
-            count: int = Query(default=300, ge=1, le=5000)) -> dict[str, Any]:
-    """OHLC history, newest last. Times are broker server time in epoch seconds."""
+            count: int = Query(default=300, ge=1, le=5000),
+            offset: int = Query(default=0, ge=0, le=500000,
+                                description="how many candles back from now to start, for loading older history")) -> dict[str, Any]:
+    """
+    OHLC history, newest last. Times are the broker's wall clock as epoch seconds; use
+    server_utc_offset to show them in another timezone.
+    """
     tf_name = timeframe.strip().upper()
     if tf_name not in TIMEFRAMES:
         raise HTTPException(400, f"Unknown timeframe '{timeframe}'. Use one of: {', '.join(TIMEFRAMES)}")
@@ -324,7 +389,7 @@ def candles(symbol: str = Query(min_length=1, max_length=32),
     with rest_priority():
         info, fresh = select_symbol(symbol)
         # copy_rates_from_pos(symbol, timeframe, start_pos, count): 0 = the candle forming right now
-        rates = rates_with_warmup(info.name, TIMEFRAMES[tf_name], count, fresh)
+        rates = rates_with_warmup(info.name, TIMEFRAMES[tf_name], count, fresh, offset)
     took = (time.monotonic() - started) * 1000
     if rates is None or len(rates) == 0:
         raise Mt5Error(f"No candles for {info.name} {tf_name}. MT5 may still be downloading its history — try again in a moment.")
@@ -335,7 +400,14 @@ def candles(symbol: str = Query(min_length=1, max_length=32),
          "low": float(r["low"]), "close": float(r["close"]), "volume": int(r["tick_volume"])}
         for r in rates
     ]
-    return {"symbol": info.name, "timeframe": tf_name, "digits": info.digits, "count": len(bars), "candles": bars}
+    return {
+        "symbol": info.name, "timeframe": tf_name, "digits": info.digits,
+        "count": len(bars), "candles": bars,
+        "offset": offset,
+        "has_more": len(bars) >= count,          # a full batch means older candles are still there
+        "max_bars": max_bars(),                  # what the terminal is set to keep per chart
+        "server_utc_offset": server_utc_offset(),
+    }
 
 
 @app.post("/api/order", dependencies=[Depends(require_key)])
@@ -502,6 +574,7 @@ async def ws_ticks(ws: WebSocket, symbol: str = Query(default="EURUSD"), key: st
                 await ws.send_json({
                     "symbol": name, "bid": tick.bid, "ask": tick.ask,
                     "last": tick.last, "time": int(tick.time), "digits": digits,
+                    "server_utc_offset": server_utc_offset(),
                     "changed": current != last_sent,
                 })
                 last_sent = current
