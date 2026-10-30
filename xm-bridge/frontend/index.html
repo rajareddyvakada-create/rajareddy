@@ -204,6 +204,7 @@
     <textarea id="edCode" spellcheck="false" autocapitalize="off" autocorrect="off" wrap="off" aria-label="Indicator code"></textarea>
     <p class="ed-msg" id="edMsg"></p>
     <div class="row">
+      <button type="button" class="minor" id="edPine">Convert from Pine</button>
       <button type="button" class="minor" id="edCheck">Check</button>
       <button type="button" id="edSave">Save</button>
     </div>
@@ -723,8 +724,10 @@
   const IND_COLORS = ["#00E5FF", "#FFB300", "#B388FF", "#69F0AE", "#FF80AB", "#82B1FF"];
   const TEMPLATE = [
     "// Arrays are oldest first: bars.open, bars.high, bars.low, bars.close, bars.volume, bars.time",
-    "// Helpers: ta.sma ta.ema ta.rma ta.rsi(src,len) ta.atr(len) ta.highest ta.lowest ta.change",
-    "//          ta.crossover(a,b) ta.crossunder(a,b) ta.nz(src)",
+    "// Helpers: ta.sma ta.ema ta.rma ta.rsi(src,len) ta.atr(len) ta.stdev ta.highest ta.lowest",
+    "//          ta.change ta.prev(src,n) ta.crossover(a,b) ta.crossunder(a,b) ta.nz(src)",
+    "//          ta.macd(src,12,26,9) -> {macd,signal,hist}   ta.bb(src,20,2) -> {middle,upper,lower}",
+    "// Pasted Pine Script? Tap “Convert from Pine”.",
     "",
     "const fast = ta.ema(bars.close, 9);",
     "const slow = ta.ema(bars.close, 21);",
@@ -761,7 +764,11 @@
         change(x, len){ len = len || 1; return x.map((v, i) => i >= len ? v - x[i - len] : NaN); },
         crossover(a, b){ return a.map((v, i) => i > 0 && v > val(b, i) && a[i-1] <= val(b, i-1)); },
         crossunder(a, b){ return a.map((v, i) => i > 0 && v < val(b, i) && a[i-1] >= val(b, i-1)); },
-        nz(x, y){ return x.map(v => isNaN(v) ? (y || 0) : v); }
+        nz(x, y){ return x.map(v => isNaN(v) ? (y || 0) : v); },
+        prev(x, n){ n = n || 1; return x.map((_, i) => i >= n ? x[i - n] : NaN); },
+        stdev(x, len){ const m = ta.sma(x, len); return x.map((_, i) => { if(i < len - 1) return NaN; let s = 0; for(let k = i - len + 1; k <= i; k++){ const d = x[k] - m[i]; s += d * d; } return Math.sqrt(s / len); }); },
+        macd(x, f, sl, sg){ const fe = ta.ema(x, f || 12), se = ta.ema(x, sl || 26), m = fe.map((v, i) => v - se[i]), g = ta.ema(m, sg || 9); return { macd: m, signal: g, hist: m.map((v, i) => v - g[i]) }; },
+        bb(x, len, mult){ const m = ta.sma(x, len), d = ta.stdev(x, len), k = mult == null ? 2 : mult; return { middle: m, upper: m.map((v, i) => v + k * d[i]), lower: m.map((v, i) => v - k * d[i]) }; }
       };
       return ta;
     }
@@ -858,6 +865,221 @@
     }, 120);
   }
 
+  /* ---------------------------------------------------------------- Pine conversion
+     Pine Script only runs on TradingView's own servers, so pasted Pine cannot be executed here.
+     This rewrites the common indicator shape — series maths, plots, signal marks — into the
+     JavaScript the editor does run, and says plainly what it could not translate. A silently
+     wrong indicator is worse than none, so anything unconvertible is left in as a comment. */
+  const looksLikePine = src => /@version\s*=|(^|\n)\s*(indicator|study|strategy)\s*\(|(^|\n)\s*plot(shape|char|candle)?\s*\(|:=/.test(String(src));
+
+  function matchParen(str, open) {
+    let depth = 0;
+    for (let i = open; i < str.length; i++) {
+      if (str[i] === "(") depth++;
+      else if (str[i] === ")" && !--depth) return i;
+    }
+    return -1;
+  }
+  function splitArgs(inner) {
+    const out = [];
+    let depth = 0, start = 0, quote = null;
+    for (let i = 0; i < inner.length; i++) {
+      const c = inner[i];
+      if (quote) { if (c === quote && inner[i - 1] !== "\\") quote = null; continue; }
+      if (c === '"' || c === "'") quote = c;
+      else if (c === "(" || c === "[") depth++;
+      else if (c === ")" || c === "]") depth--;
+      else if (c === "," && !depth) { out.push(inner.slice(start, i).trim()); start = i + 1; }
+    }
+    out.push(inner.slice(start).trim());
+    return out.filter(x => x !== "");
+  }
+  // input.int(14, "Length") and friends are a value with a label: keep the value.
+  function reduceInputs(line) {
+    for (let guard = 0; guard < 20; guard++) {
+      const m = /\binput(?:\.\w+)?\s*\(/.exec(line);
+      if (!m) break;
+      const open = m.index + m[0].length - 1, close = matchParen(line, open);
+      if (close < 0) break;
+      const args = splitArgs(line.slice(open + 1, close));
+      let value = args[0] || "0";
+      const named = args.find(a => /^defval\s*=/.test(a));
+      if (named) value = named.split("=").slice(1).join("=").trim();
+      line = line.slice(0, m.index) + "(" + value + ")" + line.slice(close + 1);
+    }
+    return line;
+  }
+
+  const PINE_SERIES = { close: "bars.close", open: "bars.open", high: "bars.high", low: "bars.low", volume: "bars.volume" };
+
+  function pineExpr(src, needs) {
+    const strings = [];
+    let e = String(src).replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, m => { strings.push(m); return "\u0000" + (strings.length - 1) + "\u0000"; });
+    e = reduceInputs(e);
+    e = e.replace(/\bmath\./g, "Math.");
+    e = e.replace(/\bna\b/g, "NaN").replace(/\bnz\s*\(/g, "ta.nz(");
+    e = e.replace(/\b(hl2|hlc3|ohlc4|hlcc4)\b/g, m => { needs[m] = true; return "__" + m; });
+    e = e.replace(/\b(close|open|high|low|volume)\b/g, m => PINE_SERIES[m]);
+    e = e.replace(/((?:bars\.)?[A-Za-z_$][\w$.]*)\s*\[\s*(\d+)\s*\]/g, "ta.prev($1, $2)");
+    e = e.replace(/\s+and\s+/g, " && ").replace(/\s+or\s+/g, " || ").replace(/\bnot\s+/g, "!");
+    e = e.replace(/\u0000(\d+)\u0000/g, (_, i) => strings[+i]);
+    return e.trim();
+  }
+
+  const escapeRe = t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const BAR_RE = /\bbars\.(close|open|high|low|volume)\b/;
+
+  /* In Pine every value is a whole series and `a + b` adds them bar by bar. JavaScript arrays do
+     not: `a + b` glues them into a string and `a > 50` is nonsense. So each ta.* call is lifted
+     into its own series first, and any arithmetic left over is run bar by bar through a map. */
+  function hoistTa(e, pre, isSeries, tmp) {
+    for (let guard = 0; guard < 60; guard++) {
+      let found = null;
+      const re = /\bta\.\w+\s*\(/g;
+      let m;
+      while ((m = re.exec(e))) {
+        const open = m.index + m[0].length - 1, close = matchParen(e, open);
+        if (close < 0) break;
+        if (!/\bta\.\w+\s*\(/.test(e.slice(open + 1, close))) { found = { at: m.index, open, close }; break; }
+      }
+      if (!found) break;
+      const name = e.slice(found.at, found.open);
+      const args = splitArgs(e.slice(found.open + 1, found.close)).map(a => seriesExpr(a, pre, isSeries, tmp).code);
+      const id = "__s" + (tmp.n++);
+      pre.push("const " + id + " = " + name + "(" + args.join(", ") + ");");
+      isSeries.add(id);
+      e = e.slice(0, found.at) + id + e.slice(found.close + 1);
+    }
+    return e;
+  }
+
+  function seriesExpr(src, pre, isSeries, tmp) {
+    let e = hoistTa(String(src).trim(), pre, isSeries, tmp);
+    const used = [...isSeries].filter(n => new RegExp("(?:^|[^\\w.$])" + escapeRe(n) + "(?![\\w$])").test(e));
+    const usesBars = BAR_RE.test(e);
+    if (!used.length && !usesBars) return { code: e, series: false };
+    if (/^[\w.$]+$/.test(e)) return { code: e, series: true };          // already a whole series
+    let idx = e.replace(new RegExp(BAR_RE.source, "g"), "bars.$1[__i]");
+    for (const n of used) idx = idx.replace(new RegExp("(^|[^\\w.$])" + escapeRe(n) + "(?![\\w$])", "g"), "$1" + n + "[__i]");
+    return { code: "bars.close.map((_, __i) => (" + idx + "))", series: true };
+  }
+
+  function pineToJs(src) {
+    const notes = [], body = [], plots = [], buys = [], sells = [], needs = {};
+    const declared = new Set(), isSeries = new Set(), tmp = { n: 0 };
+    // one expression, with any lifted series emitted into the body first
+    const conv = text => { const pre = []; const r = seriesExpr(pineExpr(text, needs), pre, isSeries, tmp); for (const l of pre) body.push(l); return r; };
+    const lines = String(src).replace(/\r\n?/g, "\n").split("\n");
+    let title = "", skipIndent = -1;
+
+    const strArg = a => { const m = /^\s*(?:title|text)\s*=\s*(.*)$/.exec(a); const v = (m ? m[1] : a).trim(); return /^["']/.test(v) ? v.slice(1, -1) : null; };
+
+    for (const raw of lines) {
+      const indent = raw.search(/\S/);
+      if (indent === -1) { body.push(""); continue; }
+      if (skipIndent >= 0 && indent > skipIndent) { body.push("// " + raw.trim()); continue; }
+      skipIndent = -1;
+      const line = raw.trim();
+
+      if (/^\/\//.test(line)) { if (!/@version/.test(line)) body.push(line); continue; }
+
+      const head = /^(\w[\w.]*)\s*\(/.exec(line);
+      const callName = head ? head[1] : "";
+      const args = head ? splitArgs(line.slice(head.index + head[0].length, matchParen(line, head.index + head[0].length - 1))) : [];
+
+      if (callName === "indicator" || callName === "study" || callName === "strategy") {
+        title = strArg(args[0]) || title;
+        if (callName === "strategy") notes.push("This is a strategy. It is converted as an indicator: it draws the signals but never places orders.");
+        continue;
+      }
+      if (callName === "plot") {
+        const name = args.slice(1).map(strArg).find(Boolean) || ("Plot " + (plots.length + 1));
+        plots.push({ name, expr: conv(args[0]).code });
+        continue;
+      }
+      if (callName === "plotshape" || callName === "plotchar" || callName === "plotarrow") {
+        const label = args.slice(1).map(strArg).filter(Boolean).join(" ");
+        const where = args.join(" ").toLowerCase();
+        const cond = conv(args[0]).code;
+        if (/buy|long|bull/i.test(label) || /belowbar/.test(where)) buys.push(cond);
+        else if (/sell|short|bear/i.test(label) || /abovebar/.test(where)) sells.push(cond);
+        else { notes.push("Could not tell whether “" + (label || args[0]) + "” is a buy or a sell, so it was left out."); body.push("// " + line); }
+        continue;
+      }
+      if (callName === "strategy.entry" || callName === "strategy.order") {
+        const dir = /strategy\.short|"short"/i.test(line) ? sells : buys;
+        const when = args.find(a => /^when\s*=/.test(a));
+        dir.push(when ? conv(when.replace(/^when\s*=/, "")).code : "bars.close.map(() => false)");
+        if (!when) notes.push("An entry had no “when=” condition, so it never fires. Add the condition by hand.");
+        continue;
+      }
+      if (/^(hline|fill|bgcolor|barcolor|plotcandle|alertcondition|alert|label\.|line\.|box\.|table\.|request\.)/.test(line)) {
+        notes.push("“" + line.split("(")[0] + "” draws on TradingView only, so it was left out.");
+        body.push("// " + line);
+        continue;
+      }
+      if (/^(if|for|while|switch)\b/.test(line)) {
+        notes.push("“" + line.split(/\s/)[0] + "” blocks are not converted: this indicator works on whole series at once, not bar by bar.");
+        body.push("// " + line);
+        skipIndent = indent;
+        continue;
+      }
+      if (/^(var|varip)\s/.test(line)) {
+        notes.push("“var” keeps a value between bars, which this editor cannot express. That line was left out.");
+        body.push("// " + line);
+        continue;
+      }
+
+      // [a, b, c] = ta.macd(...) and the like
+      const tuple = /^\[([^\]]+)\]\s*=\s*(.+)$/.exec(line);
+      if (tuple) {
+        const names = tuple[1].split(",").map(x => x.trim());
+        const call = pineExpr(tuple[2], needs);
+        const holder = "__t" + body.length;
+        const keys = /ta\.macd/.test(call) ? ["macd", "signal", "hist"] : /ta\.bb/.test(call) ? ["middle", "upper", "lower"] : null;
+        if (!keys) { notes.push("Could not unpack “" + tuple[1] + "”: only ta.macd and ta.bb return several series here."); body.push("// " + line); continue; }
+        body.push("const " + holder + " = " + call + ";");
+        names.forEach((n, i) => { if (keys[i]) { body.push("const " + n + " = " + holder + "." + keys[i] + ";"); declared.add(n); isSeries.add(n); } });
+        continue;
+      }
+
+      const assign = /^([A-Za-z_$][\w$]*)\s*(:?=)\s*(.+)$/.exec(line);
+      if (assign) {
+        const [, name, op, value] = assign;
+        const r = conv(value);
+        if (op === ":=" || declared.has(name)) body.push(name + " = " + r.code + ";");
+        else { body.push("let " + name + " = " + r.code + ";"); declared.add(name); }
+        if (r.series) isSeries.add(name); else isSeries.delete(name);
+        continue;
+      }
+      body.push("// " + line);
+      if (line) notes.push("Left as a comment, not understood: " + line);
+    }
+
+    const head = [];
+    for (const k of ["hl2", "hlc3", "ohlc4", "hlcc4"]) if (needs[k]) isSeries.add("__" + k);
+    if (needs.hl2) head.push("const __hl2 = bars.high.map((h, i) => (h + bars.low[i]) / 2);");
+    if (needs.hlc3) head.push("const __hlc3 = bars.high.map((h, i) => (h + bars.low[i] + bars.close[i]) / 3);");
+    if (needs.ohlc4) head.push("const __ohlc4 = bars.open.map((o, i) => (o + bars.high[i] + bars.low[i] + bars.close[i]) / 4);");
+    if (needs.hlcc4) head.push("const __hlcc4 = bars.high.map((h, i) => (h + bars.low[i] + bars.close[i] * 2) / 4);");
+    const anyNeeded = buys.length > 1 || sells.length > 1;
+    if (anyNeeded) head.push("const __any = list => list[0].map((_, i) => list.some(a => !!a[i]));");
+
+    const join = list => !list.length ? "[]" : list.length === 1 ? list[0] : "__any([" + list.join(", ") + "])";
+    const out = ["// Converted from Pine Script. Check every line before you trade on it."]
+      .concat(head.length ? head.concat("") : [])
+      .concat(body)
+      .concat(["", "return {",
+        "  plots: { " + plots.map(pl => JSON.stringify(pl.name) + ": " + pl.expr).join(", ") + " },",
+        "  buy: " + join(buys) + ",",
+        "  sell: " + join(sells),
+        "};"]);
+
+    if (!plots.length && !buys.length && !sells.length) notes.push("Nothing to draw was found: no plot() and no buy or sell marks.");
+    if (plots.length > 6) notes.push("Only the first six plots are drawn; the rest were kept in the code.");
+    return { code: out.join("\n"), notes, title };
+  }
+
   /* ---------------------------------------------------------------- indicators UI */
   function renderIndList() {
     const box = $("indList");
@@ -871,12 +1093,13 @@
       "</div>").join("");
   }
 
-  let editingId = null;
+  let editingId = null, nameDefault = "";
   function openEditor(id) {
     const sc = indicators.find(x => x.id === id) || null;
     editingId = sc ? sc.id : null;
     $("edTitle").textContent = sc ? "Edit indicator" : "New indicator";
-    $("edName").value = sc ? sc.name : "EMA cross";
+    nameDefault = sc ? sc.name : "EMA cross";
+    $("edName").value = nameDefault;
     $("edCode").value = sc ? sc.code : TEMPLATE;
     $("edDelete").hidden = !sc;
     edMsg("Return { plots, buy, sell }. plots draws lines, buy and sell mark candles.", "");
@@ -909,7 +1132,10 @@
     if (!state.raw.length) { edMsg("Load a chart first.", "err"); return; }
     edMsg("Running on " + state.raw.length + " candles…", "");
     const res = await runScript($("edCode").value, state.raw);
-    if (res.error) { edMsg(res.error, "err"); return; }
+    if (res.error) {
+      edMsg(res.error + (looksLikePine($("edCode").value) ? "\n\nThis looks like Pine Script, which only runs on TradingView. Tap “Convert from Pine” to turn it into the form this editor runs." : ""), "err");
+      return;
+    }
     const buys = res.out.buy.filter(Boolean).length, sells = res.out.sell.filter(Boolean).length;
     const plots = Object.keys(res.out.plots);
     edMsg("Works. " + plots.length + " line" + (plots.length === 1 ? "" : "s") +
@@ -922,7 +1148,10 @@
     if (!code.trim()) { edMsg("The script is empty.", "err"); return; }
     if (state.raw.length) {
       const res = await runScript(code, state.raw);          // never save something that throws
-      if (res.error) { edMsg("Not saved — " + res.error, "err"); return; }
+      if (res.error) {
+        edMsg("Not saved — " + res.error + (looksLikePine(code) ? "\n\nThis looks like Pine Script. Tap “Convert from Pine” first." : ""), "err");
+        return;
+      }
     }
     const found = indicators.find(x => x.id === editingId);
     if (found) { found.name = name; found.code = code; found.error = null; }
@@ -944,6 +1173,23 @@
     runIndicators();
   });
   $("edClose").addEventListener("click", () => $("edDlg").close());
+
+  $("edPine").addEventListener("click", () => {
+    const src = $("edCode").value;
+    if (!src.trim()) { edMsg("Paste a Pine script first.", "err"); return; }
+    if (!looksLikePine(src) && !/\bta\.|plot\(/.test(src)) {
+      edMsg("This does not look like Pine Script. Converting anyway would only garble it.", "err");
+      return;
+    }
+    const res = pineToJs(src);
+    $("edCode").value = res.code;
+    const typed = $("edName").value.trim();
+    if (res.title && (!typed || typed === nameDefault)) { $("edName").value = res.title.slice(0, 40); nameDefault = $("edName").value; }
+    const lead = res.notes.length
+      ? "Converted, with " + res.notes.length + " thing" + (res.notes.length === 1 ? "" : "s") + " to check:\n• " + res.notes.join("\n• ")
+      : "Converted. Tap Check to run it on these candles.";
+    edMsg(lead + (res.notes.length ? "\n\nTap Check to run it." : ""), res.notes.length ? "" : "ok");
+  });
 
   // tab indents instead of jumping out of the editor
   $("edCode").addEventListener("keydown", function (e) {

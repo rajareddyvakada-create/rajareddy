@@ -132,6 +132,19 @@ return {
 oldest first. Helpers: `ta.sma` `ta.ema` `ta.rma` `ta.rsi(src, len)` `ta.atr(len)` `ta.highest`
 `ta.lowest` `ta.change` `ta.crossover(a, b)` `ta.crossunder(a, b)` `ta.nz(src)`.
 
+#### Pasting Pine Script
+
+**Convert from Pine** rewrites a pasted Pine indicator into the form above. It handles the common
+shape: `input.*` values, `ta.*` calls, `close[1]` history, `and` / `or` / `not`, `hl2` and friends,
+`plot()`, `plotshape()`, `ta.macd` and `ta.bb` unpacking, and — importantly — Pine's whole-series
+arithmetic, so `basis + dev` and `rsi > 50` are worked out candle by candle instead of becoming
+nonsense.
+
+It cannot do `if` / `for` blocks, `var` values that persist between bars, `request.security`, or
+anything that draws on TradingView itself (`bgcolor`, `label`, `line`, `box`, `table`). Those are
+left in as comments and listed above the editor, so you always see what was dropped. **Read the
+converted script before trading on it.**
+
 **Check** runs the script on the candles on screen and reports what it drew. A script that throws
 is never saved. Scripts run in a Web Worker with no access to the page, your API key or the bridge,
 and one that runs for more than four seconds is stopped. They are stored in the browser on that
