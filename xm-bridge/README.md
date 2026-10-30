@@ -108,6 +108,34 @@ block a page on one site from calling a different one. So always open `http://<P
 * **Lot size** — the `−` / `+` buttons step by 0.01.
 * **BUY / SELL** — sends a market order straight to XM and shows the terminal's own reply.
 * **Open positions** — refreshes every 5 seconds, with a **Close** button on each row.
+* **Older candles** load by themselves as you scroll back. The line under the chart says how many
+  are loaded, how many the terminal keeps, and which clock the times are on.
+
+### Indicators
+
+**Indicators** in the toolbar lists your scripts, switches each on or off, and opens the editor.
+
+Real Pine Script only runs on TradingView's own servers, so scripts here are JavaScript written in
+the same shape, with Pine-style helpers:
+
+```js
+const fast = ta.ema(bars.close, 9);
+const slow = ta.ema(bars.close, 21);
+return {
+  plots: { "EMA 9": fast, "EMA 21": slow },   // up to 6 lines on the chart
+  buy:  ta.crossover(fast, slow),             // true on a candle = BUY arrow
+  sell: ta.crossunder(fast, slow)
+};
+```
+
+`bars.open`, `bars.high`, `bars.low`, `bars.close`, `bars.volume` and `bars.time` are arrays,
+oldest first. Helpers: `ta.sma` `ta.ema` `ta.rma` `ta.rsi(src, len)` `ta.atr(len)` `ta.highest`
+`ta.lowest` `ta.change` `ta.crossover(a, b)` `ta.crossunder(a, b)` `ta.nz(src)`.
+
+**Check** runs the script on the candles on screen and reports what it drew. A script that throws
+is never saved. Scripts run in a Web Worker with no access to the page, your API key or the bridge,
+and one that runs for more than four seconds is stopped. They are stored in the browser on that
+device, so each phone or laptop keeps its own.
 
 ---
 
