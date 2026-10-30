@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>XM Trading</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0f17'/%3E%3Cpath d='M6 22l6-8 5 5 9-11' fill='none' stroke='%2326a69a' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root{
+    --bg:#0b0f17; --surface:#131a26; --surface-2:#0f1622; --line:#1f2a3a;
+    --text:#e8edf5; --muted:#8b9ab0;
+    --up:#26a69a; --down:#ef5350; --accent:#4a9eff;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%; -webkit-tap-highlight-color:transparent;
+    display:flex; flex-direction:column;
+    padding:max(0px,env(safe-area-inset-top)) max(0px,env(safe-area-inset-right)) max(0px,env(safe-area-inset-bottom)) max(0px,env(safe-area-inset-left));
+  }
+  button,input,select{font:inherit; color:inherit}
+  button{cursor:pointer; -webkit-appearance:none}
+
+  /* account bar */
+  .account{display:flex; gap:14px; overflow-x:auto; padding:8px 12px; background:var(--surface-2); border-bottom:1px solid var(--line); scrollbar-width:none}
+  .account::-webkit-scrollbar{display:none}
+  .acc-item{white-space:nowrap}
+  .acc-item small{display:block; color:var(--muted); font-size:11px; letter-spacing:.04em; text-transform:uppercase}
+  .acc-item b{font:600 15px var(--mono)}
+  .dot{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--down); margin-right:6px; vertical-align:1px}
+  .dot.on{background:var(--up)}
+
+  /* toolbar */
+  .bar{display:flex; gap:8px; align-items:center; padding:8px 12px; border-bottom:1px solid var(--line); flex-wrap:wrap}
+  .bar input[type=text]{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:8px 10px; min-width:0; width:120px}
+  .bar button.ghost{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:8px 12px}
+  .tfs{display:flex; gap:4px; margin-left:auto}
+  .tfs button{background:transparent; border:1px solid transparent; border-radius:8px; padding:7px 11px; color:var(--muted); font-weight:600}
+  .tfs button[aria-pressed=true]{background:var(--surface); border-color:var(--line); color:var(--accent)}
+
+  /* prices */
+  .prices{display:flex; gap:10px; padding:8px 12px; border-bottom:1px solid var(--line)}
+  .px{flex:1; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:8px 10px; transition:background .35s}
+  .px small{display:block; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.05em}
+  .px b{font:700 20px var(--mono)}
+  .px.flash-up{background:rgba(38,166,154,.22)}
+  .px.flash-down{background:rgba(239,83,80,.22)}
+  .px.spread b{font-size:15px; color:var(--muted)}
+
+  /* chart */
+  #chart{flex:1; min-height:220px; position:relative}
+  #chartMsg{position:absolute; inset:0; display:grid; place-items:center; color:var(--muted); pointer-events:none; text-align:center; padding:20px}
+
+  /* order panel */
+  .order{display:flex; gap:8px; align-items:stretch; padding:10px 12px; border-top:1px solid var(--line); background:var(--surface-2)}
+  .lot{display:flex; flex-direction:column; justify-content:center; min-width:96px}
+  .lot small{color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.05em}
+  .lot-row{display:flex; align-items:center; gap:4px}
+  .lot-row button{width:30px; height:38px; background:var(--surface); border:1px solid var(--line); border-radius:8px; font-size:18px; line-height:1}
+  .lot input{width:62px; text-align:center; background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:9px 4px; font:600 15px var(--mono)}
+  .order .side{flex:1; border:0; border-radius:10px; font:800 16px/1 system-ui; letter-spacing:.04em; color:#06121a; padding:14px 8px; min-height:52px}
+  .order .side small{display:block; font:600 11px var(--mono); opacity:.8; margin-top:4px}
+  .sell{background:var(--down)} .buy{background:var(--up)}
+  .order .side:disabled{opacity:.45}
+
+  /* positions */
+  .panel{border-top:1px solid var(--line); background:var(--surface-2); max-height:34vh; overflow:auto}
+  .panel h2{margin:0; padding:10px 12px 6px; font:600 12px system-ui; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); position:sticky; top:0; background:var(--surface-2)}
+  table{width:100%; border-collapse:collapse; font:13px var(--mono)}
+  th{font:600 10px system-ui; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); text-align:right; padding:4px 8px}
+  th:first-child,td:first-child{text-align:left}
+  td{padding:7px 8px; border-top:1px solid var(--line); text-align:right; white-space:nowrap}
+  .pos-buy{color:var(--up)} .pos-sell{color:var(--down)}
+  .profit-up{color:var(--up)} .profit-down{color:var(--down)}
+  td button{background:var(--surface); border:1px solid var(--line); border-radius:7px; padding:5px 10px; color:var(--text); font-size:12px}
+  .empty{padding:12px; color:var(--muted); font-size:13px}
+
+  /* toast + key dialog */
+  #toasts{position:fixed; left:50%; transform:translateX(-50%); bottom:calc(16px + env(safe-area-inset-bottom)); z-index:50; display:flex; flex-direction:column; gap:8px; width:min(440px,calc(100vw - 24px))}
+  .toast{background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:10px; padding:10px 12px; box-shadow:0 10px 30px rgba(0,0,0,.5); font-size:14px; animation:rise .2s ease-out}
+  .toast.ok{border-left-color:var(--up)} .toast.err{border-left-color:var(--down)}
+  .toast pre{margin:6px 0 0; font:11px/1.4 var(--mono); color:var(--muted); white-space:pre-wrap; word-break:break-all; max-height:140px; overflow:auto}
+  @keyframes rise{from{opacity:0; transform:translateY(8px)}}
+  dialog{border:1px solid var(--line); border-radius:14px; background:var(--surface); color:var(--text); padding:0; width:min(420px,calc(100vw - 32px))}
+  dialog::backdrop{background:rgba(0,0,0,.7)}
+  .dlg{padding:18px}
+  .dlg h2{margin:0 0 6px; font-size:17px}
+  .dlg p{margin:0 0 14px; color:var(--muted); font-size:13px}
+  .dlg input{width:100%; background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:10px; font:14px var(--mono)}
+  .dlg button{width:100%; background:var(--accent); border:0; border-radius:8px; padding:12px; color:#061018; font-weight:700}
+  @media (max-width:420px){
+    .px b{font-size:17px}
+    .order{flex-wrap:wrap}
+    .lot{min-width:100%}
+    .lot-row{justify-content:space-between}
+    .lot input{flex:1}
+  }
+</style>
+</head>
+<body>
+
+<div class="account" id="account">
+  <div class="acc-item"><small>Status</small><b><span class="dot" id="dot"></span><span id="connText">connecting…</span></b></div>
+  <div class="acc-item"><small>Balance</small><b id="balance">—</b></div>
+  <div class="acc-item"><small>Equity</small><b id="equity">—</b></div>
+  <div class="acc-item"><small>Free margin</small><b id="freeMargin">—</b></div>
+  <div class="acc-item"><small>Open P/L</small><b id="accProfit">—</b></div>
+</div>
+
+<div class="bar">
+  <input type="text" id="symbolInput" value="XAUUSD" spellcheck="false" autocapitalize="characters" aria-label="Symbol">
+  <button class="ghost" id="applySymbol">Apply</button>
+  <div class="tfs" id="tfs" role="group" aria-label="Timeframe"></div>
+</div>
+
+<div class="prices">
+  <div class="px" id="bidBox"><small>Bid (sell)</small><b id="bid">—</b></div>
+  <div class="px" id="askBox"><small>Ask (buy)</small><b id="ask">—</b></div>
+  <div class="px spread"><small>Spread</small><b id="spread">—</b></div>
+</div>
+
+<div id="chart"><div id="chartMsg">Loading chart…</div></div>
+
+<div class="order">
+  <div class="lot">
+    <small>Lot size</small>
+    <div class="lot-row">
+      <button type="button" id="lotMinus" aria-label="Smaller lot">−</button>
+      <input type="number" id="lot" value="0.01" min="0.01" step="0.01" inputmode="decimal" aria-label="Lot size">
+      <button type="button" id="lotPlus" aria-label="Bigger lot">+</button>
+    </div>
+  </div>
+  <button class="side sell" id="sellBtn">SELL<small id="sellPx">—</small></button>
+  <button class="side buy" id="buyBtn">BUY<small id="buyPx">—</small></button>
+</div>
+
+<div class="panel">
+  <h2>Open positions</h2>
+  <div id="positions"><div class="empty">No open positions.</div></div>
+</div>
+
+<div id="toasts"></div>
+
+<dialog id="keyDlg">
+  <form method="dialog" class="dlg" id="keyForm">
+    <h2>API key</h2>
+    <p>The key from the <code>.env</code> file on the PC running the bridge. It is kept on this device only.</p>
+    <input type="password" id="keyInput" placeholder="API key" autocomplete="off" spellcheck="false">
+    <button type="submit">Connect</button>
+  </form>
+</dialog>
+
+<script>
+"use strict";
+(function () {
+  /* ------------------------------------------------------------------ setup */
+  const $ = id => document.getElementById(id);
+  const API = location.origin;                  // the bridge serves this page, so same origin
+  const TF = { M1: 60, M5: 300, M15: 900, H1: 3600, H4: 14400, D1: 86400 };
+  const state = {
+    key: localStorage.getItem("xm.key") || "",
+    symbol: localStorage.getItem("xm.symbol") || "XAUUSD",
+    tf: localStorage.getItem("xm.tf") || "M5",
+    digits: 2, lastCandle: null, ws: null, wsTimer: 0, bid: null, ask: null, closed: false,
+  };
+
+  /* ------------------------------------------------------------------ helpers */
+  function toast(message, kind, detail) {
+    const el = document.createElement("div");
+    el.className = "toast " + (kind || "");
+    el.textContent = message;
+    if (detail) {
+      const pre = document.createElement("pre");
+      pre.textContent = typeof detail === "string" ? detail : JSON.stringify(detail, null, 1);
+      el.appendChild(pre);
+    }
+    $("toasts").appendChild(el);
+    setTimeout(() => el.remove(), detail ? 9000 : 4000);
+  }
+
+  const fmt = (v, d) => (v == null || !isFinite(v) ? "—" : Number(v).toFixed(d == null ? state.digits : d));
+  const money = v => (v == null || !isFinite(v) ? "—" : (v >= 0 ? "" : "−") + Math.abs(v).toFixed(2));
+
+  async function api(path, options) {
+    const opts = Object.assign({ headers: {} }, options || {});
+    opts.headers["X-API-Key"] = state.key;
+    if (opts.body) opts.headers["Content-Type"] = "application/json";
+    const res = await fetch(API + path, opts);
+    let data = null;
+    try { data = await res.json(); } catch (e) { /* empty or non-JSON body */ }
+    if (!res.ok) {
+      const msg = (data && (data.detail || data.error)) || ("HTTP " + res.status);
+      const err = new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+      err.status = res.status; err.data = data;
+      throw err;
+    }
+    return data;
+  }
+
+  /* ------------------------------------------------------------------ chart */
+  const chart = LightweightCharts.createChart($("chart"), {
+    layout: { background: { color: "#0b0f17" }, textColor: "#8b9ab0", fontFamily: "ui-monospace,Menlo,Consolas,monospace" },
+    grid: { vertLines: { color: "#161f2e" }, horzLines: { color: "#161f2e" } },
+    rightPriceScale: { borderColor: "#1f2a3a" },
+    timeScale: { borderColor: "#1f2a3a", timeVisible: true, secondsVisible: false },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    handleScale: { axisPressedMouseMove: true },
+    localization: {
+      // MT5 times are broker server time; show them as given instead of converting to the phone's zone.
+      timeFormatter: t => new Date(t * 1000).toISOString().slice(0, 16).replace("T", " "),
+    },
+  });
+  const series = chart.addCandlestickSeries({
+    upColor: "#26a69a", downColor: "#ef5350", borderUpColor: "#26a69a",
+    borderDownColor: "#ef5350", wickUpColor: "#26a69a", wickDownColor: "#ef5350",
+  });
+  new ResizeObserver(() => chart.applyOptions({ width: $("chart").clientWidth, height: $("chart").clientHeight })).observe($("chart"));
+
+  /* ------------------------------------------------------------------ data */
+  async function loadCandles() {
+    $("chartMsg").textContent = "Loading " + state.symbol + " " + state.tf + "…";
+    $("chartMsg").style.display = "grid";
+    try {
+      const data = await api("/api/candles?symbol=" + encodeURIComponent(state.symbol) + "&timeframe=" + state.tf + "&count=400");
+      state.digits = data.digits;
+      state.symbol = data.symbol;
+      $("symbolInput").value = data.symbol;
+      series.applyOptions({ priceFormat: { type: "price", precision: data.digits, minMove: Math.pow(10, -data.digits) } });
+      series.setData(data.candles.map(c => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close })));
+      state.lastCandle = data.candles.length ? Object.assign({}, data.candles[data.candles.length - 1]) : null;
+      chart.timeScale().fitContent();
+      $("chartMsg").style.display = "none";
+      localStorage.setItem("xm.symbol", state.symbol);
+      localStorage.setItem("xm.tf", state.tf);
+      openSocket();
+    } catch (e) {
+      $("chartMsg").textContent = e.message;
+      if (e.status === 401) askForKey();
+    }
+  }
+
+  // A tick either extends the candle that is forming or starts the next one.
+  function applyTick(bid, ask, timeSec) {
+    const step = TF[state.tf], price = bid;
+    if (!state.lastCandle || !step) return;
+    const bucket = Math.floor(timeSec / step) * step;
+    const c = state.lastCandle;
+    if (bucket === c.time) {
+      c.high = Math.max(c.high, price);
+      c.low = Math.min(c.low, price);
+      c.close = price;
+    } else if (bucket > c.time) {
+      state.lastCandle = { time: bucket, open: price, high: price, low: price, close: price };
+    } else {
+      return;   // a tick older than the current candle: ignore
+    }
+    const b = state.lastCandle;
+    series.update({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close });
+  }
+
+  function flash(box, isUp) {
+    box.classList.remove("flash-up", "flash-down");
+    void box.offsetWidth;                       // restart the CSS transition
+    box.classList.add(isUp ? "flash-up" : "flash-down");
+    setTimeout(() => box.classList.remove("flash-up", "flash-down"), 350);
+  }
+
+  function showPrices(bid, ask) {
+    if (state.bid != null && bid !== state.bid) flash($("bidBox"), bid > state.bid);
+    if (state.ask != null && ask !== state.ask) flash($("askBox"), ask > state.ask);
+    state.bid = bid; state.ask = ask;
+    $("bid").textContent = fmt(bid);
+    $("ask").textContent = fmt(ask);
+    $("sellPx").textContent = fmt(bid);
+    $("buyPx").textContent = fmt(ask);
+    const points = (ask - bid) * Math.pow(10, state.digits);
+    $("spread").textContent = isFinite(points) ? points.toFixed(0) : "—";
+  }
+
+  /* ------------------------------------------------------------------ websocket */
+  function openSocket() {
+    clearTimeout(state.wsTimer);
+    if (state.ws) { state.ws.onclose = null; try { state.ws.close(); } catch (e) {} }
+    const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host +
+      "/ws/ticks?symbol=" + encodeURIComponent(state.symbol) + "&key=" + encodeURIComponent(state.key);
+    const ws = new WebSocket(url);
+    state.ws = ws;
+    ws.onopen = () => setConnected(true);
+    ws.onmessage = ev => {
+      const d = JSON.parse(ev.data);
+      if (d.error) { setConnected(false, d.error); return; }
+      setConnected(true);
+      if (d.digits != null) state.digits = d.digits;
+      if (d.changed === false) return;          // same tick as last time: nothing to redraw
+      showPrices(d.bid, d.ask);
+      applyTick(d.bid, d.ask, d.time);
+    };
+    ws.onclose = () => {                        // reconnect with a small delay, forever
+      setConnected(false, "price feed disconnected");
+      if (!state.closed) state.wsTimer = setTimeout(openSocket, 2000);
+    };
+    ws.onerror = () => { /* onclose follows and handles it */ };
+  }
+
+  function setConnected(ok, why) {
+    $("dot").classList.toggle("on", !!ok);
+    $("connText").textContent = ok ? "live" : (why || "offline");
+  }
+
+  /* ------------------------------------------------------------------ account + positions */
+  async function refreshAccount() {
+    try {
+      const a = await api("/api/account");
+      $("balance").textContent = money(a.balance) + " " + a.currency;
+      $("equity").textContent = money(a.equity);
+      $("freeMargin").textContent = money(a.margin_free);
+      const p = $("accProfit");
+      p.textContent = money(a.profit);
+      p.className = a.profit >= 0 ? "profit-up" : "profit-down";
+    } catch (e) {
+      if (e.status === 401) askForKey();
+    }
+  }
+
+  async function refreshPositions() {
+    try {
+      const data = await api("/api/positions");
+      const box = $("positions");
+      if (!data.count) { box.innerHTML = '<div class="empty">No open positions.</div>'; return; }
+      const rows = data.positions.map(p =>
+        '<tr><td class="pos-' + p.direction + '">' + p.direction.toUpperCase() + " " + p.symbol + "</td>" +
+        "<td>" + p.volume.toFixed(2) + "</td>" +
+        "<td>" + p.price_open + "</td>" +
+        "<td>" + p.price_current + "</td>" +
+        '<td class="' + (p.profit >= 0 ? "profit-up" : "profit-down") + '">' + money(p.profit) + "</td>" +
+        '<td><button type="button" data-close="' + p.ticket + '">Close</button></td></tr>'
+      ).join("");
+      box.innerHTML = "<table><thead><tr><th>Position</th><th>Lots</th><th>Open</th><th>Now</th><th>P/L</th><th></th></tr></thead><tbody>" + rows + "</tbody></table>";
+    } catch (e) {
+      if (e.status === 401) askForKey();
+    }
+  }
+
+  /* ------------------------------------------------------------------ trading */
+  async function sendOrder(direction) {
+    const lot = parseFloat($("lot").value);
+    if (!(lot > 0)) { toast("Enter a lot size above zero.", "err"); return; }
+    $("buyBtn").disabled = $("sellBtn").disabled = true;
+    try {
+      const res = await api("/api/order", { method: "POST", body: JSON.stringify({ symbol: state.symbol, direction: direction, lot: lot }) });
+      if (res.ok) toast(direction.toUpperCase() + " " + lot + " " + state.symbol + " filled at " + res.price, "ok", "ticket " + res.order + " · deal " + res.deal + " · " + res.comment);
+      else toast("Order rejected: " + res.retcode_text, "err", res);
+    } catch (e) {
+      toast("Order failed: " + e.message, "err", e.data);
+    } finally {
+      $("buyBtn").disabled = $("sellBtn").disabled = false;
+      refreshPositions(); refreshAccount();
+    }
+  }
+
+  async function closeTicket(ticket, button) {
+    button.disabled = true;
+    button.textContent = "Closing…";
+    try {
+      const res = await api("/api/close", { method: "POST", body: JSON.stringify({ ticket: Number(ticket) }) });
+      if (res.ok) toast("Position " + ticket + " closed at " + res.price, "ok");
+      else toast("Close rejected: " + res.retcode_text, "err", res);
+    } catch (e) {
+      toast("Close failed: " + e.message, "err", e.data);
+    } finally {
+      refreshPositions(); refreshAccount();
+    }
+  }
+
+  /* ------------------------------------------------------------------ wiring */
+  Object.keys(TF).forEach(name => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = name;
+    b.setAttribute("aria-pressed", String(name === state.tf));
+    b.addEventListener("click", () => {
+      state.tf = name;
+      [...$("tfs").children].forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+      loadCandles();
+    });
+    $("tfs").appendChild(b);
+  });
+
+  $("applySymbol").addEventListener("click", () => {
+    const v = $("symbolInput").value.trim().toUpperCase();
+    if (v) { state.symbol = v; loadCandles(); }
+  });
+  $("symbolInput").addEventListener("keydown", e => { if (e.key === "Enter") $("applySymbol").click(); });
+
+  const stepLot = delta => {
+    const el = $("lot");
+    const v = Math.max(0.01, Math.round((parseFloat(el.value) + delta) * 100) / 100);
+    el.value = v.toFixed(2);
+  };
+  $("lotMinus").addEventListener("click", () => stepLot(-0.01));
+  $("lotPlus").addEventListener("click", () => stepLot(0.01));
+
+  $("buyBtn").addEventListener("click", () => sendOrder("buy"));
+  $("sellBtn").addEventListener("click", () => sendOrder("sell"));
+  $("positions").addEventListener("click", e => {
+    const b = e.target.closest("[data-close]");
+    if (b) closeTicket(b.dataset.close, b);
+  });
+
+  function askForKey() {
+    if ($("keyDlg").open) return;
+    $("keyInput").value = state.key;
+    $("keyDlg").showModal();
+  }
+  $("keyForm").addEventListener("submit", () => {
+    state.key = $("keyInput").value.trim();
+    localStorage.setItem("xm.key", state.key);
+    start();
+  });
+
+  window.addEventListener("beforeunload", () => { state.closed = true; if (state.ws) try { state.ws.close(); } catch (e) {} });
+
+  /* ------------------------------------------------------------------ start */
+  function start() {
+    loadCandles();
+    refreshAccount();
+    refreshPositions();
+  }
+
+  setInterval(refreshPositions, 5000);
+  setInterval(refreshAccount, 5000);
+
+  if (!state.key) askForKey(); else start();
+})();
+</script>
+</body>
+</html>

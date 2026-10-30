@@ -1,0 +1,8 @@
+# Windows only: the MetaTrader5 package talks to a running MT5 terminal over a local pipe.
+# Install with 64-bit Python 3.10-3.12:  pip install -r requirements.txt
+MetaTrader5>=5.0.45
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+websockets>=12.0
+python-dotenv>=1.0.1
+pydantic>=2.8.0

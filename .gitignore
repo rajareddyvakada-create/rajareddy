@@ -1,1 +1,4 @@
 /web/
+xm-bridge/.env
+xm-bridge/backend/.venv/
+__pycache__/
