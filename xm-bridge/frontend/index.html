@@ -192,6 +192,9 @@
     <div class="ind-list" id="indList"></div>
     <div class="row">
       <button type="button" id="indNew">New indicator</button>
+      <button type="button" class="minor" id="indOx">Add Ox Alpha UT Pro</button>
+    </div>
+    <div class="row" style="margin-top:8px">
       <button type="button" class="minor" id="indClose">Close</button>
     </div>
   </div>
@@ -774,6 +777,128 @@
     "};"
   ].join("\n");
 
+  /* The Pine "Ox Alpha UT Pro" ported by hand. Its heart is a bar-by-bar recurrence inside a
+     custom function, which no line-by-line Pine conversion can express — but a plain loop can. */
+  const OX_TEMPLATE = `// Ox Alpha UT Pro — ported from the Pine original.
+// UT Bot gives the direction. After each flip it waits up to WAIT bars for the filters you
+// switched on to agree, then marks ONE buy or sell for that leg.
+
+// ---- settings -------------------------------------------------------------
+const KEY = 1.0;        // UT sensitivity: lower = more flips
+const ATRP = 10;        // UT ATR period
+const SWING = 24;       // structure swing length
+const CVDLEN = 21;      // CVD smoothing
+const WAIT = 20;        // bars to wait for the filters after a flip
+const USE_STRUCT = true;
+const USE_CVD = true;
+const USE_POC = true;
+const USE_UT2 = false;  // slow UT trend filter
+const KEY2 = 3.0, ATR2 = 30;
+const BIN_ATR = 0.5;    // volume-profile bucket size, in ATR
+
+const n = bars.close.length;
+const atr14 = ta.atr(14);
+
+// ---- UT Bot: each bar's stop depends on the one before it ------------------
+function utBot(key, atrLen) {
+  const a = ta.atr(atrLen);
+  const stop = new Array(n).fill(NaN), pos = new Array(n).fill(0);
+  let last = NaN;
+  for (let i = 0; i < n; i++) {
+    const src = bars.close[i], prevSrc = i ? bars.close[i - 1] : src;
+    const nLoss = key * a[i];
+    const p = isFinite(last) ? last : 0;          // Pine's nz(_stop[1])
+    let s;
+    if (src > p && prevSrc > p) s = Math.max(p, src - nLoss);
+    else if (src < p && prevSrc < p) s = Math.min(p, src + nLoss);
+    else s = src > p ? src - nLoss : src + nLoss;
+    stop[i] = s;
+    pos[i] = prevSrc < p && src > p ? 1 : prevSrc > p && src < p ? -1 : (i ? pos[i - 1] : 0);
+    if (isFinite(s)) last = s;
+  }
+  return { stop, pos };
+}
+
+const ut = utBot(KEY, ATRP);
+const slow = utBot(KEY2, ATR2);
+
+// ---- structure: which way price last broke the swing range -----------------
+const swingHi = ta.prev(ta.highest(bars.high, SWING), 1);
+const swingLo = ta.prev(ta.lowest(bars.low, SWING), 1);
+const structDir = new Array(n).fill(0);
+for (let i = 0; i < n; i++) {
+  const prev = i ? structDir[i - 1] : 0;
+  structDir[i] = bars.close[i] > swingHi[i] ? 1 : bars.close[i] < swingLo[i] ? -1 : prev;
+}
+
+// ---- CVD: volume pushed toward the close, added up -------------------------
+const cvd = new Array(n).fill(0);
+let run = 0;
+for (let i = 0; i < n; i++) {
+  const range = bars.high[i] - bars.low[i];
+  const vol = bars.volume[i] || 0;
+  run += range > 0 ? vol * ((bars.close[i] - bars.low[i]) - (bars.high[i] - bars.close[i])) / range : 0;
+  cvd[i] = run;
+}
+const cvdEma = ta.ema(cvd, CVDLEN);
+
+// ---- session volume profile: the busiest price so far today ----------------
+const day = i => Math.floor((bars.time[i] - 0) / 86400);
+const poc = new Array(n).fill(NaN);
+let anchor = NaN, bin = NaN, buckets = null, bestK = null, bestV = -1, curDay = null;
+for (let i = 0; i < n; i++) {
+  if (day(i) !== curDay) {
+    curDay = day(i);
+    anchor = bars.open[i];
+    bin = Math.max((isFinite(atr14[i]) ? atr14[i] : bars.high[i] - bars.low[i]) * BIN_ATR, 1e-9);
+    buckets = new Map(); bestK = null; bestV = -1;
+  }
+  const k = Math.floor((bars.close[i] - anchor) / bin);
+  const v = (buckets.get(k) || 0) + (bars.volume[i] || 0);
+  buckets.set(k, v);
+  if (v > bestV) { bestV = v; bestK = k; }
+  poc[i] = anchor + (bestK + 0.5) * bin;
+}
+
+// ---- previous day's high and low -------------------------------------------
+const pdh = new Array(n).fill(NaN), pdl = new Array(n).fill(NaN);
+let dayKey = null, curH = -Infinity, curL = Infinity, prevH = NaN, prevL = NaN;
+for (let i = 0; i < n; i++) {
+  if (day(i) !== dayKey) {
+    if (dayKey !== null) { prevH = curH; prevL = curL; }
+    dayKey = day(i); curH = -Infinity; curL = Infinity;
+  }
+  curH = Math.max(curH, bars.high[i]);
+  curL = Math.min(curL, bars.low[i]);
+  pdh[i] = prevH; pdl[i] = prevL;
+}
+
+// ---- one signal per UT leg, once the filters agree -------------------------
+const buy = new Array(n).fill(false), sell = new Array(n).fill(false);
+let legDir = 0, legBar = -1, legDone = true;
+for (let i = 0; i < n; i++) {
+  const dir = ut.pos[i], was = i ? ut.pos[i - 1] : 0;
+  const flipUp = dir === 1 && was !== 1, flipDn = dir === -1 && was !== -1;
+  if (flipUp || flipDn) { legDir = flipUp ? 1 : -1; legBar = i; legDone = false; }
+  else if (!legDone && i - legBar > WAIT) legDone = true;
+  if (legDone || dir !== legDir) continue;
+
+  const okStruct = !USE_STRUCT || structDir[i] === legDir;
+  const okCvd = !USE_CVD || (legDir === 1 ? cvd[i] > cvdEma[i] : cvd[i] < cvdEma[i]);
+  const okPoc = !USE_POC || !isFinite(poc[i]) || (legDir === 1 ? bars.close[i] > poc[i] : bars.close[i] < poc[i]);
+  const okUt2 = !USE_UT2 || slow.pos[i] === legDir;
+  if (okStruct && okCvd && okPoc && okUt2) {
+    if (legDir === 1) buy[i] = true; else sell[i] = true;
+    legDone = true;
+  }
+}
+
+return {
+  plots: { "UT stop": ut.stop, "POC": poc, "PDH": pdh, "PDL": pdl },
+  buy: buy,
+  sell: sell
+};`;
+
   const loadInd = () => { try { const v = JSON.parse(localStorage.getItem(IND_KEY)); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
   const saveInd = list => { try { localStorage.setItem(IND_KEY, JSON.stringify(list)); return true; } catch (e) { return false; } };
   let indicators = loadInd();
@@ -1169,6 +1294,15 @@
   $("indBtn").addEventListener("click", () => { renderIndList(); $("indDlg").showModal(); });
   $("indClose").addEventListener("click", () => $("indDlg").close());
   $("indNew").addEventListener("click", () => openEditor(null));
+  $("indOx").addEventListener("click", () => {
+    const already = indicators.find(x => x.name === "Ox Alpha UT Pro");
+    if (already) { openEditor(already.id); return; }
+    indicators.push({ id: Date.now().toString(36), name: "Ox Alpha UT Pro", code: OX_TEMPLATE, on: true });
+    if (!saveInd(indicators)) { toast("Couldn't save it: this browser's storage is full or blocked.", "err"); return; }
+    renderIndList();
+    runIndicators();
+    toast("Ox Alpha UT Pro added.", "ok", "Tap Edit to change its settings: they are the named values at the top of the script.");
+  });
   $("indList").addEventListener("click", e => {
     const b = e.target.closest("[data-edit]");
     if (b) openEditor(b.dataset.edit);

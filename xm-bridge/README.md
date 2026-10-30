@@ -132,6 +132,20 @@ return {
 oldest first. Helpers: `ta.sma` `ta.ema` `ta.rma` `ta.rsi(src, len)` `ta.atr(len)` `ta.highest`
 `ta.lowest` `ta.change` `ta.crossover(a, b)` `ta.crossunder(a, b)` `ta.nz(src)`.
 
+#### Ox Alpha UT Pro
+
+**Add Ox Alpha UT Pro** in the Indicators sheet installs a hand-written port of the Pine original:
+the UT Bot trailing stop and direction, the structure, CVD and POC-side filters, the slow-UT filter,
+and the "wait for the filters to agree, then one signal per leg" rule. It draws the UT stop, the
+session POC and the previous day's high and low.
+
+Its settings are the named values at the top of the script (`KEY`, `ATRP`, `SWING`, `WAIT`,
+`USE_STRUCT` and so on) — tap **Edit** and change them.
+
+Left out, because the chart here cannot do them: the higher-timeframe UT (`request.security` — switch
+the chart's own timeframe instead), intrabar CVD (needs tick data the bridge does not fetch), and
+anything drawn with labels, boxes or tables (the trade map and the dashboard).
+
 #### Pasting Pine Script
 
 **Convert from Pine** rewrites a pasted Pine indicator into the form above. It handles the common
