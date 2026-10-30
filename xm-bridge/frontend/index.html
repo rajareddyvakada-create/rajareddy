@@ -56,10 +56,8 @@
   #chart{flex:1; min-height:220px; position:relative}
   #chartMsg{position:absolute; inset:0; display:grid; place-items:center; color:var(--muted); pointer-events:none; text-align:center; padding:20px}
 
-  .strip{display:flex; gap:8px; padding:6px 12px; border-top:1px solid var(--line); background:var(--surface-2); font-size:11.5px}
-  .strip button{flex:1; min-width:0; background:none; border:1px solid var(--line); border-radius:7px; padding:6px 8px; color:var(--muted); font:inherit; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-  .strip button:disabled{opacity:.55}
-  .strip button b{color:var(--text); font-weight:600; font-family:var(--mono)}
+  .strip{padding:6px 12px; border-top:1px solid var(--line); background:var(--surface-2); color:var(--muted); font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .strip b{color:var(--text); font-weight:600; font-family:var(--mono)}
 
   /* order panel */
   .order{display:flex; gap:8px; align-items:stretch; padding:10px 12px; border-top:1px solid var(--line); background:var(--surface-2)}
@@ -139,10 +137,7 @@
 
 <div id="chart"><div id="chartMsg">Loading chart…</div></div>
 
-<div class="strip">
-  <button type="button" id="moreBtn">—</button>
-  <button type="button" id="timeBtn">—</button>
-</div>
+<div class="strip" id="strip"></div>
 
 <div class="order">
   <div class="lot">
@@ -194,7 +189,6 @@
     key: localStorage.getItem("xm.key") || "",
     symbol: localStorage.getItem("xm.symbol") || "XAUUSD",
     tf: localStorage.getItem("xm.tf") || "M5",
-    timeMode: localStorage.getItem("xm.timeMode") || "local",   // "local" = this device, "server" = MT5
     digits: 2, ws: null, wsTimer: 0, bid: null, ask: null, closed: false,
     raw: [],              // candles exactly as MT5 gave them: times are the broker's wall clock
     serverOffset: null,   // seconds the broker clock is ahead of UTC; null until measured
@@ -211,9 +205,10 @@
     return "UTC" + sign + Math.floor(m / 60) + (m % 60 ? ":" + String(m % 60).padStart(2, "0") : "");
   }
 
-  // Lightweight Charts renders a timestamp as if it were UTC, so feed it the wall clock we want shown.
+  // Lightweight Charts renders a timestamp as if it were UTC, so feed it the wall clock we want shown:
+  // this device's, once the bridge has measured how far ahead the broker's clock runs.
   function toChart(serverSec) {
-    if (state.timeMode === "server" || state.serverOffset == null) return serverSec;
+    if (state.serverOffset == null) return serverSec;
     const utcSec = serverSec - state.serverOffset;
     return utcSec - new Date(utcSec * 1000).getTimezoneOffset() * 60;   // per-candle, so DST is right
   }
@@ -229,25 +224,14 @@
 
   function updateStrip() {
     const bars = state.raw.length;
-    const more = $("moreBtn");
-    more.disabled = state.loadingOlder || !state.hasMore || !bars;
-    more.innerHTML = !bars ? "—"
-      : state.loadingOlder ? "Loading older candles…"
-      : "<b>" + bars.toLocaleString() + "</b> candles" + (state.maxBars ? " of " + state.maxBars.toLocaleString() + " kept" : "") +
-        (state.hasMore ? " · tap for older" : " · all loaded");
-    const t = $("timeBtn");
-    if (state.serverOffset == null) {
-      t.textContent = "Times: MT5 server";
-      t.disabled = true;
-      t.title = "The broker clock can only be measured while a market is open.";
-    } else {
-      t.disabled = false;
-      const localOff = -new Date().getTimezoneOffset() * 60;
-      t.innerHTML = state.timeMode === "local"
-        ? "Times: <b>your clock</b> (" + zoneLabel(localOff) + ")"
-        : "Times: <b>MT5 server</b> (" + zoneLabel(state.serverOffset) + ")";
-      t.title = "Tap to switch between your own clock and the broker's.";
-    }
+    const zone = state.serverOffset == null
+      ? "times on the MT5 server clock"
+      : "times on your clock (" + zoneLabel(-new Date().getTimezoneOffset() * 60) + ")";
+    $("strip").innerHTML = !bars ? "&nbsp;"
+      : (state.loadingOlder ? "Loading older candles…" :
+         "<b>" + bars.toLocaleString() + "</b> candles" + (state.maxBars ? " of " + state.maxBars.toLocaleString() + " the terminal keeps" : "") +
+         (state.hasMore ? " · scroll back for more" : " · all history loaded")) +
+        " · " + zone;
   }
 
   /* ------------------------------------------------------------------ helpers */
@@ -370,6 +354,40 @@
     } catch (e) { return null; }
   }
 
+  // Only after the chart has been touched: on the first draw every candle fits on screen, so the
+  // left edge is already candle zero and this would otherwise pull in the whole history at once.
+  let userScrolled = false;
+  for (const ev of ["pointerdown", "touchstart", "wheel"]) {
+    $("chart").addEventListener(ev, () => { userScrolled = true; }, { passive: true });
+  }
+  chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+    if (userScrolled && range && range.from < 10) loadOlder();
+  });
+
+  // MT5 keeps downloading in the background after it answers, so a symbol that arrives thin fills
+  // out a moment later. One quiet re-read picks that up; it never shows a loading state and is
+  // dropped if the symbol or timeframe changes meanwhile.
+  let refreshTimer = 0;
+  function refreshOnce(seq) {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(async () => {
+      if (seq !== loadSeq || !state.raw.length) return;
+      try {
+        const data = await api("/api/candles?symbol=" + encodeURIComponent(state.symbol) + "&timeframe=" + state.tf + "&count=300");
+        if (seq !== loadSeq || !data.candles.length) return;
+        const cut = data.candles[0].time;
+        const older = state.raw.filter(c => c.time < cut);     // keep pages the user loaded by hand
+        if (older.length + data.candles.length <= state.raw.length && data.candles.length < 300) return;
+        state.raw = older.concat(data.candles);
+        if (data.has_more) state.hasMore = true;
+        if (data.server_utc_offset != null) state.serverOffset = data.server_utc_offset;
+        state.maxBars = data.max_bars || state.maxBars;
+        redraw(true);
+        updateStrip();
+      } catch (e) { /* the chart on screen is still fine */ }
+    }, 2500);
+  }
+
   let loadSeq = 0;
   async function loadCandles(firstLoad) {
     // Tapping through timeframes used to queue a request each, and every one waited on MT5 in turn.
@@ -399,6 +417,7 @@
       updateStrip();
       $("chartMsg").style.display = "none";
       try { localStorage.setItem("xm.symbol", state.symbol); localStorage.setItem("xm.tf", state.tf); } catch (err) {}
+      refreshOnce(seq);
       openSocket();
     } catch (e) {
       if (seq !== loadSeq) return;
@@ -422,7 +441,7 @@
     }
   }
 
-  // Older candles, a page at a time, either by tapping the strip or by scrolling off the left edge.
+  // Older candles load a page at a time as you scroll back toward them.
   async function loadOlder() {
     if (state.loadingOlder || !state.hasMore || !state.raw.length) return;
     state.loadingOlder = true;
@@ -447,12 +466,6 @@
       updateStrip();
     }
   }
-
-  chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-    // Only once the newest candle has been scrolled off to the right: when everything fits on screen
-    // the left edge is already candle zero, which would otherwise pull in the whole history at once.
-    if (range && range.from < 8 && range.to < state.raw.length - 2) loadOlder();
-  });
 
   // A tick either extends the candle that is forming or starts the next one. Candles are bucketed on
   // the broker's clock, so a new bar opens when MT5 opens one, not at midnight on this device.
@@ -622,14 +635,6 @@
   };
   $("lotMinus").addEventListener("click", () => stepLot(-0.01));
   $("lotPlus").addEventListener("click", () => stepLot(0.01));
-
-  $("moreBtn").addEventListener("click", loadOlder);
-  $("timeBtn").addEventListener("click", () => {
-    state.timeMode = state.timeMode === "local" ? "server" : "local";
-    try { localStorage.setItem("xm.timeMode", state.timeMode); } catch (e) {}
-    redraw(true);
-    updateStrip();
-  });
 
   $("buyBtn").addEventListener("click", () => sendOrder("buy"));
   $("sellBtn").addEventListener("click", () => sendOrder("sell"));
