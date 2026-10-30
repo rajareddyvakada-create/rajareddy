@@ -236,6 +236,29 @@
 
 <script>
 "use strict";
+// Before anything else, so a failure here shows itself instead of leaving an empty chart.
+(function () {
+  var shown = false;
+  function report(what, where) {
+    if (shown) return;
+    shown = true;
+    var box = document.getElementById("chartMsg");
+    if (!box) return;
+    box.style.display = "grid";
+    box.style.whiteSpace = "pre-line";
+    box.style.color = "#FF0055";
+    box.textContent = "This page hit an error and stopped.\n\n" + what + "\n" + (where || "") +
+      "\n\nSend this text to have it fixed. Reloading may clear it.";
+  }
+  window.addEventListener("error", function (e) {
+    report(String((e.error && e.error.message) || e.message || "unknown error"),
+      e.filename ? "line " + e.lineno : "");
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    report(String((e.reason && e.reason.message) || e.reason || "unknown error"), "");
+  });
+})();
+
 (function () {
   /* ------------------------------------------------------------------ setup */
   const $ = id => document.getElementById(id);
@@ -271,8 +294,20 @@
 
   const asCandle = c => ({ time: toChart(c.time), open: c.open, high: c.high, low: c.low, close: c.close });
 
+  // One repeated or out-of-order timestamp and the chart library draws nothing at all, so the
+  // candles are cleaned on the way in rather than trusted.
+  function tidy(list) {
+    const seen = new Map();
+    for (const c of list) {
+      if (!c || !isFinite(c.time) || !isFinite(c.open) || !isFinite(c.high) || !isFinite(c.low) || !isFinite(c.close)) continue;
+      seen.set(c.time, c);
+    }
+    return [...seen.values()].sort((a, b) => a.time - b.time);
+  }
+
   function redraw(keepView) {
     const before = keepView ? chart.timeScale().getVisibleLogicalRange() : null;
+    state.raw = tidy(state.raw);
     series.setData(state.raw.map(asCandle));
     if (before) chart.timeScale().setVisibleLogicalRange(before);
     else chart.timeScale().fitContent();
@@ -511,7 +546,7 @@
       const older = data.candles.filter(c => c.time < state.raw[0].time);
       if (!older.length) { state.hasMore = false; return; }
       const before = chart.timeScale().getVisibleLogicalRange();
-      state.raw = older.concat(state.raw);
+      state.raw = tidy(older.concat(state.raw));
       state.hasMore = data.has_more;
       series.setData(state.raw.map(asCandle));
       runIndicators();
@@ -832,6 +867,12 @@
   function runIndicators() {
     clearTimeout(indTimer);
     indTimer = setTimeout(async () => {
+      try { await indicatorPass(); } catch (e) { console.warn("indicators: " + (e && e.message)); }
+    }, 120);
+  }
+
+  async function indicatorPass() {
+    {
       const mine = ++indRun;
       const on = indicators.filter(x => x.on);
       for (const sc of indicators) if (!sc.on) clearIndicator(sc.id);
@@ -839,9 +880,15 @@
       const marks = [];
       for (let k = 0; k < on.length; k++) {
         const sc = on[k];
-        const res = await runScript(sc.code, state.raw);
+        let res;
+        try { res = await runScript(sc.code, state.raw); } catch (e) { res = { error: String(e && e.message || e) }; }
         if (mine !== indRun) return;             // the candles changed under us
-        if (res.error) { clearIndicator(sc.id); sc.error = res.error; continue; }
+        if (res.error) {
+          clearIndicator(sc.id);
+          if (sc.error !== res.error) toast("Indicator “" + sc.name + "” stopped: " + res.error, "err");
+          sc.error = res.error;
+          continue;
+        }
         sc.error = null;
         const plots = Object.keys(res.out.plots);
         for (const key of Object.keys(indSeries)) {
@@ -849,20 +896,27 @@
             chart.removeSeries(indSeries[key]); delete indSeries[key];
           }
         }
-        plots.forEach((name, j) => {
-          const key = sc.id + "|" + name;
-          if (!indSeries[key]) indSeries[key] = chart.addLineSeries({ lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-          indSeries[key].applyOptions({ color: IND_COLORS[(k + j) % IND_COLORS.length] });
-          indSeries[key].setData(state.raw.map((c, i) => res.out.plots[name][i] == null ? { time: toChart(c.time) } : { time: toChart(c.time), value: res.out.plots[name][i] }));
-        });
+        try {
+          plots.forEach((name, j) => {
+            const key = sc.id + "|" + name;
+            if (!indSeries[key]) indSeries[key] = chart.addLineSeries({ lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+            indSeries[key].applyOptions({ color: IND_COLORS[(k + j) % IND_COLORS.length] });
+            indSeries[key].setData(state.raw.map((c, i) => res.out.plots[name][i] == null ? { time: toChart(c.time) } : { time: toChart(c.time), value: res.out.plots[name][i] }));
+          });
+        } catch (e) {                            // a bad line must not take the candles with it
+          clearIndicator(sc.id);
+          sc.error = String(e && e.message || e);
+          toast("Indicator “" + sc.name + "” could not be drawn: " + sc.error, "err");
+          continue;
+        }
         state.raw.forEach((c, i) => {
           if (res.out.buy[i]) marks.push({ time: toChart(c.time), position: "belowBar", color: "#00E5FF", shape: "arrowUp", text: "BUY" });
           else if (res.out.sell[i]) marks.push({ time: toChart(c.time), position: "aboveBar", color: "#FF0055", shape: "arrowDown", text: "SELL" });
         });
       }
       marks.sort((a, b) => a.time - b.time);
-      series.setMarkers(marks);
-    }, 120);
+      try { series.setMarkers(marks); } catch (e) { series.setMarkers([]); }
+    }
   }
 
   /* ---------------------------------------------------------------- Pine conversion
@@ -1083,11 +1137,12 @@
   /* ---------------------------------------------------------------- indicators UI */
   function renderIndList() {
     const box = $("indList");
+    if (typeof Worker === "undefined") { box.innerHTML = '<div class="sym-empty">This browser does not allow background scripts, so indicators cannot run here. Try Chrome.</div>'; return; }
     if (!indicators.length) { box.innerHTML = '<div class="sym-empty">No indicators yet. Tap “New indicator” for a worked example you can change.</div>'; return; }
     box.innerHTML = indicators.map((sc, i) =>
       '<div class="ind-row" data-id="' + escHtml(sc.id) + '">' +
         '<span class="swatch" style="background:' + IND_COLORS[i % IND_COLORS.length] + '"></span>' +
-        '<span class="nm">' + escHtml(sc.name) + (sc.error ? ' <span style="color:var(--down)">· error</span>' : "") + "</span>" +
+        '<span class="nm">' + escHtml(sc.name) + (sc.error ? ' <span style="color:var(--down)">· ' + escHtml(sc.error.slice(0, 60)) + '</span>' : "") + "</span>" +
         '<button type="button" class="edit" data-edit="' + escHtml(sc.id) + '">Edit</button>' +
         '<input type="checkbox" ' + (sc.on ? "checked" : "") + ' data-on="' + escHtml(sc.id) + '" aria-label="Show ' + escHtml(sc.name) + '">' +
       "</div>").join("");
