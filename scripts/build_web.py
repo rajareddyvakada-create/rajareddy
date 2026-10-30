@@ -12,6 +12,7 @@ OUT = ROOT / 'web'
 
 # "What's built" panel shown on top of the web version: every feature the app has, newest first.
 WORK = [
+    ('v2.5', 'Charts tab shows only your XM MT5 terminal; TradingView, Octa, replay and lines options removed; AI agent, Ox Alpha bot and alerts keep watching the picked market in the background'),
     ('v2.4', 'XM (MT5) and Octa logins open over the chart, each signed in separately; add your own indicator scripts (Pine-style helpers, sandboxed); Ox Alpha bot takes entries on signals with fixed SL / TP; journal shows the open trade and bot trades'),
     ('v2.3', 'Audit fixes: correct COT trader names and missing-data handling, COT age warnings, demo-data badge, touch-based stops with conservative same-candle rule, trading costs, real contract sizes, agent confluence score (not a win probability), stale-price guard, demo trades kept out of the journal, encrypted API key, 25 + 4 automated tests'),
     ('v2.2', 'Fixes: app no longer closes if TradingView or XM crashes; AI agent recovers after a failed request; no 10-minute hole on live gold; Back works on XM; TradingView and XM pause in the background; agent opens Journal and Me'),
@@ -34,10 +35,10 @@ WORK_PANEL = (
     'width:min(560px,calc(100vw - 32px));font:500 13px Inter,system-ui,sans-serif;color:#F8FAFC;background:rgba(15,23,42,.96);'
     'border:1px solid rgba(0,229,255,.35);border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.5)">'
     '<summary style="cursor:pointer;list-style:none;padding:8px 14px;font:700 13px Rajdhani,Inter,sans-serif;letter-spacing:.04em;color:#00E5FF">'
-    '\u2713 Complete work so far \u00b7 v2.4 (tap to open)</summary>'
+    '\u2713 Complete work so far \u00b7 v2.5 (tap to open)</summary>'
     '<ol style="margin:0;padding:4px 16px 12px 34px;max-height:60vh;overflow:auto;line-height:1.45">'
     + ''.join(f'<li style="margin:5px 0"><b style="color:#FFB300;font-family:JetBrains Mono,monospace;font-size:11px">{v}</b> {t}</li>' for v, t in WORK)
-    + '<li style="margin:5px 0;list-style:none;color:#94A3B8">Android APK: github.com/rajareddyvakada-create/rajareddy/releases (v2.4)</li>'
+    + '<li style="margin:5px 0;list-style:none;color:#94A3B8">Android APK: github.com/rajareddyvakada-create/rajareddy/releases (v2.5)</li>'
     '</ol></details>\n')
 
 def main():

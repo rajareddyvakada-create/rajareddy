@@ -10,8 +10,8 @@ android {
         applicationId "com.cot.widget"
         minSdk 24
         targetSdk 34
-        versionCode 15
-        versionName "2.4"
+        versionCode 16
+        versionName "2.5"
     }
 
     // Fixed key so each new APK installs over the previous one.

@@ -797,8 +797,10 @@
     }
     tvSym=sym;
   }
+  // The Charts tab shows only the user's XM MT5 terminal. The app's own chart keeps running underneath
+  // (not shown) so the AI agent, the Ox Alpha bot and signal alerts keep working on the market picked above.
   function setTvMode(on){
-    tvMode=!!on; saveJSON('tv-mode2',tvMode);
+    tvMode=true; saveJSON('tv-mode2',tvMode);
     document.body.classList.toggle('tv-on',tvMode);
     $('tvBtn').setAttribute('aria-pressed',String(tvMode));
     tvSync();
@@ -809,7 +811,8 @@
   // A native view sits above the page, so step aside while any sheet is open.
   for(const d of document.querySelectorAll('dialog')) new MutationObserver(()=>{ if(tvMode) tvSync(); }).observe(d,{attributes:true,attributeFilter:['open']});
   window.addEventListener('message',e=>{ if(e.source!==window.parent) return; const d=e.data||{}; if(d.type==='tvRefresh' && tvMode) tvSync(); });
-  setTimeout(()=>setTvMode(tvMode),300);
+  setFeed('xm');
+  setTimeout(()=>setTvMode(true),300);
   $('liveBadge').addEventListener('click',()=>{
     if(idx<bars.length){ setPlaying(false); jumpTo(bars.length); showRecent(); save(); return; }
     if(/delay/.test($('liveBadge').textContent)) openTv();
@@ -941,7 +944,7 @@
     updateMarkers(); renderStats(); renderTrades();
   });
   for(const d of document.querySelectorAll('dialog')) d.addEventListener('click',e=>{ if(e.target===d) d.close(); });
-  window.appBack=()=>{ const d=document.querySelector('dialog[open]'); if(d){ d.close(); return true; } if(picking){ endPick(true); return true; } if(document.body.classList.contains('wide')){ $('rotateBtn').click(); return true; } if(document.body.classList.contains('tv-on')){ $('tvBtn').click(); return true; } return false; };
+  window.appBack=()=>{ const d=document.querySelector('dialog[open]'); if(d){ d.close(); return true; } if(picking){ endPick(true); return true; } if(document.body.classList.contains('wide')){ $('rotateBtn').click(); return true; } return false; };
   for(const b of document.querySelectorAll('[data-close]')) b.addEventListener('click',()=>b.closest('dialog').close());
 
   document.addEventListener('keydown',e=>{
@@ -978,7 +981,7 @@
     try{ window.parent.postMessage({type:'chartFull',on:wide},'*'); }catch(e){}
   }
   $('rotateBtn').addEventListener('click',()=>setWide(!wide));
-  setReplay(replayOn);
+  setReplay(false);   // no replay controls: the visible chart is the XM terminal
 
   /* ---------- higher-timeframe structure: last 1D / 1W / 1M BOS or CHoCH as levels on the chart ----------
      Same rules as the Scanner: a candle closes beyond the last swing (daily pivots of 3 bars, weekly and monthly of 2).

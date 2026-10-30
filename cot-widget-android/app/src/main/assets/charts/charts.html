@@ -66,7 +66,9 @@ svg.stroke{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;str
 .demo-badge{position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:4;pointer-events:none;font:800 .72rem/1 var(--mono,monospace);letter-spacing:.08em;color:#060913;background:#FFB300;border-radius:999px;padding:6px 12px;box-shadow:0 0 18px rgba(255,179,0,.45)}
 .tv-frame{position:absolute;inset:0;width:100%;height:100%;border:0;z-index:5;background:#060913}
 body.tv-on .legend,body.tv-on .ind-panel{visibility:hidden}
-body.tv-on .tfs,body.tv-on .replay-only{display:none !important}
+body.tv-on .replay-only{display:none !important}
+.src::before{content:'Signals · ';opacity:.6;font-weight:500}
+.tfs::before{content:'Signal timeframe';font-size:.7rem;color:var(--muted,#94A3B8);align-self:center;margin-right:6px;white-space:nowrap}
 @media (max-width:380px){ .top .icon-sm{width:32px} .top{gap:4px} }
 .tog[aria-pressed="true"]{background:var(--grad);color:var(--brass-ink);border-color:transparent}
 .tog.ai{font-weight:800;font-size:.8rem;letter-spacing:.02em}
@@ -242,11 +244,11 @@ dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
     <span class="src" id="src">Loading…</span>
     <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
   </button>
-  <button type="button" class="icon-sm tog tv" id="tvBtn" aria-pressed="false" aria-label="TradingView live chart">TV</button>
-  <button type="button" class="icon-sm tog" id="replayBtn" aria-pressed="false" aria-label="Replay mode"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M10 9v6l5-3z"/></svg></button>
+  <button type="button" class="icon-sm tog tv" id="tvBtn" hidden aria-pressed="false" aria-label="TradingView live chart">TV</button>
+  <button type="button" class="icon-sm tog" id="replayBtn" hidden aria-pressed="false" aria-label="Replay mode"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M10 9v6l5-3z"/></svg></button>
   <button type="button" class="icon-sm tog ai" id="aiBtn" aria-pressed="false" aria-label="AI agent">AI</button>
   <button type="button" class="icon-sm tog bot" id="botBtn" aria-pressed="false" aria-label="Ox Alpha bot">BOT</button>
-  <button type="button" class="icon-sm tog" id="linesBtn" aria-pressed="true" aria-label="Show indicator lines"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 3 5-7 4 4"/></svg></button>
+  <button type="button" class="icon-sm tog" id="linesBtn" hidden aria-pressed="true" aria-label="Show indicator lines"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-6 4 3 5-7 4 4"/></svg></button>
   <button type="button" class="icon-sm tog" id="rotateBtn" aria-pressed="false" aria-label="Landscape full screen"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 3h4M13 21h4"/></svg></button>
   <button type="button" class="icon-sm" id="settingsBtn" aria-label="Indicators and settings"><svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></button>
   <input type="file" id="file" accept=".csv,.txt,text/csv,text/plain" hidden>
@@ -395,13 +397,16 @@ dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
 <dialog id="dataDlg" aria-labelledby="dataTitle">
   <div class="sheet-head"><h2 id="dataTitle">Chart data</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
   <div class="sheet-body">
+    <p class="hint" style="margin:0 0 10px">The chart shows <b>your XM account (MT5 terminal)</b>, signed in once and kept signed in. Sign in with your MT5 account number, password and server (for example XMGlobal-MT5, in your XM welcome email) and tick Save password.<br>The market you pick below is what the <b>AI agent</b>, the <b>Ox Alpha bot</b> and the BUY / SELL alerts watch in the background.</p>
+    <div hidden>
     <button type="button" class="primary tv-btn" id="tvOpen">⚡ Live chart on TradingView (your account)</button>
     <button type="button" class="primary tv-btn" id="xmOpen" style="margin-top:8px">📈 My XM account (MT5 web terminal)</button>
     <button type="button" class="primary tv-btn" id="octaOpen" style="margin-top:8px">📈 My Octa account (Octa login)</button>
     <p class="hint" style="margin:6px 0 12px">Each opens inside the app over the chart with your own login, and stays signed in separately. These are the brokers' live prices with no delay.<br>
     <b>XM:</b> sign in with your MT5 account number, password and server (for example XMGlobal-MT5, in your XM welcome email) and tick Save password.<br>
     <b>Octa:</b> sign in with your Octa email and password, then open Trade from your profile.<br>
-    The TV / XM / OCTA button at the top switches between that chart and the app's own chart. Gold futures from Yahoo below are delayed about 10 minutes.</p>
+    </p>
+    </div>
     <div role="radiogroup" aria-label="Data source">
       <label class="src-opt"><input type="radio" name="src" value="yahoo"><b>Markets (live spot gold &amp; silver, futures, Bitcoin)</b><small>Gold and Silver are live spot XAUUSD / XAGUSD (your broker's price, no delay). Other markets are Yahoo Finance futures, about 10 minutes delayed. No key needed.</small></label>
       <label class="src-opt"><input type="radio" name="src" value="binance"><b>Binance crypto, live tick by tick</b><small>Any Binance pair, for example PAXGUSDT (gold-backed token) or BTCUSDT. Trades 24/7.</small></label>
