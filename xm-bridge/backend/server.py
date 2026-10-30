@@ -23,6 +23,7 @@ import logging
 import os
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal
 
@@ -64,6 +65,21 @@ TIMEFRAMES: dict[str, int] = {
 _LOCK = threading.RLock()        # the MT5 package is not thread-safe: one call at a time
 _last_connect_attempt = 0.0
 _connected = False
+_rest_busy = 0                   # chart and order requests in flight; tick polls stand back for them
+_rest_busy_lock = threading.Lock()
+
+
+@contextmanager
+def rest_priority():
+    """While this is held, the websocket tick loop pauses so it can't queue ahead of a chart load."""
+    global _rest_busy
+    with _rest_busy_lock:
+        _rest_busy += 1
+    try:
+        yield
+    finally:
+        with _rest_busy_lock:
+            _rest_busy -= 1
 
 
 class Mt5Error(Exception):
@@ -125,16 +141,41 @@ def mt5_call(fn, *args, **kwargs):
         return fn(*args, **kwargs)
 
 
-def select_symbol(symbol: str) -> Any:
-    """Symbol info, adding it to Market Watch first — MT5 returns nothing for unselected symbols."""
+def select_symbol(symbol: str) -> tuple[Any, bool]:
+    """Symbol info, adding it to Market Watch first — MT5 returns nothing for unselected symbols.
+    The second value says whether it was added just now, which means its history is still downloading."""
     ensure_connection()
     with _LOCK:
         info = mt5.symbol_info(symbol)
         if info is None:
-            raise HTTPException(404, f"Unknown symbol '{symbol}'. Check the exact name in MT5 (XM uses names like XAUUSD, EURUSD, GOLD#).")
-        if not info.visible and not mt5.symbol_select(symbol, True):
-            raise Mt5Error(f"Couldn't add {symbol} to Market Watch")
-        return mt5.symbol_info(symbol)
+            raise HTTPException(404, f"Unknown symbol '{symbol}'. Open Market Watch in MT5 to see the exact names this account uses (XM has GOLD, XAUUSD, US30Cash and so on), or use Browse in the app.")
+        fresh = not info.visible
+        if fresh:
+            if not mt5.symbol_select(symbol, True):
+                raise Mt5Error(f"Couldn't add {symbol} to Market Watch")
+            mt5.symbol_info_tick(symbol)   # nudges the terminal to subscribe and start the download
+            info = mt5.symbol_info(symbol)
+        return info, fresh
+
+
+def rates_with_warmup(name: str, tf: int, count: int, fresh: bool) -> Any:
+    """
+    The first request for a symbol MT5 has just subscribed to returns little or nothing while the
+    terminal downloads its history. Retry briefly instead of drawing a stub chart. The sleeps are
+    outside the lock, so prices keep flowing to anyone watching another symbol.
+    """
+    deadline = time.monotonic() + (8.0 if fresh else 2.0)
+    want = min(count, 120)
+    best = None
+    while True:
+        rates = mt5_call(mt5.copy_rates_from_pos, name, tf, 0, count)
+        if rates is not None and len(rates) >= want:
+            return rates
+        if rates is not None and (best is None or len(rates) > len(best)):
+            best = rates
+        if time.monotonic() >= deadline:
+            return best
+        time.sleep(0.25)
 
 
 def as_dict(obj: Any) -> Any:
@@ -274,16 +315,21 @@ def symbols(all: bool = Query(default=False, description="true = every symbol th
 @app.get("/api/candles", dependencies=[Depends(require_key)])
 def candles(symbol: str = Query(min_length=1, max_length=32),
             timeframe: str = Query(default="M5"),
-            count: int = Query(default=200, ge=1, le=5000)) -> dict[str, Any]:
+            count: int = Query(default=300, ge=1, le=5000)) -> dict[str, Any]:
     """OHLC history, newest last. Times are broker server time in epoch seconds."""
     tf_name = timeframe.strip().upper()
     if tf_name not in TIMEFRAMES:
         raise HTTPException(400, f"Unknown timeframe '{timeframe}'. Use one of: {', '.join(TIMEFRAMES)}")
-    info = select_symbol(symbol)
-    # copy_rates_from_pos(symbol, timeframe, start_pos, count): 0 = the candle forming right now
-    rates = mt5_call(mt5.copy_rates_from_pos, info.name, TIMEFRAMES[tf_name], 0, count)
+    started = time.monotonic()
+    with rest_priority():
+        info, fresh = select_symbol(symbol)
+        # copy_rates_from_pos(symbol, timeframe, start_pos, count): 0 = the candle forming right now
+        rates = rates_with_warmup(info.name, TIMEFRAMES[tf_name], count, fresh)
+    took = (time.monotonic() - started) * 1000
     if rates is None or len(rates) == 0:
-        raise Mt5Error(f"No candles for {info.name} {tf_name}")
+        raise Mt5Error(f"No candles for {info.name} {tf_name}. MT5 may still be downloading its history — try again in a moment.")
+    if took > 1000:
+        log.info("candles %s %s: %d bars in %.0f ms%s", info.name, tf_name, len(rates), took, " (first time for this symbol)" if fresh else "")
     bars = [
         {"time": int(r["time"]), "open": float(r["open"]), "high": float(r["high"]),
          "low": float(r["low"]), "close": float(r["close"]), "volume": int(r["tick_volume"])}
@@ -295,7 +341,7 @@ def candles(symbol: str = Query(min_length=1, max_length=32),
 @app.post("/api/order", dependencies=[Depends(require_key)])
 def place_order(req: OrderRequest) -> dict[str, Any]:
     """Market buy or sell. Returns the terminal's full order_send() result, success or not."""
-    info = select_symbol(req.symbol)
+    info, _ = select_symbol(req.symbol)
 
     if req.lot < info.volume_min or req.lot > info.volume_max:
         raise HTTPException(400, f"lot must be between {info.volume_min} and {info.volume_max} for {info.name}")
@@ -365,7 +411,7 @@ def close_position(req: CloseRequest) -> dict[str, Any]:
     if not found:
         raise HTTPException(404, f"No open position with ticket {req.ticket}.")
     pos = found[0]
-    info = select_symbol(pos.symbol)
+    info, _ = select_symbol(pos.symbol)
     tick = mt5_call(mt5.symbol_info_tick, pos.symbol)
     if tick is None:
         raise Mt5Error(f"No price for {pos.symbol} (market closed?)")
@@ -431,7 +477,7 @@ async def ws_ticks(ws: WebSocket, symbol: str = Query(default="EURUSD"), key: st
     await ws.accept()
 
     try:
-        info = await asyncio.to_thread(select_symbol, symbol)
+        info, _ = await asyncio.to_thread(select_symbol, symbol)
     except (HTTPException, Mt5Error) as e:
         await ws.send_json({"error": getattr(e, "detail", str(e))})
         await ws.close(code=1011)
@@ -442,6 +488,9 @@ async def ws_ticks(ws: WebSocket, symbol: str = Query(default="EURUSD"), key: st
     last_sent: tuple[float, float, int] | None = None
     try:
         while True:
+            if _rest_busy:                 # a chart or order is loading: don't queue ahead of it
+                await asyncio.sleep(0.3)
+                continue
             try:
                 tick = await asyncio.to_thread(mt5_call, mt5.symbol_info_tick, name)
             except Mt5Error as e:                      # terminal died: tell the client, keep trying

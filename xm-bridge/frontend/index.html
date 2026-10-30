@@ -307,11 +307,23 @@
     } catch (e) { return null; }
   }
 
+  let loadSeq = 0;
   async function loadCandles(firstLoad) {
+    // Tapping through timeframes used to queue a request each, and every one waited on MT5 in turn.
+    // Only the newest one is drawn, and the price feed is dropped first so it stops competing.
+    const seq = ++loadSeq;
+    if (state.ws) { state.ws.onclose = null; try { state.ws.close(); } catch (e) {} state.ws = null; }
+    clearTimeout(state.wsTimer);
+    setConnected(false, "loading…");
     $("chartMsg").textContent = "Loading " + state.symbol + " " + state.tf + "…";
+    $("chartMsg").style.whiteSpace = "pre-line";
     $("chartMsg").style.display = "grid";
+    const slow = setTimeout(() => {
+      if (seq === loadSeq) $("chartMsg").textContent = "Loading " + state.symbol + " " + state.tf + "…\n\nMT5 is downloading this symbol's history.\nThe first time on a new symbol takes a few seconds.";
+    }, 1500);
     try {
-      const data = await api("/api/candles?symbol=" + encodeURIComponent(state.symbol) + "&timeframe=" + state.tf + "&count=400");
+      const data = await api("/api/candles?symbol=" + encodeURIComponent(state.symbol) + "&timeframe=" + state.tf + "&count=300");
+      if (seq !== loadSeq) return;
       state.digits = data.digits;
       state.symbol = data.symbol;
       $("symbolInput").value = data.symbol;
@@ -320,10 +332,10 @@
       state.lastCandle = data.candles.length ? Object.assign({}, data.candles[data.candles.length - 1]) : null;
       chart.timeScale().fitContent();
       $("chartMsg").style.display = "none";
-      localStorage.setItem("xm.symbol", state.symbol);
-      localStorage.setItem("xm.tf", state.tf);
+      try { localStorage.setItem("xm.symbol", state.symbol); localStorage.setItem("xm.tf", state.tf); } catch (err) {}
       openSocket();
     } catch (e) {
+      if (seq !== loadSeq) return;
       if (e.status === 401) { $("chartMsg").textContent = e.message; askForKey(); return; }
       if (e.status === 404) {
         const better = firstLoad ? await fallbackSymbol() : null;
@@ -339,6 +351,8 @@
         return;
       }
       $("chartMsg").textContent = e.message;
+    } finally {
+      clearTimeout(slow);
     }
   }
 
