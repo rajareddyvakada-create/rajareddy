@@ -4,17 +4,17 @@ rem that has MetaTrader 5 installed and logged into your XM account.
 setlocal
 cd /d "%~dp0"
 
-if not exist ".env" (
-  echo.
-  echo   .env is missing.
-  echo   Copy .env.example to .env in this folder, then fill in your MT5 login,
-  echo   password, server and an API key. Open .env.example to see the format.
-  echo.
-  pause
-  exit /b 1
-)
-
 cd backend
+
+if not exist "..\.env" (
+  echo.
+  echo   First time here - running setup.
+  echo.
+  python setup.py
+  if errorlevel 9009 goto :nopython
+  if not exist "..\.env" goto :nosetup
+  echo.
+)
 
 if not exist ".venv" (
   echo   Setting up Python for the first time. This takes a minute...
@@ -41,6 +41,15 @@ echo.
 python -m uvicorn server:app --host 0.0.0.0 --port 8000
 pause
 exit /b 0
+
+:nosetup
+echo.
+echo   Setup did not finish, so there is no .env file yet.
+echo   Run this file again and answer the questions, or create .env by hand
+echo   from .env.example.
+echo.
+pause
+exit /b 1
 
 :nopython
 echo.

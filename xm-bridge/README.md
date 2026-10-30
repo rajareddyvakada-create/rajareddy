@@ -41,7 +41,11 @@ the **Algo Trading** button in the toolbar is green. Without this every order co
 
 ## 4. Fill in `.env`
 
-Copy `.env.example` to `.env` (in the `xm-bridge` folder) and edit it:
+**Easiest:** double-click **`start.bat`**. The first time, it runs a short setup that finds your MT5
+terminal, asks for the account number, password and server, generates the API key and writes `.env`
+for you. Your password is typed on the PC and saved only in that file.
+
+Or write it by hand: copy `.env.example` to `.env` (in the `xm-bridge` folder) and edit it:
 
 ```ini
 MT5_PATH=C:\Program Files\XM Global MT5\terminal64.exe
