@@ -398,6 +398,12 @@ dialog{background:#131C31;border-color:rgba(0,229,255,.18)}
   <div class="sheet-head"><h2 id="dataTitle">Chart data</h2><button type="button" class="icon-sm" data-close aria-label="Close">×</button></div>
   <div class="sheet-body">
     <p class="hint" style="margin:0 0 10px">The chart shows <b>your XM account (MT5 terminal)</b>, signed in once and kept signed in. Sign in with your MT5 account number, password and server (for example XMGlobal-MT5, in your XM welcome email) and tick Save password.<br>The market you pick below is what the <b>AI agent</b>, the <b>Ox Alpha bot</b> and the BUY / SELL alerts watch in the background.</p>
+    <label class="field" style="margin-bottom:8px"><span>My PC bridge address</span><input type="text" id="bridgeUrl" placeholder="192.168.1.20:8000" autocomplete="off" spellcheck="false" inputmode="url"></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" class="primary tv-btn" id="bridgeOpen" style="flex:1">🖥 Use my PC bridge</button>
+      <button type="button" class="tv-btn" id="bridgeOff" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--line)">Back to MT5 terminal</button>
+    </div>
+    <p class="hint" style="margin:6px 0 12px">The bridge is the window you start on the PC with <b>start.bat</b>. It prints the address to type here. Both must be on the same WiFi, and the PC must stay on. This gives XM's own live prices, your indicators and one-tap orders.</p>
     <div hidden>
     <button type="button" class="primary tv-btn" id="tvOpen">⚡ Live chart on TradingView (your account)</button>
     <button type="button" class="primary tv-btn" id="xmOpen" style="margin-top:8px">📈 My XM account (MT5 web terminal)</button>

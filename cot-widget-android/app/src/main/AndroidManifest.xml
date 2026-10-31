@@ -14,7 +14,8 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.COTWidget"
-        android:usesCleartextTraffic="false">
+        android:networkSecurityConfig="@xml/network_security"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"

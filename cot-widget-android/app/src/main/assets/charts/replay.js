@@ -760,6 +760,13 @@
   $('tvOpen').addEventListener('click',()=>{ $('dataDlg').close(); setFeed('tv'); setTvMode(true); });
   $('xmOpen').addEventListener('click',()=>{ $('dataDlg').close(); setFeed('xm'); setTvMode(true); });
   $('octaOpen').addEventListener('click',()=>{ $('dataDlg').close(); setFeed('octa'); setTvMode(true); });
+  $('bridgeUrl').value=loadJSON('bridge-url','');
+  $('bridgeOpen').addEventListener('click',()=>{
+    const v=$('bridgeUrl').value.trim();
+    if(!v){ flash('Type the address the PC window prints, for example 192.168.1.20:8000'); return; }
+    saveJSON('bridge-url',v); $('dataDlg').close(); setFeed('bridge'); tvSym=''; setTvMode(true);
+  });
+  $('bridgeOff').addEventListener('click',()=>{ $('dataDlg').close(); setFeed('xm'); tvSym=''; setTvMode(true); });
 
   /* ---------- TradingView in the chart area ----------
      In the app, the user's own TradingView chart (their login, indicators, symbol search) is laid
@@ -772,13 +779,22 @@
   const nativeTv=()=>!!(window.AppBridge && window.AppBridge.tvShow);
   function tvSymbol(){ const src=loadJSON('bar-replay-source',{}); return TV_SYMBOL[src.symbol]||(src.type==='binance'?'BINANCE:'+src.symbol:'OANDA:XAUUSD'); }
   // Which live chart the overlay shows: the user's TradingView, or their XM account in the MT5 web terminal.
-  let feed=loadJSON('live-feed','tv');
+  let feed=loadJSON('live-feed','xm');   // the MT5 terminal unless the user picked something else
   // Broker pages open as they are, with the user's own login (kept per broker by the app).
   const BROKER_URL={ xm:'https://web.metatrader.app/terminal?mode=connect&lang=en', octa:'https://my.octabroker.com/login/?back=%2F' };
-  const FEED_LABEL={ tv:'TV', xm:'XM', octa:'OCTA' };
-  function setFeed(f){ feed=BROKER_URL[f]?f:'tv'; saveJSON('live-feed',feed); $('tvBtn').textContent=FEED_LABEL[feed]; tvSym=''; }
+  const FEED_LABEL={ tv:'TV', xm:'XM', octa:'OCTA', bridge:'PC' };
+  // The bridge is the user's own machine, so its address is theirs to set.
+  function bridgeUrl(){
+    const raw=String(loadJSON('bridge-url','')||'').trim();
+    if(!raw) return '';
+    return /^https?:\/\//i.test(raw) ? raw : 'http://'+raw;
+  }
+  function setFeed(f){
+    feed=(f==='bridge' && bridgeUrl()) || BROKER_URL[f] ? f : 'tv';
+    saveJSON('live-feed',feed); $('tvBtn').textContent=FEED_LABEL[feed]||'TV'; tvSym='';
+  }
   setFeed(feed);
-  function tvUrl(){ if(BROKER_URL[feed]) return BROKER_URL[feed]; return 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent(tvSymbol())+'&interval='+(TV_INTERVAL[tf]||'5'); }
+  function tvUrl(){ if(feed==='bridge') return bridgeUrl(); if(BROKER_URL[feed]) return BROKER_URL[feed]; return 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent(tvSymbol())+'&interval='+(TV_INTERVAL[tf]||'5'); }
   function tvPost(action){
     const r=document.querySelector('.chart-wrap').getBoundingClientRect();
     try{ window.parent.postMessage({type:'tv',action,rect:{x:r.left,y:r.top,w:r.width,h:r.height},url:tvUrl()},'*'); }catch(e){}
@@ -788,11 +804,11 @@
     if(nativeTv()){ tvPost(tvMode && !open ? 'show' : 'hide'); return; }
     let fr=document.querySelector('.tv-frame');
     if(!tvMode){ if(fr) fr.remove(); return; }
-    const sym=BROKER_URL[feed]?feed:tvSymbol();
+    const sym=feed==='bridge'||BROKER_URL[feed]?feed:tvSymbol();
     if(!fr || sym!==tvSym){
       if(fr) fr.remove();
       fr=document.createElement('iframe'); fr.className='tv-frame'; fr.title=feed==='tv'?'TradingView chart':FEED_LABEL[feed]+' chart';
-      fr.src=BROKER_URL[feed]||'https://s.tradingview.com/widgetembed/?symbol='+encodeURIComponent(sym)+'&interval='+(TV_INTERVAL[tf]||'5')+'&theme=dark&style=1&timezone=exchange&allow_symbol_change=1&saveimage=0&toolbarbg=060913&locale=en';
+      fr.src=(feed==='bridge'?bridgeUrl():BROKER_URL[feed])||'https://s.tradingview.com/widgetembed/?symbol='+encodeURIComponent(sym)+'&interval='+(TV_INTERVAL[tf]||'5')+'&theme=dark&style=1&timezone=exchange&allow_symbol_change=1&saveimage=0&toolbarbg=060913&locale=en';
       document.querySelector('.chart-wrap').appendChild(fr);
     }
     tvSym=sym;
@@ -811,7 +827,7 @@
   // A native view sits above the page, so step aside while any sheet is open.
   for(const d of document.querySelectorAll('dialog')) new MutationObserver(()=>{ if(tvMode) tvSync(); }).observe(d,{attributes:true,attributeFilter:['open']});
   window.addEventListener('message',e=>{ if(e.source!==window.parent) return; const d=e.data||{}; if(d.type==='tvRefresh' && tvMode) tvSync(); });
-  setFeed('xm');
+  setFeed(feed);
   setTimeout(()=>setTvMode(true),300);
   $('liveBadge').addEventListener('click',()=>{
     if(idx<bars.length){ setPlaying(false); jumpTo(bars.length); showRecent(); save(); return; }

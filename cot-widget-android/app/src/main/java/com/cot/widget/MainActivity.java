@@ -132,7 +132,8 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
                     WebView chart = e.getValue();
                     if (chart.getVisibility() != View.VISIBLE || !chart.canGoBack() || chart.getUrl() == null) continue;
                     // Back inside the service's own pages, but never off its chart / terminal screen.
-                    String home = "tv".equals(e.getKey()) ? "/chart" : "xm".equals(e.getKey()) ? "/terminal" : null;
+                    String home = "tv".equals(e.getKey()) ? "/chart" : "xm".equals(e.getKey()) ? "/terminal"
+                    : "bridge".equals(e.getKey()) ? "/" : null;
                     if (home == null || !chart.getUrl().contains(home)) {
                         chart.goBack();
                         return;
@@ -220,13 +221,35 @@ public class MainActivity extends AppCompatActivity implements AppBridge.Host {
 
     /** Which service a chart URL belongs to, or null for anything else (never shown). */
     static String chartKind(String url) {
-        if (url == null || !url.startsWith("https://")) return null;
-        String host = Uri.parse(url).getHost();
-        if (host == null) return null;
-        if (host.equals("www.tradingview.com") || host.equals("tradingview.com")) return "tv";
-        if (host.equals("web.metatrader.app")) return "xm";
-        if (host.equals("my.octabroker.com")) return "octa";
+        if (url == null) return null;
+        Uri u = Uri.parse(url);
+        String host = u.getHost(), scheme = u.getScheme();
+        if (host == null || scheme == null) return null;
+        if ("https".equals(scheme)) {
+            if (host.equals("www.tradingview.com") || host.equals("tradingview.com")) return "tv";
+            if (host.equals("web.metatrader.app")) return "xm";
+            if (host.equals("my.octabroker.com")) return "octa";
+        }
+        // The user's own bridge, on their home network only. Nothing else may be loaded over http.
+        if (("http".equals(scheme) || "https".equals(scheme)) && isHomeNetwork(host)) return "bridge";
         return null;
+    }
+
+    /** Private addresses, as handed out by a home router, plus this device itself. */
+    static boolean isHomeNetwork(String host) {
+        if (host.equals("localhost") || host.startsWith("127.")) return true;
+        if (host.startsWith("192.168.") || host.startsWith("10.")) return true;
+        if (host.endsWith(".local")) return true;
+        if (host.startsWith("172.")) {
+            String[] parts = host.split("\\.");
+            try {
+                int second = Integer.parseInt(parts[1]);
+                return second >= 16 && second <= 31;
+            } catch (Exception ignored) {
+                return false;
+            }
+        }
+        return false;
     }
 
     /** Lays the user's live chart (TradingView, their XM account in the MT5 web terminal, or their Octa profile)
