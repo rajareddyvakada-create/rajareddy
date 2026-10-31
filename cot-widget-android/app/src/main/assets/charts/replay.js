@@ -751,6 +751,7 @@
     const cur=loadJSON('bar-replay-source',{});
     if(cur.type==='yahoo' && cur.symbol===d.ticker) return;
     showNotice('Loading '+(d.name||d.ticker)+'…','info');
+    setTvMode(false);   // the broker page would otherwise cover the chart that was just asked for
     try{ await loadSource({type:'yahoo',symbol:d.ticker,label:d.name||d.ticker,res:cur.type==='yahoo'&&cur.res?cur.res:'1m'}); restoreNotice(); }
     catch(err){ showNotice(err.message,'err'); }
   });
@@ -774,8 +775,11 @@
   const TV_INTERVAL={60:'1',300:'5',900:'15',1800:'30',3600:'60',14400:'240',86400:'D'};
   // In the app, TradingView is the chart the Charts tab opens with (live, with the user's own login);
   // tapping TV switches to the app's own chart, and that choice is remembered.
+  // First run opens on the broker page, in the app and in a browser alike (a browser gets the same
+  // page in an iframe), so the Charts tab looks the same everywhere. After that the user's own
+  // choice is what reopens.
   const tvSaved=loadJSON('tv-mode2',null);
-  let tvMode=tvSaved===null ? !!(window.AppBridge && window.AppBridge.tvShow) : !!tvSaved, tvSym='';
+  let tvMode=tvSaved===null ? true : !!tvSaved, tvSym='';
   const nativeTv=()=>!!(window.AppBridge && window.AppBridge.tvShow);
   function tvSymbol(){ const src=loadJSON('bar-replay-source',{}); return TV_SYMBOL[src.symbol]||(src.type==='binance'?'BINANCE:'+src.symbol:'OANDA:XAUUSD'); }
   // Which live chart the overlay shows: the user's TradingView, or their XM account in the MT5 web terminal.
@@ -791,7 +795,8 @@
   }
   function setFeed(f){
     feed=(f==='bridge' && bridgeUrl()) || BROKER_URL[f] ? f : 'tv';
-    saveJSON('live-feed',feed); $('tvBtn').textContent=FEED_LABEL[feed]||'TV'; tvSym='';
+    saveJSON('live-feed',feed); tvSym='';
+    if(typeof tvMode!=='undefined') $('tvBtn').textContent=tvMode?'CHART':(FEED_LABEL[feed]||'XM');
   }
   setFeed(feed);
   function tvUrl(){ if(feed==='bridge') return bridgeUrl(); if(BROKER_URL[feed]) return BROKER_URL[feed]; return 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent(tvSymbol())+'&interval='+(TV_INTERVAL[tf]||'5'); }
@@ -815,10 +820,14 @@
   }
   // The Charts tab shows only the user's XM MT5 terminal. The app's own chart keeps running underneath
   // (not shown) so the AI agent, the Ox Alpha bot and signal alerts keep working on the market picked above.
+  // true = the broker's own page covers the chart area; false = this app's chart, with its
+  // indicators, AI agent and bot. The button says which one a tap will bring up.
   function setTvMode(on){
-    tvMode=true; saveJSON('tv-mode2',tvMode);
+    tvMode=!!on; saveJSON('tv-mode2',tvMode);
     document.body.classList.toggle('tv-on',tvMode);
     $('tvBtn').setAttribute('aria-pressed',String(tvMode));
+    $('tvBtn').textContent=tvMode?'CHART':(FEED_LABEL[feed]||'XM');
+    $('tvBtn').setAttribute('aria-label',tvMode?'Show the app chart':'Show the '+(FEED_LABEL[feed]||'broker')+' page');
     tvSync();
   }
   $('tvBtn').addEventListener('click',()=>setTvMode(!tvMode));
@@ -827,8 +836,7 @@
   // A native view sits above the page, so step aside while any sheet is open.
   for(const d of document.querySelectorAll('dialog')) new MutationObserver(()=>{ if(tvMode) tvSync(); }).observe(d,{attributes:true,attributeFilter:['open']});
   window.addEventListener('message',e=>{ if(e.source!==window.parent) return; const d=e.data||{}; if(d.type==='tvRefresh' && tvMode) tvSync(); });
-  setFeed(feed);
-  setTimeout(()=>setTvMode(true),300);
+  setTimeout(()=>setTvMode(tvMode),300);   // whichever was showing last time
   $('liveBadge').addEventListener('click',()=>{
     if(idx<bars.length){ setPlaying(false); jumpTo(bars.length); showRecent(); save(); return; }
     if(/delay/.test($('liveBadge').textContent)) openTv();
@@ -960,7 +968,7 @@
     updateMarkers(); renderStats(); renderTrades();
   });
   for(const d of document.querySelectorAll('dialog')) d.addEventListener('click',e=>{ if(e.target===d) d.close(); });
-  window.appBack=()=>{ const d=document.querySelector('dialog[open]'); if(d){ d.close(); return true; } if(picking){ endPick(true); return true; } if(document.body.classList.contains('wide')){ $('rotateBtn').click(); return true; } return false; };
+  window.appBack=()=>{ const d=document.querySelector('dialog[open]'); if(d){ d.close(); return true; } if(picking){ endPick(true); return true; } if(document.body.classList.contains('wide')){ $('rotateBtn').click(); return true; } if(tvMode){ setTvMode(false); return true; } return false; };
   for(const b of document.querySelectorAll('[data-close]')) b.addEventListener('click',()=>b.closest('dialog').close());
 
   document.addEventListener('keydown',e=>{
