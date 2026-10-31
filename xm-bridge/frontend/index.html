@@ -125,6 +125,14 @@
   .ind-row:last-child{border-bottom:0}
   .ind-row .nm{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:600 13px var(--body)}
   .ind-row .swatch{width:9px; height:9px; border-radius:2px; flex:none}
+  .set-group{margin:0 0 12px; border:1px solid var(--line); border-radius:9px; overflow:hidden}
+  .set-group h3{margin:0; padding:7px 11px; background:var(--surface-2); font:600 10px var(--head); letter-spacing:.14em; text-transform:uppercase; color:var(--muted)}
+  .set-row{display:flex; gap:10px; align-items:center; padding:8px 11px; border-top:1px solid var(--line)}
+  .set-row label{flex:1; min-width:0; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .set-row input[type=number],.set-row input[type=text]{width:96px; background:var(--surface-2); border:1px solid var(--line); border-radius:7px; padding:6px 8px; font:600 13px var(--mono); margin:0}
+  .set-row input[type=checkbox]{width:17px; height:17px; accent-color:var(--accent)}
+  .set-row input[type=color]{width:34px; height:28px; padding:0; border:1px solid var(--line); border-radius:6px; background:none}
+  .set-empty{padding:10px 11px; color:var(--muted); font-size:12.5px}
   .ind-row .edit{width:auto; background:var(--surface-2); border:1px solid var(--line); border-radius:6px; padding:5px 9px; color:var(--muted); font:600 11px var(--head); letter-spacing:.06em; text-transform:uppercase}
   .ind-row input[type=checkbox]{width:17px; height:17px; accent-color:var(--accent)}
   #edCode{width:100%; min-height:40vh; background:#04070f; color:var(--text); border:1px solid var(--line); border-radius:9px; padding:10px;
@@ -196,6 +204,20 @@
     </div>
     <div class="row" style="margin-top:8px">
       <button type="button" class="minor" id="indClose">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="setDlg">
+  <div class="dlg">
+    <h2 id="setTitle">Settings</h2>
+    <div id="setBody"></div>
+    <div class="row">
+      <button type="button" class="minor" id="setReset">Reset</button>
+      <button type="button" id="setSave">Apply</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button type="button" class="minor" id="setClose">Close</button>
     </div>
   </div>
 </dialog>
@@ -767,8 +789,12 @@
     "//          ta.macd(src,12,26,9) -> {macd,signal,hist}   ta.bb(src,20,2) -> {middle,upper,lower}",
     "// Pasted Pine Script? Tap “Convert from Pine”.",
     "",
-    "const fast = ta.ema(bars.close, 9);",
-    "const slow = ta.ema(bars.close, 21);",
+    "// input(...) both declares a setting and returns its value: it appears in the Settings sheet.",
+    "const fastLen = input.int(9, \"Fast EMA\", { min: 1 });",
+    "const slowLen = input.int(21, \"Slow EMA\", { min: 1 });",
+    "",
+    "const fast = ta.ema(bars.close, fastLen);",
+    "const slow = ta.ema(bars.close, slowLen);",
     "",
     "return {",
     "  plots: { \"EMA 9\": fast, \"EMA 21\": slow },",
@@ -783,18 +809,19 @@
 // UT Bot gives the direction. After each flip it waits up to WAIT bars for the filters you
 // switched on to agree, then marks ONE buy or sell for that leg.
 
-// ---- settings -------------------------------------------------------------
-const KEY = 1.0;        // UT sensitivity: lower = more flips
-const ATRP = 10;        // UT ATR period
-const SWING = 24;       // structure swing length
-const CVDLEN = 21;      // CVD smoothing
-const WAIT = 20;        // bars to wait for the filters after a flip
-const USE_STRUCT = true;
-const USE_CVD = true;
-const USE_POC = true;
-const USE_UT2 = false;  // slow UT trend filter
-const KEY2 = 3.0, ATR2 = 30;
-const BIN_ATR = 0.5;    // volume-profile bucket size, in ATR
+// ---- settings: these appear in the Settings sheet, no need to edit the code ----
+const KEY = input(1.0, "UT key value (sensitivity)", { min: 0.1, step: 0.1 });
+const ATRP = input.int(10, "UT ATR period", { min: 1 });
+const SWING = input.int(24, "Structure swing length", { min: 2 });
+const CVDLEN = input.int(21, "CVD smoothing", { min: 2 });
+const WAIT = input.int(20, "Wait for filters (bars)", { min: 0 });
+const USE_STRUCT = input(true, "Structure filter");
+const USE_CVD = input(true, "CVD filter");
+const USE_POC = input(true, "POC side filter");
+const USE_UT2 = input(false, "Slow UT trend filter");
+const KEY2 = input(3.0, "Slow UT key", { min: 0.1, step: 0.1 });
+const ATR2 = input.int(30, "Slow UT ATR", { min: 1 });
+const BIN_ATR = input(0.5, "Volume bucket size (x ATR)", { min: 0.05, step: 0.05 });
 
 const n = bars.close.length;
 const atr14 = ta.atr(14);
@@ -934,14 +961,33 @@ return {
     }
     onmessage = function(e){
       const d = e.data, n = d.bars.close.length;
+      // input(default, "Name") both declares a setting and returns its current value, the way Pine does.
+      const decls = [], values = d.values || {};
+      function input(def, title, opts){
+        opts = opts || {};
+        const key = String(title == null ? "Input " + (decls.length + 1) : title);
+        const type = typeof def === 'boolean' ? 'bool' : typeof def === 'number' ? 'number' : 'text';
+        decls.push({ key: key, def: def, type: type, min: opts.min, max: opts.max, step: opts.step, int: !!opts.int });
+        let v = Object.prototype.hasOwnProperty.call(values, key) ? values[key] : def;
+        if(type === 'number'){
+          v = Number(v);
+          if(!isFinite(v)) v = def;
+          if(opts.int) v = Math.round(v);
+          if(opts.min != null) v = Math.max(opts.min, v);
+          if(opts.max != null) v = Math.min(opts.max, v);
+        } else if(type === 'bool') v = !!v;
+        return v;
+      }
+      input.int = function(def, title, opts){ return input(def, title, Object.assign({}, opts, { int: true })); };
+      input.float = input; input.bool = input; input.string = input;
       try {
-        const out = (new Function('bars', 'ta', '"use strict";' + d.code))(d.bars, makeTa(d.bars)) || {};
+        const out = (new Function('bars', 'ta', 'input', '"use strict";' + d.code))(d.bars, makeTa(d.bars), input) || {};
         const flags = a => Array.isArray(a) ? Array.from({length:n}, (_, i) => !!a[i]) : new Array(n).fill(false);
         const nums = a => Array.isArray(a) ? Array.from({length:n}, (_, i) => (typeof a[i] === 'number' && isFinite(a[i]) ? a[i] : null)) : null;
         const plots = {};
         if(out.plots && typeof out.plots === 'object')
           for(const k of Object.keys(out.plots).slice(0, 6)){ const v = nums(out.plots[k]); if(v) plots[String(k).slice(0, 40)] = v; }
-        postMessage({ id: d.id, out: { plots: plots, buy: flags(out.buy), sell: flags(out.sell) } });
+        postMessage({ id: d.id, out: { plots: plots, buy: flags(out.buy), sell: flags(out.sell), inputs: decls } });
       } catch(err){ postMessage({ id: d.id, error: String((err && err.message) || err) }); }
     };`;
 
@@ -960,7 +1006,7 @@ return {
     };
     return worker;
   }
-  function runScript(code, candles) {
+  function runScript(code, candles, values) {
     return new Promise(done => {
       let w;
       try { w = getWorker(); } catch (e) { done({ error: "This browser blocks Web Workers, so scripts cannot run." }); return; }
@@ -974,7 +1020,7 @@ return {
         done({ error: "Stopped: the script ran for more than 4 seconds." });
       }, 4000);
       pending.set(id, { done, timer });
-      w.postMessage({ id, code, bars });
+      w.postMessage({ id, code, bars, values: values || {} });
     });
   }
 
@@ -1006,7 +1052,7 @@ return {
       for (let k = 0; k < on.length; k++) {
         const sc = on[k];
         let res;
-        try { res = await runScript(sc.code, state.raw); } catch (e) { res = { error: String(e && e.message || e) }; }
+        try { res = await runScript(sc.code, state.raw, sc.values); } catch (e) { res = { error: String(e && e.message || e) }; }
         if (mine !== indRun) return;             // the candles changed under us
         if (res.error) {
           clearIndicator(sc.id);
@@ -1015,7 +1061,14 @@ return {
           continue;
         }
         sc.error = null;
-        const plots = Object.keys(res.out.plots);
+        sc.inputs = res.out.inputs || [];        // what the settings sheet offers
+        sc.plotNames = Object.keys(res.out.plots);
+        const hidden = sc.hide || {};
+        const plots = sc.plotNames.filter(nm => !hidden[nm]);
+        for (const nm of sc.plotNames) if (hidden[nm]) {
+          const key = sc.id + "|" + nm;
+          if (indSeries[key]) { chart.removeSeries(indSeries[key]); delete indSeries[key]; }
+        }
         for (const key of Object.keys(indSeries)) {
           if (key.split("|")[0] === sc.id && !plots.includes(key.split("|").slice(1).join("|"))) {
             chart.removeSeries(indSeries[key]); delete indSeries[key];
@@ -1025,7 +1078,7 @@ return {
           plots.forEach((name, j) => {
             const key = sc.id + "|" + name;
             if (!indSeries[key]) indSeries[key] = chart.addLineSeries({ lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-            indSeries[key].applyOptions({ color: IND_COLORS[(k + j) % IND_COLORS.length] });
+            indSeries[key].applyOptions({ color: (sc.colors && sc.colors[name]) || IND_COLORS[(k + j) % IND_COLORS.length] });
             indSeries[key].setData(state.raw.map((c, i) => res.out.plots[name][i] == null ? { time: toChart(c.time) } : { time: toChart(c.time), value: res.out.plots[name][i] }));
           });
         } catch (e) {                            // a bad line must not take the candles with it
@@ -1034,7 +1087,7 @@ return {
           toast("Indicator “" + sc.name + "” could not be drawn: " + sc.error, "err");
           continue;
         }
-        state.raw.forEach((c, i) => {
+        if (!sc.marksOff) state.raw.forEach((c, i) => {
           if (res.out.buy[i]) marks.push({ time: toChart(c.time), position: "belowBar", color: "#00E5FF", shape: "arrowUp", text: "BUY" });
           else if (res.out.sell[i]) marks.push({ time: toChart(c.time), position: "aboveBar", color: "#FF0055", shape: "arrowDown", text: "SELL" });
         });
@@ -1066,25 +1119,42 @@ return {
       const c = inner[i];
       if (quote) { if (c === quote && inner[i - 1] !== "\\") quote = null; continue; }
       if (c === '"' || c === "'") quote = c;
-      else if (c === "(" || c === "[") depth++;
-      else if (c === ")" || c === "]") depth--;
+      else if (c === "(" || c === "[" || c === "{") depth++;
+      else if (c === ")" || c === "]" || c === "}") depth--;
       else if (c === "," && !depth) { out.push(inner.slice(start, i).trim()); start = i + 1; }
     }
     out.push(inner.slice(start).trim());
     return out.filter(x => x !== "");
   }
-  // input.int(14, "Length") and friends are a value with a label: keep the value.
+  // input.int(14, "Length", minval=1) becomes input(14, "Length", { min: 1 }) — a real setting
+  // in the Settings sheet, the same as if it had been written by hand.
   function reduceInputs(line) {
-    for (let guard = 0; guard < 20; guard++) {
-      const m = /\binput(?:\.\w+)?\s*\(/.exec(line);
+    let from = 0;
+    for (let guard = 0; guard < 30; guard++) {
+      const re = /\binput(?:\.(\w+))?\s*\(/g;
+      re.lastIndex = from;
+      const m = re.exec(line);
       if (!m) break;
       const open = m.index + m[0].length - 1, close = matchParen(line, open);
       if (close < 0) break;
       const args = splitArgs(line.slice(open + 1, close));
-      let value = args[0] || "0";
-      const named = args.find(a => /^defval\s*=/.test(a));
-      if (named) value = named.split("=").slice(1).join("=").trim();
-      line = line.slice(0, m.index) + "(" + value + ")" + line.slice(close + 1);
+      const named = {}, plain = [];
+      for (const a of args) {
+        const nm = /^([A-Za-z_$][\w$]*)\s*=\s*([\s\S]*)$/.exec(a);
+        if (nm) named[nm[1]] = nm[2].trim(); else plain.push(a);
+      }
+      const value = named.defval || plain[0] || "0";
+      let title = named.title || (plain.length > 1 ? plain[1] : null);
+      // string literals are swapped for placeholders before this runs, so accept those too
+      if (title && !/^["']/.test(title) && !/^\u0000\d+\u0000$/.test(title)) title = null;
+      const opts = [];
+      if (named.minval) opts.push("min: " + named.minval);
+      if (named.maxval) opts.push("max: " + named.maxval);
+      if (named.step) opts.push("step: " + named.step);
+      if (m[1] === "int") opts.push("int: true");
+      const call = "input(" + value + (title ? ", " + title : ", null") + (opts.length ? ", { " + opts.join(", ") + " }" : "") + ")";
+      line = line.slice(0, m.index) + call + line.slice(close + 1);
+      from = m.index + call.length;
     }
     return line;
   }
@@ -1094,7 +1164,7 @@ return {
   function pineExpr(src, needs) {
     const strings = [];
     let e = String(src).replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, m => { strings.push(m); return "\u0000" + (strings.length - 1) + "\u0000"; });
-    e = reduceInputs(e);
+    e = reduceInputs(e);   // after this the line may contain input(...), which is a plain value
     e = e.replace(/\bmath\./g, "Math.");
     e = e.replace(/\bna\b/g, "NaN").replace(/\bnz\s*\(/g, "ta.nz(");
     e = e.replace(/\b(hl2|hlc3|ohlc4|hlcc4)\b/g, m => { needs[m] = true; return "__" + m; });
@@ -1134,6 +1204,16 @@ return {
 
   function seriesExpr(src, pre, isSeries, tmp) {
     let e = hoistTa(String(src).trim(), pre, isSeries, tmp);
+    // Pine writes ta.highest(high, 24)[1] for "that series, one bar back". Once the call is its own
+    // series, the [1] becomes ta.prev on it; without this it would index a single number.
+    for (let guard = 0; guard < 30; guard++) {
+      const h = /(__s\d+)\s*\[\s*(\d+)\s*\]/.exec(e);
+      if (!h) break;
+      const id = "__s" + (tmp.n++);
+      pre.push("const " + id + " = ta.prev(" + h[1] + ", " + h[2] + ");");
+      isSeries.add(id);
+      e = e.slice(0, h.index) + id + e.slice(h.index + h[0].length);
+    }
     const used = [...isSeries].filter(n => new RegExp("(?:^|[^\\w.$])" + escapeRe(n) + "(?![\\w$])").test(e));
     const usesBars = BAR_RE.test(e);
     if (!used.length && !usesBars) return { code: e, series: false };
@@ -1153,7 +1233,8 @@ return {
 
     const strArg = a => { const m = /^\s*(?:title|text)\s*=\s*(.*)$/.exec(a); const v = (m ? m[1] : a).trim(); return /^["']/.test(v) ? v.slice(1, -1) : null; };
 
-    for (const raw of lines) {
+    for (let li = 0; li < lines.length; li++) {
+      const raw = lines[li];
       const indent = raw.search(/\S/);
       if (indent === -1) { body.push(""); continue; }
       if (skipIndent >= 0 && indent > skipIndent) { body.push("// " + raw.trim()); continue; }
@@ -1203,8 +1284,58 @@ return {
         skipIndent = indent;
         continue;
       }
-      if (/^(var|varip)\s/.test(line)) {
-        notes.push("“var” keeps a value between bars, which this editor cannot express. That line was left out.");
+      // var x = 0 followed by if / else-if / else that only assign to x: that is a value carried
+      // from bar to bar, which becomes a plain loop here. It is the commonest stateful pattern.
+      const varDecl = /^var(?:ip)?\s+(?:float|int|bool|string|color)?\s*([A-Za-z_$][\w$]*)\s*=\s*(.+)$/.exec(line);
+      if (varDecl) {
+        const vName = varDecl[1], vInit = pineExpr(varDecl[2], needs);
+        const branches = [];
+        let fallback = null, j = li + 1, sawElse = false;
+        while (j < lines.length) {
+          const t = lines[j].trim();
+          if (!t) { j++; continue; }
+          if (lines[j].search(/\S/) !== indent) break;
+          const mIf = /^(?:else\s+if|if)\s+(.+?)\s*$/.exec(t), mElse = /^else$/.test(t);
+          if (!mIf && !mElse) break;
+          let k = j + 1;
+          while (k < lines.length && !lines[k].trim()) k++;
+          const bodyLine = k < lines.length ? lines[k].trim() : "";
+          const bodyIndent = k < lines.length ? lines[k].search(/\S/) : -1;
+          const asg = new RegExp("^" + escapeRe(vName) + "\\s*:=\\s*(.+)$").exec(bodyLine);
+          const nextIsDeeper = k + 1 < lines.length && lines[k + 1].trim() && lines[k + 1].search(/\S/) > indent &&
+            !/^(?:else|else\s+if)\b/.test(lines[k + 1].trim());
+          if (bodyIndent <= indent || !asg || nextIsDeeper) break;   // more than one statement: leave it alone
+          if (mIf) branches.push({ cond: mIf[1], val: asg[1] }); else { fallback = asg[1]; sawElse = true; }
+          j = k + 1;
+          if (sawElse) break;
+        }
+        if (branches.length) {
+          needs.loop = true;
+          const parts = [];
+          branches.forEach((br, bi) => {
+            const c = conv(br.cond), v = conv(br.val);
+            const cn = "__b" + body.length + "c" + bi, vn = "__b" + body.length + "v" + bi;
+            body.push("const " + cn + " = " + c.code + ";");
+            body.push("const " + vn + " = " + v.code + ";");
+            parts.push({ c: cn + (c.series ? "[__i]" : ""), v: vn + (v.series ? "[__i]" : "") });
+          });
+          let fb = "__prev";
+          if (fallback != null) {
+            const f = conv(fallback), fn = "__b" + body.length + "f";
+            body.push("const " + fn + " = " + f.code + ";");
+            fb = fn + (f.series ? "[__i]" : "");
+          }
+          body.push("const " + vName + " = new Array(n).fill(" + vInit + ");");
+          body.push("for (let __i = 0; __i < n; __i++) {");
+          body.push("  const __prev = __i ? " + vName + "[__i - 1] : " + vInit + ";");
+          body.push("  " + vName + "[__i] = " + parts.map(x => x.c + " ? " + x.v + " : ").join("") + fb + ";");
+          body.push("}");
+          declared.add(vName);
+          isSeries.add(vName);
+          li = j - 1;
+          continue;
+        }
+        notes.push("“var " + vName + "” keeps a value between bars. Only the simple if / else form is converted, so this was left out.");
         body.push("// " + line);
         continue;
       }
@@ -1241,6 +1372,7 @@ return {
     if (needs.hlc3) head.push("const __hlc3 = bars.high.map((h, i) => (h + bars.low[i] + bars.close[i]) / 3);");
     if (needs.ohlc4) head.push("const __ohlc4 = bars.open.map((o, i) => (o + bars.high[i] + bars.low[i] + bars.close[i]) / 4);");
     if (needs.hlcc4) head.push("const __hlcc4 = bars.high.map((h, i) => (h + bars.low[i] + bars.close[i] * 2) / 4);");
+    if (needs.loop) head.unshift("const n = bars.close.length;");
     const anyNeeded = buys.length > 1 || sells.length > 1;
     if (anyNeeded) head.push("const __any = list => list[0].map((_, i) => list.some(a => !!a[i]));");
 
@@ -1268,6 +1400,7 @@ return {
       '<div class="ind-row" data-id="' + escHtml(sc.id) + '">' +
         '<span class="swatch" style="background:' + IND_COLORS[i % IND_COLORS.length] + '"></span>' +
         '<span class="nm">' + escHtml(sc.name) + (sc.error ? ' <span style="color:var(--down)">· ' + escHtml(sc.error.slice(0, 60)) + '</span>' : "") + "</span>" +
+        '<button type="button" class="edit" data-set="' + escHtml(sc.id) + '">Settings</button>' +
         '<button type="button" class="edit" data-edit="' + escHtml(sc.id) + '">Edit</button>' +
         '<input type="checkbox" ' + (sc.on ? "checked" : "") + ' data-on="' + escHtml(sc.id) + '" aria-label="Show ' + escHtml(sc.name) + '">' +
       "</div>").join("");
@@ -1305,8 +1438,80 @@ return {
   });
   $("indList").addEventListener("click", e => {
     const b = e.target.closest("[data-edit]");
-    if (b) openEditor(b.dataset.edit);
+    if (b) { openEditor(b.dataset.edit); return; }
+    const g = e.target.closest("[data-set]");
+    if (g) openSettings(g.dataset.set);
   });
+
+  /* ---------------------------------------------------------------- settings per indicator */
+  let settingId = null;
+  async function openSettings(id) {
+    const sc = indicators.find(x => x.id === id);
+    if (!sc) return;
+    settingId = id;
+    $("setTitle").textContent = sc.name;
+    $("setBody").innerHTML = '<p class="set-empty">Reading the script…</p>';
+    $("setDlg").showModal();
+    // The script declares its own settings, so it has to run once before they can be shown.
+    if ((!sc.inputs || !sc.plotNames) && state.raw.length) {
+      const res = await runScript(sc.code, state.raw, sc.values);
+      if (res.error) { $("setBody").innerHTML = '<p class="set-empty">This script stopped with: ' + escHtml(res.error) + "</p>"; return; }
+      sc.inputs = res.out.inputs || [];
+      sc.plotNames = Object.keys(res.out.plots);
+    }
+    renderSettings(sc);
+  }
+
+  function renderSettings(sc) {
+    const vals = sc.values || {}, hide = sc.hide || {}, colors = sc.colors || {};
+    let h = "";
+    if (sc.inputs && sc.inputs.length) {
+      h += '<div class="set-group"><h3>Values</h3>' + sc.inputs.map(inp => {
+        const v = Object.prototype.hasOwnProperty.call(vals, inp.key) ? vals[inp.key] : inp.def;
+        if (inp.type === "bool") return '<div class="set-row"><label for="v_' + escHtml(inp.key) + '">' + escHtml(inp.key) + '</label><input type="checkbox" id="v_' + escHtml(inp.key) + '" data-val="' + escHtml(inp.key) + '"' + (v ? " checked" : "") + "></div>";
+        if (inp.type === "number") return '<div class="set-row"><label for="v_' + escHtml(inp.key) + '">' + escHtml(inp.key) + '</label><input type="number" id="v_' + escHtml(inp.key) + '" data-val="' + escHtml(inp.key) + '" value="' + escHtml(v) + '"' +
+          (inp.min != null ? ' min="' + inp.min + '"' : "") + (inp.max != null ? ' max="' + inp.max + '"' : "") + ' step="' + (inp.step != null ? inp.step : inp.int ? 1 : "any") + '" inputmode="decimal"></div>';
+        return '<div class="set-row"><label for="v_' + escHtml(inp.key) + '">' + escHtml(inp.key) + '</label><input type="text" id="v_' + escHtml(inp.key) + '" data-val="' + escHtml(inp.key) + '" value="' + escHtml(v) + '"></div>';
+      }).join("") + "</div>";
+    }
+    if (sc.plotNames && sc.plotNames.length) {
+      h += '<div class="set-group"><h3>Lines</h3>' + sc.plotNames.map((nm, j) =>
+        '<div class="set-row"><label for="s_' + escHtml(nm) + '">' + escHtml(nm) + '</label>' +
+        '<input type="color" id="c_' + escHtml(nm) + '" data-color="' + escHtml(nm) + '" value="' + (colors[nm] || IND_COLORS[j % IND_COLORS.length]) + '" aria-label="Colour of ' + escHtml(nm) + '">' +
+        '<input type="checkbox" id="s_' + escHtml(nm) + '" data-show="' + escHtml(nm) + '"' + (hide[nm] ? "" : " checked") + "></div>").join("") + "</div>";
+    }
+    h += '<div class="set-group"><h3>Marks</h3><div class="set-row"><label for="s_marks">Show BUY / SELL arrows</label>' +
+      '<input type="checkbox" id="s_marks"' + (sc.marksOff ? "" : " checked") + "></div></div>";
+    if (!sc.inputs || !sc.inputs.length) h = '<p class="set-empty">This script declares no values. Add them with input(), for example: <b>const len = input.int(14, "Length");</b> — then they appear here.</p>' + h;
+    $("setBody").innerHTML = h;
+  }
+
+  $("setSave").addEventListener("click", () => {
+    const sc = indicators.find(x => x.id === settingId);
+    if (!sc) return;
+    sc.values = {};
+    for (const el of $("setBody").querySelectorAll("[data-val]")) {
+      sc.values[el.dataset.val] = el.type === "checkbox" ? el.checked : el.type === "number" ? Number(el.value) : el.value;
+    }
+    sc.hide = {};
+    for (const el of $("setBody").querySelectorAll("[data-show]")) if (!el.checked) sc.hide[el.dataset.show] = true;
+    sc.colors = {};
+    for (const el of $("setBody").querySelectorAll("[data-color]")) sc.colors[el.dataset.color] = el.value;
+    sc.marksOff = !$("s_marks").checked;
+    if (!saveInd(indicators)) { toast("Couldn't save the settings: storage is full or blocked.", "err"); return; }
+    $("setDlg").close();
+    runIndicators();
+  });
+
+  $("setReset").addEventListener("click", () => {
+    const sc = indicators.find(x => x.id === settingId);
+    if (!sc) return;
+    delete sc.values; delete sc.hide; delete sc.colors; delete sc.marksOff;
+    saveInd(indicators);
+    renderSettings(sc);
+    runIndicators();
+  });
+  $("setClose").addEventListener("click", () => $("setDlg").close());
   $("indList").addEventListener("change", e => {
     const c = e.target.closest("[data-on]");
     if (!c) return;
@@ -1320,15 +1525,17 @@ return {
   $("edCheck").addEventListener("click", async () => {
     if (!state.raw.length) { edMsg("Load a chart first.", "err"); return; }
     edMsg("Running on " + state.raw.length + " candles…", "");
-    const res = await runScript($("edCode").value, state.raw);
+    const current = indicators.find(x => x.id === editingId);
+    const res = await runScript($("edCode").value, state.raw, current && current.values);
     if (res.error) {
       edMsg(res.error + (looksLikePine($("edCode").value) ? "\n\nThis looks like Pine Script, which only runs on TradingView. Tap “Convert from Pine” to turn it into the form this editor runs." : ""), "err");
       return;
     }
     const buys = res.out.buy.filter(Boolean).length, sells = res.out.sell.filter(Boolean).length;
-    const plots = Object.keys(res.out.plots);
+    const plots = Object.keys(res.out.plots), ins = res.out.inputs || [];
     edMsg("Works. " + plots.length + " line" + (plots.length === 1 ? "" : "s") +
-      (plots.length ? " (" + plots.join(", ") + ")" : "") + ", " + buys + " BUY and " + sells + " SELL marks on this chart.", "ok");
+      (plots.length ? " (" + plots.join(", ") + ")" : "") + ", " + buys + " BUY and " + sells + " SELL marks on this chart." +
+      (ins.length ? "\n" + ins.length + " setting" + (ins.length === 1 ? "" : "s") + " for the Settings sheet: " + ins.map(i => i.key).join(", ") + "." : ""), "ok");
   });
 
   $("edSave").addEventListener("click", async () => {
@@ -1343,7 +1550,7 @@ return {
       }
     }
     const found = indicators.find(x => x.id === editingId);
-    if (found) { found.name = name; found.code = code; found.error = null; }
+    if (found) { found.name = name; found.code = code; found.error = null; found.inputs = null; found.plotNames = null; }
     else indicators.push({ id: Date.now().toString(36), name, code, on: true });
     if (!saveInd(indicators)) { edMsg("Couldn't save: this browser's storage is full or blocked.", "err"); return; }
     $("edDlg").close();

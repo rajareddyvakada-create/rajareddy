@@ -159,6 +159,25 @@ anything that draws on TradingView itself (`bgcolor`, `label`, `line`, `box`, `t
 left in as comments and listed above the editor, so you always see what was dropped. **Read the
 converted script before trading on it.**
 
+#### Settings
+
+Each indicator has a **Settings** button in the list. It holds:
+
+* **Values** the script declared with `input(...)` — lengths, multiples, filters on and off.
+* **Lines** — a colour and a show/hide switch for every line the script draws.
+* **Marks** — show or hide its BUY / SELL arrows.
+
+Declare a value and it appears there, no code editing afterwards:
+
+```js
+const len = input.int(14, "Length", { min: 1 });
+const useFilter = input(true, "Use the filter");
+const mult = input(1.5, "ATR multiple", { min: 0.1, step: 0.1 });
+```
+
+`input.int` rounds to whole numbers; `min`, `max` and `step` bound the field. A converted Pine script
+gets this for free: its `input.int(14, "Length", minval=1)` becomes exactly the line above.
+
 **Check** runs the script on the candles on screen and reports what it drew. A script that throws
 is never saved. Scripts run in a Web Worker with no access to the page, your API key or the bridge,
 and one that runs for more than four seconds is stopped. They are stored in the browser on that
