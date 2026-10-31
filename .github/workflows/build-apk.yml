@@ -1,0 +1,95 @@
+name: Build COT Widget APK
+
+on:
+  push:
+    paths:
+      - 'cot-widget-android/**'
+      - 'scripts/**'
+      - 'cot-sentiment-widget.html'
+      - 'tests/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cot-widget-android
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refresh embedded COT data snapshot
+        working-directory: .
+        continue-on-error: true
+        run: python3 scripts/update_cot_snapshot.py
+
+      - name: Build app page
+        working-directory: .
+        run: python3 scripts/build_android_asset.py
+
+      - name: Unit tests (calculations)
+        working-directory: .
+        run: node --test tests/*.test.js
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Install required SDK packages
+        run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Create local.properties
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+      - name: Generate Gradle wrapper
+        run: |
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.2
+          fi
+          chmod +x gradlew
+
+      - name: Unit tests (Java scoring)
+        run: ./gradlew testDebugUnitTest
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Name APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk COT-Sentiment-Widget.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: COT-Sentiment-Widget
+          path: cot-widget-android/COT-Sentiment-Widget.apk
+          retention-days: 90
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle)"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" COT-Sentiment-Widget.apk --repo "$GITHUB_REPOSITORY" --clobber
+            exit 0
+          fi
+          gh release create "$TAG" COT-Sentiment-Widget.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "COT Sentiment Widget $TAG" \
+            --latest \
+            --notes "Android app for the COT Sentiment Widget: weekly CFTC positioning plus 20-week price range, scored into a bullish/bearish verdict for Gold, Silver, Crude Oil, S&P 500, Nasdaq, Copper, Nat Gas and Bitcoin.
+
+          Install: download COT-Sentiment-Widget.apk on your Android phone, open it, and allow installs from unknown apps if asked. It installs over the previous version and keeps your settings and trades.
+
+          Permanent link to the newest version: https://github.com/$GITHUB_REPOSITORY/releases/latest/download/COT-Sentiment-Widget.apk"
