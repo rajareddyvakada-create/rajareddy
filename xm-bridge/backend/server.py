@@ -35,6 +35,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
+import updater
+
 # ----------------------------------------------------------------------------- configuration
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -45,6 +47,8 @@ MT5_LOGIN = os.getenv("MT5_LOGIN", "").strip()
 MT5_PASSWORD = os.getenv("MT5_PASSWORD", "").strip()
 MT5_SERVER = os.getenv("MT5_SERVER", "").strip()
 API_KEY = os.getenv("API_KEY", "").strip()
+# Where the web page updates itself from. Blank switches updating off entirely.
+UPDATE_URL = os.getenv("UPDATE_URL", updater.DEFAULT_URL).strip()
 
 MAGIC = int(os.getenv("MAGIC", "770077"))          # marks orders this app sent
 DEVIATION = int(os.getenv("DEVIATION", "20"))      # max slippage in points
@@ -60,6 +64,8 @@ TIMEFRAMES: dict[str, int] = {
     "M30": mt5.TIMEFRAME_M30, "H1": mt5.TIMEFRAME_H1, "H4": mt5.TIMEFRAME_H4,
     "D1": mt5.TIMEFRAME_D1, "W1": mt5.TIMEFRAME_W1, "MN1": mt5.TIMEFRAME_MN1,
 }
+
+FRONTEND = BASE_DIR / "frontend"
 
 # ----------------------------------------------------------------------------- MT5 plumbing
 
@@ -342,6 +348,31 @@ def health() -> dict[str, Any]:
     }
 
 
+@app.get("/api/update", dependencies=[Depends(require_key)])
+def update_check() -> dict[str, Any]:
+    """Is the page online different from the one being served?"""
+    if not UPDATE_URL:
+        return {"enabled": False, "reason": "UPDATE_URL is empty in .env, so updating is switched off."}
+    try:
+        return dict(enabled=True, **updater.status(FRONTEND / "index.html", UPDATE_URL))
+    except updater.UpdateError as e:
+        return {"enabled": True, "error": str(e)}
+
+
+@app.post("/api/update", dependencies=[Depends(require_key)])
+def update_apply() -> dict[str, Any]:
+    """Replace the page with the one online. The old page is kept as index.html.bak."""
+    if not UPDATE_URL:
+        raise HTTPException(400, "UPDATE_URL is empty in .env, so updating is switched off.")
+    try:
+        res = updater.apply(FRONTEND / "index.html", UPDATE_URL)
+    except updater.UpdateError as e:
+        raise HTTPException(502, str(e))
+    if res.get("changed"):
+        log.info("Page updated to %s (the old one is index.html.bak)", res.get("current"))
+    return res
+
+
 @app.get("/api/account", dependencies=[Depends(require_key)])
 def account() -> dict[str, Any]:
     acc = mt5_call(mt5.account_info)
@@ -591,11 +622,11 @@ async def ws_ticks(ws: WebSocket, symbol: str = Query(default="EURUSD"), key: st
 
 # ----------------------------------------------------------------------------- frontend
 
-FRONTEND = BASE_DIR / "frontend"
 if FRONTEND.is_dir():
     @app.get("/")
     def index() -> FileResponse:
-        return FileResponse(FRONTEND / "index.html")
+        # no-store, so an updated page is never hidden behind the browser's cache
+        return FileResponse(FRONTEND / "index.html", headers={"Cache-Control": "no-store"})
 
     app.mount("/app", StaticFiles(directory=FRONTEND, html=True), name="frontend")
 

@@ -49,6 +49,7 @@
   .bar input[type=text]{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:6px 9px; min-width:0; width:104px; font:600 13px var(--mono)}
   .bar button.ghost{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:6px 10px; font:600 12px var(--head); letter-spacing:.06em; text-transform:uppercase; color:var(--muted)}
   .bar button.ghost:hover{color:var(--text); border-color:var(--line-lit)}
+  .bar button.ghost.ready{color:var(--amber); border-color:var(--amber)}
   .tfs{display:flex; gap:2px; margin-left:auto}
   .tfs button{background:transparent; border:1px solid transparent; border-radius:7px; padding:5px 9px; color:var(--muted); font:700 12px var(--mono)}
   .tfs button[aria-pressed=true]{background:var(--surface); border-color:var(--line-lit); color:var(--accent)}
@@ -162,6 +163,7 @@
   <button class="ghost" id="pickSymbol" aria-label="Browse symbols">Browse</button>
   <button class="ghost" id="applySymbol">Apply</button>
   <button class="ghost" id="indBtn">Indicators</button>
+  <button class="ghost" id="updBtn" title="Fetch the newest version of this page">Update</button>
   <div class="tfs" id="tfs" role="group" aria-label="Timeframe"></div>
 </div>
 
@@ -762,6 +764,46 @@
     if (b) closeTicket(b.dataset.close, b);
   });
 
+  /* ---------------------------------------------------------------- updating the page
+     The bridge fetches the newest page from the project's public repository and writes it beside
+     itself, keeping the old one as index.html.bak. Nothing here downloads anything: the server does,
+     from one address fixed in its own code, so a page cannot talk it into fetching something else. */
+  async function checkUpdate(loud) {
+    try {
+      const d = await api("/api/update");
+      if (d.enabled === false) { if (loud) toast(d.reason, ""); return; }
+      if (d.error) { if (loud) toast("Couldn't check for an update: " + d.error, "err"); return; }
+      if (d.newer) {
+        $("updBtn").classList.add("ready");
+        $("updBtn").textContent = "Update ready";
+        if (loud) applyUpdate(); else toast("A newer version of this page is ready.", "", "Tap Update in the toolbar.");
+      } else if (loud) {
+        toast("This is already the newest version.", "ok");
+      }
+    } catch (e) {
+      if (loud) toast("Couldn't check for an update: " + e.message, "err");
+    }
+  }
+
+  async function applyUpdate() {
+    $("updBtn").disabled = true;
+    $("updBtn").textContent = "Updating…";
+    try {
+      const d = await api("/api/update", { method: "POST" });
+      if (!d.changed) { toast("This is already the newest version.", "ok"); return; }
+      toast("Updated. Reloading…", "ok");
+      setTimeout(() => location.reload(), 700);
+    } catch (e) {
+      toast("Update failed: " + e.message, "err");
+    } finally {
+      $("updBtn").disabled = false;
+      $("updBtn").textContent = "Update";
+      $("updBtn").classList.remove("ready");
+    }
+  }
+
+  $("updBtn").addEventListener("click", () => checkUpdate(true));
+
   function askForKey() {
     if ($("keyDlg").open) return;
     $("keyInput").value = state.key;
@@ -806,10 +848,11 @@
   /* The Pine "Ox Alpha UT Pro" ported by hand. Its heart is a bar-by-bar recurrence inside a
      custom function, which no line-by-line Pine conversion can express — but a plain loop can. */
   const OX_TEMPLATE = `// Ox Alpha UT Pro — ported from the Pine original.
-// UT Bot gives the direction. After each flip it waits up to WAIT bars for the filters you
-// switched on to agree, then marks ONE buy or sell for that leg.
+// UT Bot gives the direction, on its own timeframe. After each flip it waits up to WAIT bars for
+// the filters you switched on to agree, then marks ONE buy or sell for that leg.
 
 // ---- settings: these appear in the Settings sheet, no need to edit the code ----
+const UT_TF = input.int(30, "UT timeframe (minutes, 0 = chart)", { min: 0 });
 const KEY = input(1.0, "UT key value (sensitivity)", { min: 0.1, step: 0.1 });
 const ATRP = input.int(10, "UT ATR period", { min: 1 });
 const SWING = input.int(24, "Structure swing length", { min: 2 });
@@ -826,13 +869,34 @@ const BIN_ATR = input(0.5, "Volume bucket size (x ATR)", { min: 0.05, step: 0.05
 const n = bars.close.length;
 const atr14 = ta.atr(14);
 
-// ---- UT Bot: each bar's stop depends on the one before it ------------------
-function utBot(key, atrLen) {
-  const a = ta.atr(atrLen);
-  const stop = new Array(n).fill(NaN), pos = new Array(n).fill(0);
+// The chart's own timeframe, taken from the closest two candles so gaps cannot fool it.
+let step = Infinity;
+for (let i = 1; i < n; i++) {
+  const d = bars.time[i] - bars.time[i - 1];
+  if (d > 0 && d < step) step = d;
+}
+if (!isFinite(step)) step = 60;
+
+// ---- UT Bot, on any set of bars: each bar's stop depends on the one before it ----
+function atrOf(b, len) {
+  const out = new Array(b.length).fill(NaN);
+  let sum = 0, r = NaN;
+  for (let i = 0; i < b.length; i++) {
+    const tr = i ? Math.max(b[i].high - b[i].low, Math.abs(b[i].high - b[i - 1].close), Math.abs(b[i].low - b[i - 1].close))
+                 : b[i].high - b[i].low;
+    if (i < len) { sum += tr; if (i === len - 1) r = sum / len; }
+    else r = (tr + (len - 1) * r) / len;
+    out[i] = r;
+  }
+  return out;
+}
+
+function utBot(b, key, atrLen) {
+  const a = atrOf(b, atrLen);
+  const stop = new Array(b.length).fill(NaN), pos = new Array(b.length).fill(0);
   let last = NaN;
-  for (let i = 0; i < n; i++) {
-    const src = bars.close[i], prevSrc = i ? bars.close[i - 1] : src;
+  for (let i = 0; i < b.length; i++) {
+    const src = b[i].close, prevSrc = i ? b[i - 1].close : src;
     const nLoss = key * a[i];
     const p = isFinite(last) ? last : 0;          // Pine's nz(_stop[1])
     let s;
@@ -843,13 +907,60 @@ function utBot(key, atrLen) {
     pos[i] = prevSrc < p && src > p ? 1 : prevSrc > p && src < p ? -1 : (i ? pos[i - 1] : 0);
     if (isFinite(s)) last = s;
   }
-  return { stop, pos };
+  return { stop: stop, pos: pos };
 }
 
-const ut = utBot(KEY, ATRP);
-const slow = utBot(KEY2, ATR2);
+// Chart candles grouped into UT-timeframe candles, remembering which group each chart bar is in.
+function group(sec) {
+  const out = [], at = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const k = bars.time[i] - (bars.time[i] % sec);
+    const last = out[out.length - 1];
+    if (last && last.time === k) {
+      last.high = Math.max(last.high, bars.high[i]);
+      last.low = Math.min(last.low, bars.low[i]);
+      last.close = bars.close[i];
+    } else {
+      out.push({ time: k, open: bars.open[i], high: bars.high[i], low: bars.low[i], close: bars.close[i] });
+    }
+    at[i] = out.length - 1;
+  }
+  return { bars: out, at: at };
+}
 
-// ---- structure: which way price last broke the swing range -----------------
+const chartBars = bars.close.map((c, i) => ({ time: bars.time[i], open: bars.open[i], high: bars.high[i], low: bars.low[i], close: bars.close[i] }));
+const utSec = UT_TF * 60;
+const useHtf = utSec > step;
+const g = useHtf ? group(utSec) : null;
+
+// On a higher timeframe the value comes from the last CLOSED bar, so nothing repaints —
+// the same as the Pine, which reads [1] of the requested series.
+function spread(series) {
+  if (!useHtf) return series;
+  const out = new Array(n).fill(NaN);
+  for (let i = 0; i < n; i++) {
+    const j = g.at[i] - 1;
+    out[i] = j >= 0 ? series[j] : NaN;
+  }
+  return out;
+}
+function spreadInt(series) {
+  if (!useHtf) return series;
+  const out = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    const j = g.at[i] - 1;
+    out[i] = j >= 0 ? series[j] : 0;
+  }
+  return out;
+}
+
+const utRaw = utBot(useHtf ? g.bars : chartBars, KEY, ATRP);
+const slowRaw = utBot(useHtf ? g.bars : chartBars, KEY2, ATR2);
+const utStop = spread(utRaw.stop);
+const utDir = spreadInt(utRaw.pos);
+const slowDir = spreadInt(slowRaw.pos);
+
+// ---- structure: which way price last broke the swing range ----
 const swingHi = ta.prev(ta.highest(bars.high, SWING), 1);
 const swingLo = ta.prev(ta.lowest(bars.low, SWING), 1);
 const structDir = new Array(n).fill(0);
@@ -858,7 +969,7 @@ for (let i = 0; i < n; i++) {
   structDir[i] = bars.close[i] > swingHi[i] ? 1 : bars.close[i] < swingLo[i] ? -1 : prev;
 }
 
-// ---- CVD: volume pushed toward the close, added up -------------------------
+// ---- CVD: volume pushed toward the close, added up ----
 const cvd = new Array(n).fill(0);
 let run = 0;
 for (let i = 0; i < n; i++) {
@@ -869,13 +980,13 @@ for (let i = 0; i < n; i++) {
 }
 const cvdEma = ta.ema(cvd, CVDLEN);
 
-// ---- session volume profile: the busiest price so far today ----------------
-const day = i => Math.floor((bars.time[i] - 0) / 86400);
+// ---- session volume profile: the busiest price so far today ----
+const dayOf = i => Math.floor(bars.time[i] / 86400);
 const poc = new Array(n).fill(NaN);
 let anchor = NaN, bin = NaN, buckets = null, bestK = null, bestV = -1, curDay = null;
 for (let i = 0; i < n; i++) {
-  if (day(i) !== curDay) {
-    curDay = day(i);
+  if (dayOf(i) !== curDay) {
+    curDay = dayOf(i);
     anchor = bars.open[i];
     bin = Math.max((isFinite(atr14[i]) ? atr14[i] : bars.high[i] - bars.low[i]) * BIN_ATR, 1e-9);
     buckets = new Map(); bestK = null; bestV = -1;
@@ -887,24 +998,24 @@ for (let i = 0; i < n; i++) {
   poc[i] = anchor + (bestK + 0.5) * bin;
 }
 
-// ---- previous day's high and low -------------------------------------------
+// ---- previous day's high and low ----
 const pdh = new Array(n).fill(NaN), pdl = new Array(n).fill(NaN);
 let dayKey = null, curH = -Infinity, curL = Infinity, prevH = NaN, prevL = NaN;
 for (let i = 0; i < n; i++) {
-  if (day(i) !== dayKey) {
+  if (dayOf(i) !== dayKey) {
     if (dayKey !== null) { prevH = curH; prevL = curL; }
-    dayKey = day(i); curH = -Infinity; curL = Infinity;
+    dayKey = dayOf(i); curH = -Infinity; curL = Infinity;
   }
   curH = Math.max(curH, bars.high[i]);
   curL = Math.min(curL, bars.low[i]);
   pdh[i] = prevH; pdl[i] = prevL;
 }
 
-// ---- one signal per UT leg, once the filters agree -------------------------
+// ---- one signal per UT leg, once the filters agree ----
 const buy = new Array(n).fill(false), sell = new Array(n).fill(false);
 let legDir = 0, legBar = -1, legDone = true;
 for (let i = 0; i < n; i++) {
-  const dir = ut.pos[i], was = i ? ut.pos[i - 1] : 0;
+  const dir = utDir[i], was = i ? utDir[i - 1] : 0;
   const flipUp = dir === 1 && was !== 1, flipDn = dir === -1 && was !== -1;
   if (flipUp || flipDn) { legDir = flipUp ? 1 : -1; legBar = i; legDone = false; }
   else if (!legDone && i - legBar > WAIT) legDone = true;
@@ -913,7 +1024,7 @@ for (let i = 0; i < n; i++) {
   const okStruct = !USE_STRUCT || structDir[i] === legDir;
   const okCvd = !USE_CVD || (legDir === 1 ? cvd[i] > cvdEma[i] : cvd[i] < cvdEma[i]);
   const okPoc = !USE_POC || !isFinite(poc[i]) || (legDir === 1 ? bars.close[i] > poc[i] : bars.close[i] < poc[i]);
-  const okUt2 = !USE_UT2 || slow.pos[i] === legDir;
+  const okUt2 = !USE_UT2 || slowDir[i] === legDir;
   if (okStruct && okCvd && okPoc && okUt2) {
     if (legDir === 1) buy[i] = true; else sell[i] = true;
     legDone = true;
@@ -921,7 +1032,7 @@ for (let i = 0; i < n; i++) {
 }
 
 return {
-  plots: { "UT stop": ut.stop, "POC": poc, "PDH": pdh, "PDL": pdl },
+  plots: { "UT stop": utStop, "POC": poc, "PDH": pdh, "PDL": pdl },
   buy: buy,
   sell: sell
 };`;
@@ -1598,6 +1709,7 @@ return {
 
   /* ------------------------------------------------------------------ start */
   function start() {
+    setTimeout(() => checkUpdate(false), 4000);   // quietly, once the chart is up
     loadSymbols("").catch(() => {});   // warms the list used by Browse and by the fallback
     loadCandles(true);
     refreshAccount();

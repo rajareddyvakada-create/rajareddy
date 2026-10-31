@@ -99,6 +99,21 @@ The chart is real only when the page is served by this server. A copy of the pag
 else (a preview link, a file on the phone) cannot reach your PC: it is on your home network, and browsers
 block a page on one site from calling a different one. So always open `http://<PC-IP>:8000`.
 
+### Updating without a new zip
+
+**Update** in the toolbar fetches the newest page from this project's public repository, writes it
+beside the bridge and reloads. The old page is kept as `frontend/index.html.bak`. The page also
+checks quietly a few seconds after it loads, and the button turns amber and reads **Update ready**
+when there is something new.
+
+Only `frontend/index.html` is replaced this way, from one address fixed in `updater.py`; a page can
+never talk the bridge into fetching something else, and a download is refused unless it is under
+5 MB and still looks like this app. The server code and your `.env` are never touched — a change to
+`server.py` still needs the zip and a restart.
+
+It does mean the page your browser runs can change when that repository changes. To switch it off,
+put `UPDATE_URL=` (empty) in `.env`.
+
 ## 6. Using it
 
 * **Symbol** — type the exact MT5 name (`XAUUSD`, `EURUSD`, `US30Cash`…) and tap **Apply**. Names differ
