@@ -27,24 +27,14 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('SpamCallBlocker/**/*.gradle*', 'SpamCallBlocker/**/gradle-wrapper.properties') }}
-          restore-keys: gradle-
-
-      - name: Generate Gradle wrapper
-        working-directory: SpamCallBlocker
-        run: gradle wrapper --gradle-version 8.2
+          gradle-version: '8.2'
 
       - name: Build Debug APK
         working-directory: SpamCallBlocker
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
