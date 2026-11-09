@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#F6F7F9</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="fg">#1A1D23</color>
+    <color name="fg_dim">#6B7280</color>
+    <color name="accent">#E63946</color>
+    <color name="accent_light">#FDE8EA</color>
+    <color name="green">#059669</color>
+    <color name="amber">#D97706</color>
+    <color name="blue">#2563EB</color>
+    <color name="border">#E5E7EB</color>
+</resources>

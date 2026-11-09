@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center_vertical" android:paddingVertical="12dp">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Enable Call Blocking" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/fg" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Master switch — blocks all spam calls" android:textSize="12sp" android:textColor="@color/fg_dim" />
+        </LinearLayout>
+        <Switch android:id="@+id/toggle_blocking" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    </LinearLayout>
+    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/border" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center_vertical" android:paddingVertical="12dp">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Block Telecom Spam" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/fg" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Jio, Airtel, Vi, BSNL promotions" android:textSize="12sp" android:textColor="@color/fg_dim" />
+        </LinearLayout>
+        <Switch android:id="@+id/toggle_telecom" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    </LinearLayout>
+    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/border" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center_vertical" android:paddingVertical="12dp">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Block Credit Card / Loan Spam" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/fg" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Banks pushing credit cards, personal loans, insurance" android:textSize="12sp" android:textColor="@color/fg_dim" />
+        </LinearLayout>
+        <Switch android:id="@+id/toggle_credit" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    </LinearLayout>
+    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/border" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center_vertical" android:paddingVertical="12dp">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Block Real Estate Spam" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/fg" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Property brokers, home loan solicitations" android:textSize="12sp" android:textColor="@color/fg_dim" />
+        </LinearLayout>
+        <Switch android:id="@+id/toggle_realestate" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    </LinearLayout>
+    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/border" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center_vertical" android:paddingVertical="12dp">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Block International Numbers" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/fg" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Auto-reject unknown international calls" android:textSize="12sp" android:textColor="@color/fg_dim" />
+        </LinearLayout>
+        <Switch android:id="@+id/toggle_international" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    </LinearLayout>
+    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/border" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center_vertical" android:paddingVertical="12dp">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Block 140/1800 Prefixes" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/fg" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Telemarketing and toll-free spam prefixes" android:textSize="12sp" android:textColor="@color/fg_dim" />
+        </LinearLayout>
+        <Switch android:id="@+id/toggle_prefix140" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    </LinearLayout>
+    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/border" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center_vertical" android:paddingVertical="12dp">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Whitelist Only Mode" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/fg" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Only allow calls from saved contacts" android:textSize="12sp" android:textColor="@color/fg_dim" />
+        </LinearLayout>
+        <Switch android:id="@+id/toggle_whitelist" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    </LinearLayout>
+</LinearLayout>
