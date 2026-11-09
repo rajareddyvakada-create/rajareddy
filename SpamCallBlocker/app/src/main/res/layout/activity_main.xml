@@ -29,6 +29,8 @@
             android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="@color/fg"
+            android:fontFamily="@font/space_grotesk"
+            android:letterSpacing="-0.02"
             android:paddingStart="12dp" />
 
         <View
@@ -66,7 +68,9 @@
                 android:layout_height="wrap_content"
                 android:text="Dashboard"
                 android:textSize="13sp"
+                android:textStyle="bold"
                 android:textColor="@color/fg"
+                android:fontFamily="@font/space_grotesk"
                 android:padding="8dp"
                 android:paddingStart="14dp"
                 android:paddingEnd="14dp"
@@ -78,7 +82,9 @@
                 android:layout_height="wrap_content"
                 android:text="Blocklist"
                 android:textSize="13sp"
+                android:textStyle="bold"
                 android:textColor="@color/fg_dim"
+                android:fontFamily="@font/space_grotesk"
                 android:padding="8dp"
                 android:paddingStart="14dp"
                 android:paddingEnd="14dp"
@@ -91,7 +97,9 @@
                 android:layout_height="wrap_content"
                 android:text="Call Log"
                 android:textSize="13sp"
+                android:textStyle="bold"
                 android:textColor="@color/fg_dim"
+                android:fontFamily="@font/space_grotesk"
                 android:padding="8dp"
                 android:paddingStart="14dp"
                 android:paddingEnd="14dp"
@@ -104,7 +112,9 @@
                 android:layout_height="wrap_content"
                 android:text="Settings"
                 android:textSize="13sp"
+                android:textStyle="bold"
                 android:textColor="@color/fg_dim"
+                android:fontFamily="@font/space_grotesk"
                 android:padding="8dp"
                 android:paddingStart="14dp"
                 android:paddingEnd="14dp"
@@ -209,7 +219,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:nestedScrollingEnabled="false"
-                    android:background="@drawable/card_bg" />
+                    android:background="@drawable/card_bg"
+                    android:layoutAnimation="@anim/layout_animation_stagger" />
             </LinearLayout>
 
             <!-- Blocklist Section -->
@@ -248,7 +259,8 @@
                     android:id="@+id/blocklist_recycler"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:nestedScrollingEnabled="false" />
+                    android:nestedScrollingEnabled="false"
+                    android:layoutAnimation="@anim/layout_animation_stagger" />
             </LinearLayout>
 
             <!-- Log Section -->
@@ -287,7 +299,8 @@
                     android:id="@+id/log_recycler"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:nestedScrollingEnabled="false" />
+                    android:nestedScrollingEnabled="false"
+                    android:layoutAnimation="@anim/layout_animation_stagger" />
             </LinearLayout>
 
             <!-- Settings Section -->

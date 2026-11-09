@@ -1,6 +1,8 @@
 package com.spamblocker.app.ui
 
 import android.Manifest
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
 import android.app.AlertDialog
 import android.app.role.RoleManager
 import android.content.pm.PackageManager
@@ -9,6 +11,9 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AnimationUtils
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -94,16 +99,59 @@ class MainActivity : AppCompatActivity() {
         val tabs = listOf(tabDashboard, tabBlocklist, tabLog, tabSettings)
         val sections = listOf(sectionDashboard, sectionBlocklist, sectionLog, sectionSettings)
 
+        var currentTabIndex = 0
+
         fun selectTab(index: Int) {
+            if (index == currentTabIndex && sections[index].visibility == View.VISIBLE) return
+
             tabs.forEachIndexed { i, tab ->
                 tab.isSelected = (i == index)
                 tab.setBackgroundResource(
                     if (i == index) R.drawable.tab_selected else R.drawable.tab_unselected
                 )
+                // Animate the selected tab with a pop effect
+                if (i == index) {
+                    tab.scaleX = 0.9f
+                    tab.scaleY = 0.9f
+                    tab.animate()
+                        .scaleX(1f).scaleY(1f)
+                        .setDuration(300)
+                        .setInterpolator(OvershootInterpolator(2f))
+                        .start()
+                }
             }
-            sections.forEachIndexed { i, section ->
-                section.visibility = if (i == index) View.VISIBLE else View.GONE
+
+            // Animate section transition
+            val outgoing = sections[currentTabIndex]
+            val incoming = sections[index]
+
+            if (outgoing != incoming) {
+                // Slide out the current section
+                outgoing.animate()
+                    .alpha(0f)
+                    .translationX(if (index > currentTabIndex) -80f else 80f)
+                    .setDuration(200)
+                    .setInterpolator(DecelerateInterpolator())
+                    .withEndAction {
+                        outgoing.visibility = View.GONE
+                        outgoing.translationX = 0f
+                        outgoing.alpha = 1f
+
+                        // Slide in the new section
+                        incoming.visibility = View.VISIBLE
+                        incoming.alpha = 0f
+                        incoming.translationX = if (index > currentTabIndex) 80f else -80f
+                        incoming.animate()
+                            .alpha(1f)
+                            .translationX(0f)
+                            .setDuration(350)
+                            .setInterpolator(DecelerateInterpolator(2f))
+                            .start()
+                    }
+                    .start()
             }
+
+            currentTabIndex = index
         }
 
         tabDashboard.setOnClickListener { selectTab(0); refreshDashboard() }

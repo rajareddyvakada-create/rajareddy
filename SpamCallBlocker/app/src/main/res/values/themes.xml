@@ -8,5 +8,38 @@
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:statusBarColor">@color/surface</item>
         <item name="android:navigationBarColor">@color/bg</item>
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="fontFamily">@font/inter</item>
+        <item name="android:windowAnimationStyle">@style/WindowAnimations</item>
+    </style>
+
+    <!-- Display font style for headings and tabs -->
+    <style name="TextAppearance.Display" parent="TextAppearance.MaterialComponents.Headline6">
+        <item name="fontFamily">@font/space_grotesk</item>
+        <item name="android:fontFamily">@font/space_grotesk</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">-0.02</item>
+    </style>
+
+    <!-- Mono font style for phone numbers -->
+    <style name="TextAppearance.Mono" parent="TextAppearance.MaterialComponents.Body2">
+        <item name="fontFamily">@font/fira_code</item>
+        <item name="android:fontFamily">@font/fira_code</item>
+    </style>
+
+    <!-- Tab text style -->
+    <style name="TextAppearance.Tab" parent="TextAppearance.MaterialComponents.Button">
+        <item name="fontFamily">@font/space_grotesk</item>
+        <item name="android:fontFamily">@font/space_grotesk</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.01</item>
+        <item name="textAllCaps">false</item>
+    </style>
+
+    <!-- Smooth window transitions -->
+    <style name="WindowAnimations" parent="@android:style/Animation.Activity">
+        <item name="android:windowEnterAnimation">@anim/tab_slide_in</item>
+        <item name="android:windowExitAnimation">@anim/tab_slide_out</item>
     </style>
 </resources>
