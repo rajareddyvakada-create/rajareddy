@@ -219,9 +219,108 @@ because browsers cannot set headers on a WebSocket.
 | GET | `/api/positions?symbol=` | Open positions |
 | POST | `/api/close` | `{ticket, lot?}` — omit `lot` to close it all |
 | WS | `/ws/ticks?symbol=XAUUSD&key=…` | Live bid/ask about every 200 ms |
+| POST | `/webhook/tradingview` | A TradingView alert. **No** `X-API-Key` — see below |
 
 Times in candles and ticks are **broker server time** (XM is UTC+2 / UTC+3), passed through unchanged so
 the chart matches MT5 itself.
+
+## Trading from TradingView
+
+TradingView cannot place an order on an MT5 account by itself: XM is not one of TradingView's
+execution brokers, and TradingView's own panel has no MT5 connection. What it *can* do is post an
+alert's message to a URL. This bridge accepts that post and sends the order to your account, which
+is the same thing PineConnector and similar services do, except that it runs on your own PC and
+nobody else sees your signals.
+
+**Webhook alerts are a paid TradingView feature.** A free plan cannot send them, to this bridge or
+to anyone else's.
+
+### 1. Turn it on
+
+In `.env`:
+
+    WEBHOOK_ENABLED=true
+    WEBHOOK_SECRET=<python -c "import secrets; print(secrets.token_urlsafe(24))">
+    WEBHOOK_MAX_LOT=0.10
+
+Restart the server and open `/api/health`: `webhook_ready` should be `true`. If it is `false`,
+`webhook_blocked_because` says exactly which line is missing.
+
+`WEBHOOK_SECRET` must not be the same as `API_KEY`. The secret travels inside the alert message,
+and TradingView stores every alert you create, so it is the one value here that leaves your PC.
+
+### 2. Let TradingView reach your PC
+
+TradingView's servers post from the internet, so `192.168.x` will not do. A free Cloudflare Tunnel
+is the least trouble and needs no router changes:
+
+    cloudflared tunnel --url http://localhost:8000
+
+It prints an `https://something.trycloudflare.com` address. Your webhook URL is that plus
+`/webhook/tradingview`. The address changes each time you start it unless you make a named tunnel.
+
+Port forwarding works too, but then your bridge is on the open internet over plain http, and the
+secret travels in clear text. Prefer the tunnel.
+
+### 3. The alert
+
+**Notifications → Webhook URL**: `https://…trycloudflare.com/webhook/tradingview`
+
+**Message**, either shape:
+
+    my-webhook-secret,buy,XAUUSD,0.02,sl=3990,tp=4010
+
+    {"secret":"my-webhook-secret","action":"buy","symbol":"XAUUSD","lot":0.02,"sl":3990,"tp":4010}
+
+The comma form is the one PineConnector made common, so a Pine script already written for that only
+needs its first field changed.
+
+| Field | Notes |
+|---|---|
+| `action` | `buy`, `sell`, `close`, `closelong`, `closeshort`, `closeall`. `long`/`short`/`exit` also work |
+| `symbol` | The MT5 name. `OANDA:XAUUSD` and `XAUUSD.P` are accepted and trimmed to `XAUUSD` |
+| `lot` | Optional; `WEBHOOK_DEFAULT_LOT` is used instead. Also `lots`, `volume`, `size`, `qty` |
+| `sl`, `tp` | Optional absolute prices, not distances. Also `stop`, `target` |
+| `id` | Optional. Two alerts with the same `id` count as one — see duplicates below |
+| `comment` | Optional, shows against the position in MT5 |
+
+From Pine, with the placeholders TradingView fills in:
+
+    alertcondition(buySignal, "Ox Alpha buy")
+    // or, in a strategy:
+    alert('my-webhook-secret,buy,' + syminfo.ticker + ',0.02', alert.freq_once_per_bar_close)
+
+Use `alert.freq_once_per_bar_close`, not `freq_once_per_bar`: the second fires on an unfinished bar
+and a signal that appears mid-bar can vanish before the bar closes.
+
+### What it refuses, and why
+
+Every one of these is tested in `tests/test_webhook.py` and `tests/test_webhook_endpoint.py`:
+
+* **A live account.** Even with the webhook on, a non-demo account is refused until
+  `WEBHOOK_ALLOW_LIVE=true`. Turning the webhook on cannot by itself put real money at risk.
+* **A wrong or missing secret** → `401`, and the reply says only `refused`, so someone poking the
+  URL cannot tell a wrong secret from a malformed message. The full reason goes to the log.
+* **A lot above `WEBHOOK_MAX_LOT`**, whatever the alert asks for. The cap is the server's, not the
+  script's.
+* **A repeat.** TradingView retries a webhook it thinks failed, and a retry must not double the
+  position. The same alert inside 60 seconds is refused with `409`. Give alerts an `id` if you want
+  to control this yourself. A *refused* alert is not remembered, so correcting it and sending again
+  works.
+* **A flood.** More than `WEBHOOK_PER_MINUTE` alerts in a minute is refused with `429`.
+* **A symbol outside `WEBHOOK_SYMBOLS`**, when you set that list.
+* Plus everything the BUY/SELL buttons already check, because an alert goes through exactly the same
+  order code: lot steps, the broker's min and max, and a stop or target on the wrong side of the
+  price.
+
+A `close` only touches positions carrying this app's `MAGIC`, so a trade you placed by hand in the
+MT5 terminal is never closed by an alert.
+
+Every alert is logged on your PC — accepted or refused, with the reason and the caller's address.
+The secret is never logged.
+
+**Test on a demo account first**, with `WEBHOOK_MAX_LOT=0.01`, and watch the server log while you
+fire the alert manually from TradingView's alert dialog.
 
 ## Safety notes
 
@@ -240,9 +339,16 @@ the chart matches MT5 itself.
 
     cd tests && npm i -D playwright && ./run.sh
 
-148 checks covering first load, quotes, orders, positions, symbol search, history paging, the Pine
-Script converter, indicator settings, Ox Alpha UT Pro, the clock switch and the Update button. See
-`tests/README.md` for what each suite covers. Run it before shipping a change to `frontend/index.html`.
+It covers first load, quotes, orders, positions, symbol search, history paging, the Pine Script
+converter, indicator settings, Ox Alpha UT Pro, the clock switch, the Update button, and the
+TradingView webhook. See `tests/README.md` for what each suite covers. Run it before shipping a
+change to `frontend/index.html` or `backend/`.
+
+The webhook's own tests need no browser and no MetaTrader:
+
+    python3 test_webhook.py                      # parsing and every guard
+    pip install fastapi httpx
+    python3 test_webhook_endpoint.py             # the real endpoint, with a stand-in MT5
 
 ## Manual test checklist
 

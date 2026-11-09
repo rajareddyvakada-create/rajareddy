@@ -31,10 +31,24 @@ echo "pass=$(printf '%s\n' "$out" | grep -cE '^PASS') fail=$(printf '%s\n' "$out
 printf '%s\n' "$out" | grep -E '^FAIL' | sed 's/^/     /'
 fails=$((fails + $(printf '%s\n' "$out" | grep -cE '^FAIL')))
 
-printf '%-14s ' "test_updater.py"
-out=$(python3 -I test_updater.py 2>&1)
-echo "pass=$(printf '%s\n' "$out" | grep -cE '^PASS') fail=$(printf '%s\n' "$out" | grep -cE '^FAIL')"
-fails=$((fails + $(printf '%s\n' "$out" | grep -cE '^FAIL')))
+for t in test_updater.py test_webhook.py; do
+  printf '%-14s ' "$t"
+  out=$(python3 -I "$t" 2>&1)
+  echo "pass=$(printf '%s\n' "$out" | grep -cE '^PASS') fail=$(printf '%s\n' "$out" | grep -cE '^FAIL')"
+  printf '%s\n' "$out" | grep -E '^FAIL' | sed 's/^/     /'
+  fails=$((fails + $(printf '%s\n' "$out" | grep -cE '^FAIL')))
+done
+
+# Needs fastapi and httpx; it imports the real server with a stand-in MetaTrader5.
+printf '%-14s ' "endpoint"
+if python3 -c 'import fastapi, httpx' 2>/dev/null; then
+  out=$(python3 test_webhook_endpoint.py 2>&1)
+  echo "pass=$(printf '%s\n' "$out" | grep -cE '^PASS') fail=$(printf '%s\n' "$out" | grep -cE '^FAIL')"
+  printf '%s\n' "$out" | grep -E '^FAIL' | sed 's/^/     /'
+  fails=$((fails + $(printf '%s\n' "$out" | grep -cE '^FAIL')))
+else
+  echo "skipped (pip install fastapi httpx to run it)"
+fi
 
 echo
 [ "$fails" = "0" ] && echo "all green" || echo "$fails failing checks"

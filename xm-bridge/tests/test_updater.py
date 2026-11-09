@@ -1,9 +1,10 @@
 """Tests for the self-update, against a local server standing in for GitHub."""
 import http.server, pathlib, shutil, sys, tempfile, threading, functools
-sys.path.insert(0, '/home/user/rajareddy/xm-bridge/backend')
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / 'backend'))
 import updater
 
-REAL = pathlib.Path('/home/user/rajareddy/xm-bridge/frontend/index.html').read_bytes()
+REAL = (HERE.parent / 'frontend' / 'index.html').read_bytes()
 tmp = pathlib.Path(tempfile.mkdtemp())
 served = tmp / 'served'; served.mkdir()
 

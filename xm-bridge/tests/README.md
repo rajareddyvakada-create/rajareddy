@@ -6,6 +6,7 @@ no MetaTrader installed. Its broker clock runs UTC+3, like XM in summer, which i
 time tests meaningful.
 
     npm i -D playwright
+    pip install fastapi httpx      # for the endpoint test only
     ./run.sh
 
 Each suite prints one PASS/FAIL line per check. `run.sh` starts the mock, runs everything and stops
@@ -26,3 +27,5 @@ the mock again; set `PORT` if 8711 is taken.
 | `tz.js` | the clock maths on their own, with the device in Asia/Kolkata |
 | `upd.js` | the Update button |
 | `test_updater.py` | `backend/updater.py`: refuses junk, oversized and partial downloads |
+| `test_webhook.py` | TradingView alert parsing, and every guard that can refuse one |
+| `test_webhook_endpoint.py` | the real `/webhook/tradingview` route, with a stand-in MetaTrader5 |

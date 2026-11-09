@@ -30,12 +30,13 @@ from typing import Any, Literal
 
 import MetaTrader5 as mt5
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 import updater
+import webhook
 
 # ----------------------------------------------------------------------------- configuration
 
@@ -54,6 +55,10 @@ MAGIC = int(os.getenv("MAGIC", "770077"))          # marks orders this app sent
 DEVIATION = int(os.getenv("DEVIATION", "20"))      # max slippage in points
 MAX_LOT = float(os.getenv("MAX_LOT", "1.0"))       # safety cap, refuses anything bigger
 TICK_INTERVAL = float(os.getenv("TICK_INTERVAL", "0.2"))   # websocket push interval, seconds
+
+# TradingView alerts. Off unless .env turns it on, and even then it refuses a live account until
+# WEBHOOK_ALLOW_LIVE says otherwise: see webhook.py and the README.
+WEBHOOK = webhook.guard_from_env(os.getenv)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-7s %(message)s")
 log = logging.getLogger("xm-bridge")
@@ -345,6 +350,9 @@ def health() -> dict[str, Any]:
         "broker_server": acc.server if acc else None,
         "server_utc_offset": server_utc_offset() if (term and acc) else None,
         "max_bars": max_bars() if term else 0,
+        # So you can see from the browser whether an alert would be accepted, without sending one.
+        "webhook_ready": WEBHOOK.why_unusable() is None,
+        "webhook_blocked_because": WEBHOOK.why_unusable(),
     }
 
 
@@ -441,44 +449,45 @@ def candles(symbol: str = Query(min_length=1, max_length=32),
     }
 
 
-@app.post("/api/order", dependencies=[Depends(require_key)])
-def place_order(req: OrderRequest) -> dict[str, Any]:
-    """Market buy or sell. Returns the terminal's full order_send() result, success or not."""
-    info, _ = select_symbol(req.symbol)
+def market_order(symbol: str, direction: str, lot: float, sl: float | None, tp: float | None,
+                 comment: str, *, source: str = "ui") -> dict[str, Any]:
+    """Send one market order. The UI and a TradingView alert both come through here, so the lot
+    checks, the stop/target side check and the filling-mode fallback are the same for both."""
+    info, _ = select_symbol(symbol)
 
-    if req.lot < info.volume_min or req.lot > info.volume_max:
+    if lot < info.volume_min or lot > info.volume_max:
         raise HTTPException(400, f"lot must be between {info.volume_min} and {info.volume_max} for {info.name}")
     step = info.volume_step or 0.01
-    if abs(round(req.lot / step) * step - req.lot) > 1e-9:
+    if abs(round(lot / step) * step - lot) > 1e-9:
         raise HTTPException(400, f"lot must be a multiple of {step} for {info.name}")
 
     tick = mt5_call(mt5.symbol_info_tick, info.name)
     if tick is None or not tick.ask or not tick.bid:
         raise Mt5Error(f"No price for {info.name} (market closed?)")
 
-    is_buy = req.direction == "buy"
+    is_buy = direction == "buy"
     price = tick.ask if is_buy else tick.bid          # buy at the ask, sell at the bid
     request: dict[str, Any] = {
         "action": mt5.TRADE_ACTION_DEAL,              # market order, filled now
         "symbol": info.name,
-        "volume": float(req.lot),
+        "volume": float(lot),
         "type": mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL,
         "price": price,
         "deviation": DEVIATION,                       # accept this many points of slippage
         "magic": MAGIC,
-        "comment": req.comment,
+        "comment": comment,
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": filling_mode(info),
     }
     # A stop/target on the wrong side is rejected by the server, so check it here with a clear message.
-    if req.sl:
-        if (is_buy and req.sl >= price) or (not is_buy and req.sl <= price):
+    if sl:
+        if (is_buy and sl >= price) or (not is_buy and sl <= price):
             raise HTTPException(400, f"Stop-loss must be {'below' if is_buy else 'above'} the price ({price}).")
-        request["sl"] = float(req.sl)
-    if req.tp:
-        if (is_buy and req.tp <= price) or (not is_buy and req.tp >= price):
+        request["sl"] = float(sl)
+    if tp:
+        if (is_buy and tp <= price) or (not is_buy and tp >= price):
             raise HTTPException(400, f"Take-profit must be {'above' if is_buy else 'below'} the price ({price}).")
-        request["tp"] = float(req.tp)
+        request["tp"] = float(tp)
 
     result = mt5_call(mt5.order_send, request)
     if result is None:
@@ -486,8 +495,15 @@ def place_order(req: OrderRequest) -> dict[str, Any]:
     out = as_dict(result)
     out["ok"] = result.retcode == mt5.TRADE_RETCODE_DONE
     out["retcode_text"] = RETCODES.get(result.retcode, "see MT5 docs for this return code")
-    log.info("ORDER %s %s %.2f -> retcode %s (%s)", req.direction, info.name, req.lot, result.retcode, out["retcode_text"])
+    log.info("ORDER[%s] %s %s %.2f -> retcode %s (%s)",
+             source, direction, info.name, lot, result.retcode, out["retcode_text"])
     return out
+
+
+@app.post("/api/order", dependencies=[Depends(require_key)])
+def place_order(req: OrderRequest) -> dict[str, Any]:
+    """Market buy or sell. Returns the terminal's full order_send() result, success or not."""
+    return market_order(req.symbol, req.direction, req.lot, req.sl, req.tp, req.comment)
 
 
 @app.get("/api/positions", dependencies=[Depends(require_key)])
@@ -545,6 +561,104 @@ def close_position(req: CloseRequest) -> dict[str, Any]:
     out["retcode_text"] = RETCODES.get(result.retcode, "see MT5 docs for this return code")
     log.info("CLOSE %s %.2f -> retcode %s (%s)", pos.ticket, volume, result.retcode, out["retcode_text"])
     return out
+
+
+def close_matching(symbol: str, side: str | None, *, source: str = "webhook") -> dict[str, Any]:
+    """Close the open positions this app opened, optionally only one symbol or one side.
+
+    Only positions carrying this app's magic number are touched, so a hand-placed trade in the MT5
+    terminal is never closed by an alert.
+    """
+    found = mt5_call(mt5.positions_get, symbol=symbol) if symbol else mt5_call(mt5.positions_get)
+    if found is None:
+        raise Mt5Error("Couldn't read open positions")
+
+    wanted = mt5.POSITION_TYPE_BUY if side == "buy" else mt5.POSITION_TYPE_SELL if side == "sell" else None
+    targets = [p for p in found
+               if p.magic == MAGIC and (wanted is None or p.type == wanted)]
+
+    closed: list[dict[str, Any]] = []
+    for pos in targets:
+        try:
+            closed.append(close_position(CloseRequest(ticket=pos.ticket)))
+        except (HTTPException, Mt5Error) as exc:
+            # One position failing must not stop the rest from closing.
+            log.warning("CLOSE[%s] ticket %s failed: %s", source, pos.ticket, exc)
+            closed.append({"ticket": pos.ticket, "ok": False, "error": str(exc)})
+
+    log.info("CLOSE[%s] %s%s -> %s of %s closed", source, symbol or "all symbols",
+             f" {side}" if side else "", sum(1 for c in closed if c.get("ok")), len(targets))
+    return {
+        "ok": all(c.get("ok") for c in closed) if closed else True,
+        "matched": len(targets),
+        "closed": closed,
+    }
+
+
+# Two alerts arriving together would otherwise race on the guard's duplicate and rate-limit
+# bookkeeping, and could both pass the same check.
+_WEBHOOK_LOCK = threading.Lock()
+
+
+def handle_alert(alert: webhook.Alert, caller: str) -> tuple[int, dict[str, Any]]:
+    """Check an alert against the guards and act on it. Runs off the event loop: every MT5 call
+    here blocks, and the tick stream must keep flowing while an order is being sent."""
+    acc = mt5_call(mt5.account_info)
+    if acc is None:
+        raise Mt5Error("Couldn't read the account")
+    # MT5 reports 0 demo, 1 contest, 2 real. Anything that is not plainly a demo counts as real,
+    # so a trade_mode this code does not know cannot be mistaken for practice money.
+    is_demo = int(getattr(acc, "trade_mode", 2)) == 0
+
+    with _WEBHOOK_LOCK:
+        try:
+            alert = WEBHOOK.check(alert, is_demo=is_demo)
+        except webhook.WebhookRefused as exc:
+            log.warning("WEBHOOK from %s refused (%s): %s", caller, alert.action, exc.reason)
+            return exc.status, {"ok": False, "error": exc.quiet}
+
+    log.info("WEBHOOK from %s accepted: %s", caller, alert.without_secret())
+
+    with rest_priority():
+        if alert.action in ("buy", "sell"):
+            out = market_order(alert.symbol, alert.action, float(alert.lot), alert.sl, alert.tp,
+                               alert.comment, source="webhook")
+        elif alert.action == "close":
+            out = close_matching(alert.symbol, None)
+        elif alert.action == "closelong":
+            out = close_matching(alert.symbol, "buy")
+        elif alert.action == "closeshort":
+            out = close_matching(alert.symbol, "sell")
+        else:                                    # closeall
+            out = close_matching("", None)
+
+    return (200 if out.get("ok") else 502), {
+        "ok": bool(out.get("ok")), "action": alert.action, "symbol": alert.symbol, "result": out,
+    }
+
+
+@app.post("/webhook/tradingview")
+async def tradingview_webhook(request: Request) -> JSONResponse:
+    """Place or close a trade from a TradingView alert.
+
+    TradingView cannot send custom headers, so this is the one endpoint with no X-API-Key: the
+    shared secret travels inside the alert body instead and is compared in constant time. Every
+    other guard lives in webhook.py, which has no MT5 import and is unit-tested.
+
+    The reply is deliberately terse. TradingView shows none of it to anyone, while a stranger
+    poking the URL learns as little as possible; the full reason goes to the log on this PC.
+    """
+    body = await request.body()
+    caller = request.client.host if request.client else "?"
+
+    try:
+        alert = webhook.parse_alert(body)
+    except webhook.WebhookRefused as exc:
+        log.warning("WEBHOOK from %s refused: %s", caller, exc.reason)
+        return JSONResponse(status_code=exc.status, content={"ok": False, "error": exc.quiet})
+
+    status, payload = await asyncio.to_thread(handle_alert, alert, caller)
+    return JSONResponse(status_code=status, content=payload)
 
 
 # The return codes worth explaining in plain words; everything else falls back to the raw number.
