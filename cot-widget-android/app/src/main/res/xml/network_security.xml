@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  TradingView, MetaTrader and Octa are always loaded over https.
+
+  Plain http is permitted because the XM bridge runs on the user's own PC at an address such as
+  192.168.1.20:8000, which has no certificate, and whose address is not known when this app is
+  built. Android's configuration cannot say "private addresses only", so the restriction lives in
+  the app instead: MainActivity.chartKind() shows a plain-http page only when its host is a private
+  home address (192.168.x, 10.x, 172.16-31.x, 127.x or *.local). Everything else is refused.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
