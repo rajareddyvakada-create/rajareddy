@@ -71,6 +71,8 @@
 
   .strip{padding:5px 12px; border-top:1px solid var(--line); background:var(--surface-2); color:var(--muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   .strip b{color:var(--text); font-weight:600; font-family:var(--mono)}
+  .clockpick{color:var(--accent); cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px}
+  .clockpick:hover,.clockpick:focus-visible{color:var(--text); outline:none}
 
   /* order row: deliberately small, so a tap is never an accident */
   .order{display:flex; gap:7px; align-items:center; padding:7px 12px; border-top:1px solid var(--line); background:var(--surface-2)}
@@ -298,6 +300,7 @@
     digits: 2, ws: null, wsTimer: 0, bid: null, ask: null, closed: false,
     raw: [],              // candles exactly as MT5 gave them: times are the broker's wall clock
     serverOffset: null,   // seconds the broker clock is ahead of UTC; null until measured
+    timeMode: localStorage.getItem("xm.timeMode") === "server" ? "server" : "local",
     hasMore: false, maxBars: 0, loadingOlder: false,
   };
 
@@ -315,8 +318,20 @@
   // this device's, once the bridge has measured how far ahead the broker's clock runs.
   function toChart(serverSec) {
     if (state.serverOffset == null) return serverSec;
+    // MT5 already hands us the broker's wall clock, so broker time needs no conversion at all:
+    // the chart renders a timestamp as if it were UTC, which is exactly the broker's own clock.
+    if (state.timeMode === "server") return serverSec;
     const utcSec = serverSec - state.serverOffset;
     return utcSec - new Date(utcSec * 1000).getTimezoneOffset() * 60;   // per-candle, so DST is right
+  }
+
+  // Switching clocks changes every candle's timestamp, so the series has to be rebuilt. The view is
+  // kept, which makes the two clocks easy to compare against the MT5 terminal side by side.
+  function setTimeMode(mode) {
+    state.timeMode = mode === "server" ? "server" : "local";
+    localStorage.setItem("xm.timeMode", state.timeMode);
+    redraw(true);
+    updateStrip();
   }
 
   const asCandle = c => ({ time: toChart(c.time), open: c.open, high: c.high, low: c.low, close: c.close });
@@ -343,15 +358,36 @@
 
   function updateStrip() {
     const bars = state.raw.length;
-    const zone = state.serverOffset == null
-      ? "times on the MT5 server clock"
-      : "times on your clock (" + zoneLabel(-new Date().getTimezoneOffset() * 60) + ")";
+    let zone;
+    if (state.serverOffset == null) {
+      zone = "times on the MT5 server clock";
+    } else if (state.timeMode === "server") {
+      // No buttons in the strip: the label itself is the switch, so the line stays a line.
+      zone = '<span class="clockpick" data-mode="local" role="button" tabindex="0" ' +
+             'title="Tap to show times on your own clock">times on the broker clock (' +
+             zoneLabel(state.serverOffset) + ')</span>';
+    } else {
+      zone = '<span class="clockpick" data-mode="server" role="button" tabindex="0" ' +
+             'title="Tap to show times on the broker clock, as the MT5 terminal does">times on your clock (' +
+             zoneLabel(-new Date().getTimezoneOffset() * 60) + ')</span>';
+    }
     $("strip").innerHTML = !bars ? "&nbsp;"
       : (state.loadingOlder ? "Loading older candles…" :
          "<b>" + bars.toLocaleString() + "</b> candles" + (state.maxBars ? " of " + state.maxBars.toLocaleString() + " the terminal keeps" : "") +
          (state.hasMore ? " · scroll back for more" : " · all history loaded")) +
         " · " + zone;
   }
+
+  // The strip is rebuilt on every tick, so the clock buttons are handled on the strip itself.
+  $("strip").addEventListener("click", e => {
+    const b = e.target.closest(".clockpick");
+    if (b) setTimeMode(b.dataset.mode);
+  });
+  $("strip").addEventListener("keydown", e => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const b = e.target.closest(".clockpick");
+    if (b) { e.preventDefault(); setTimeMode(b.dataset.mode); }
+  });
 
   /* ------------------------------------------------------------------ helpers */
   function toast(message, kind, detail) {

@@ -125,6 +125,10 @@ put `UPDATE_URL=` (empty) in `.env`.
 * **Open positions** — refreshes every 5 seconds, with a **Close** button on each row.
 * **Older candles** load by themselves as you scroll back. The line under the chart says how many
   are loaded, how many the terminal keeps, and which clock the times are on.
+* **Which clock** — the times under the chart are on your own clock by default. Tap the clock words
+  in that line to switch to the broker's clock, which is what the MT5 terminal shows, so candles can
+  be matched against the terminal bar for bar. The choice is remembered. XM runs UTC+2 in winter and
+  UTC+3 in summer, and the offset is measured from a live tick rather than assumed.
 
 ### Indicators
 
@@ -230,7 +234,17 @@ the chart matches MT5 itself.
 
 ---
 
-## Test checklist
+## Automated tests
+
+`tests/` runs the whole frontend against a stand-in bridge, so it needs no Windows and no MetaTrader:
+
+    cd tests && npm i -D playwright && ./run.sh
+
+148 checks covering first load, quotes, orders, positions, symbol search, history paging, the Pine
+Script converter, indicator settings, Ox Alpha UT Pro, the clock switch and the Update button. See
+`tests/README.md` for what each suite covers. Run it before shipping a change to `frontend/index.html`.
+
+## Manual test checklist
 
 Run these in order on a **demo account**, with the market open (gold and forex trade Sunday 22:00 to
 Friday 21:00 UTC).

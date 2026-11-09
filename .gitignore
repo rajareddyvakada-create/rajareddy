@@ -2,3 +2,5 @@
 xm-bridge/.env
 xm-bridge/backend/.venv/
 __pycache__/
+xm-bridge/tests/*.png
+xm-bridge/tests/node_modules/
