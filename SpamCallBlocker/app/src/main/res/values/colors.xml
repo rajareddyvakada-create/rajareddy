@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg">#F6F7F9</color>
+    <color name="bg">#F0F2F5</color>
     <color name="surface">#FFFFFF</color>
-    <color name="fg">#1A1D23</color>
+    <color name="fg">#111827</color>
     <color name="fg_dim">#6B7280</color>
-    <color name="accent">#E63946</color>
-    <color name="accent_light">#FDE8EA</color>
-    <color name="green">#059669</color>
-    <color name="amber">#D97706</color>
-    <color name="blue">#2563EB</color>
+    <color name="accent">#6D28D9</color>
+    <color name="accent_dark">#5B21B6</color>
+    <color name="accent_light">#EDE9FE</color>
+    <color name="green">#10B981</color>
+    <color name="amber">#F59E0B</color>
+    <color name="blue">#3B82F6</color>
+    <color name="red">#EF4444</color>
     <color name="border">#E5E7EB</color>
+    <color name="card_shadow">#0D000000</color>
 </resources>

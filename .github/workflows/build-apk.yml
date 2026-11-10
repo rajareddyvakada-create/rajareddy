@@ -14,7 +14,7 @@ on:
 
 jobs:
   build:
-    name: Build Debug APK
+    name: Build Signed Release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -32,13 +32,30 @@ jobs:
         with:
           gradle-version: '8.2'
 
-      - name: Build Debug APK
+      - name: Generate signing keystore
         working-directory: SpamCallBlocker
-        run: gradle assembleDebug --no-daemon
+        run: |
+          keytool -genkeypair \
+            -alias spamblocker \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -keystore keystore.jks \
+            -storepass spamblocker2024 \
+            -keypass spamblocker2024 \
+            -dname "CN=SpamCallBlocker, OU=Dev, O=SpamBlocker, L=Hyderabad, ST=Telangana, C=IN"
 
-      - name: Upload APK
+      - name: Build Release APK
+        working-directory: SpamCallBlocker
+        env:
+          KEYSTORE_PASSWORD: spamblocker2024
+          KEY_ALIAS: spamblocker
+          KEY_PASSWORD: spamblocker2024
+        run: gradle assembleRelease --no-daemon
+
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: SpamCallBlocker-debug-apk
-          path: SpamCallBlocker/app/build/outputs/apk/debug/app-debug.apk
+          name: SpamCallBlocker-release-apk
+          path: SpamCallBlocker/app/build/outputs/apk/release/app-release.apk
           retention-days: 90
